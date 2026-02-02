@@ -1,0 +1,11 @@
+{
+    "display_name": "Anima Memory System",
+    "loading_order": 100,
+    "generate_interceptor": "Anima_RAG_Interceptor",
+    "js": "index.js",
+    "css": "style.css",
+    "author": "Ellina",
+    "version": "1.0.0",
+    "auto_update": false,
+    "minimum_client_version": "1.12.0"
+}

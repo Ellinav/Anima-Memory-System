@@ -333,7 +333,7 @@ import { objectToYaml } from "./scripts/utils.js";
                 type: "message",
                 message_id: lastMsg.message_id,
               });
-
+              refreshStatusPanel();
               console.log("[Anima] ✅ 净化完成，User 楼层已恢复纯净。");
               if (window.toastr)
                 window.toastr.info("已自动清理异常残留的变量数据");

@@ -128,20 +128,27 @@ import { objectToYaml } from "./scripts/utils.js";
     if (context && context.eventSource) {
       // 🟢 1. 确保 debounceTimer 定义在这一层，让下面所有事件都能访问到
       let debounceTimer = null;
-
+      let isGenerationActive = false;
       const triggerAutomationCheck = (source, customDelay = 1000) => {
         const settings = getSummarySettings();
-        // 如果自动化没开，或者正在跑，就退出
         if (!settings || !settings.auto_run) return;
-        if (getIsSummarizing()) {
-          console.log(`[Anima] Ignored ${source}: Task already running.`);
+
+        // 🟢 2. 新增：如果正在生成中，直接无视所有渲染事件！
+        // 这样即便 user_message_rendered 晚于 generation_started 触发，也会被这里拦截
+        if (isGenerationActive) {
+          console.log(
+            `[Anima] 🔒 生成进行中，忽略来自 ${source} 的自动化请求。`,
+          );
           return;
         }
 
-        // 清理上一次的（如果有）
+        if (getIsSummarizing()) {
+          // console.log(`[Anima] Ignored ${source}: Task already running.`);
+          return;
+        }
+
         if (debounceTimer) clearTimeout(debounceTimer);
 
-        // 设置新的倒计时
         debounceTimer = setTimeout(() => {
           console.log(
             `[Anima] Triggering automation check from ${source} (Delay: ${customDelay}ms)...`,
@@ -241,7 +248,8 @@ import { objectToYaml } from "./scripts/utils.js";
         if (isDryRun) {
           return;
         }
-
+        isGenerationActive = true;
+        console.log("[Anima] 🔒 生成开始，锁定自动化触发器。");
         if (debounceTimer) {
           console.log("[Anima] 🚨 生成开始，强制取消挂起的自动化检查定时器。");
           clearTimeout(debounceTimer);
@@ -266,6 +274,7 @@ import { objectToYaml } from "./scripts/utils.js";
       context.eventSource.on("generation_stopped", () => {
         console.log("[Anima] 🛑 用户手动取消了生成 (Generation Stopped)");
         wasGenerationStopped = true;
+        isGenerationActive = false;
         // 既然停止了，自然也要取消倒计时（虽然此时通常还没开始倒计时，但作为防御）
         cancelStatusTimer();
       });
@@ -273,6 +282,7 @@ import { objectToYaml } from "./scripts/utils.js";
       // 建议：与其监听 character_message_rendered (可能会在编辑消息时多次触发)
       // 不如重点监听 generation_ended，这是 AI 回复完成的确切时间点
       context.eventSource.on("generation_ended", async () => {
+        isGenerationActive = false;
         if (wasGenerationStopped) {
           console.log("[Anima] ⚠️ 检测到生成被中断，跳过所有自动化流程。");
           return;

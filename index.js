@@ -126,26 +126,22 @@ import { objectToYaml } from "./scripts/utils.js";
 
     const context = SillyTavern.getContext();
     if (context && context.eventSource) {
-      // --- 提取公共的防抖与检查逻辑 ---
+      // 🟢 1. 确保 debounceTimer 定义在这一层，让下面所有事件都能访问到
       let debounceTimer = null;
 
       const triggerAutomationCheck = (source, customDelay = 1000) => {
-        // 🛑 卫语句 1: 如果自动化根本没开... (保持不变)
         const settings = getSummarySettings();
-        if (!settings || !settings.auto_run) {
-          return;
-        }
-
-        // 🛑 卫语句 2: (保持不变)
+        // 如果自动化没开，或者正在跑，就退出
+        if (!settings || !settings.auto_run) return;
         if (getIsSummarizing()) {
           console.log(`[Anima] Ignored ${source}: Task already running.`);
           return;
         }
 
-        // ✅ 通过检查，进入防抖
+        // 清理上一次的（如果有）
         if (debounceTimer) clearTimeout(debounceTimer);
 
-        // 使用传入的 customDelay
+        // 设置新的倒计时
         debounceTimer = setTimeout(() => {
           console.log(
             `[Anima] Triggering automation check from ${source} (Delay: ${customDelay}ms)...`,
@@ -245,6 +241,13 @@ import { objectToYaml } from "./scripts/utils.js";
         if (isDryRun) {
           return;
         }
+
+        if (debounceTimer) {
+          console.log("[Anima] 🚨 生成开始，强制取消挂起的自动化检查定时器。");
+          clearTimeout(debounceTimer);
+          debounceTimer = null;
+        }
+
         if (swipeCheckTimer) {
           console.log(
             "[Anima] 检测到真实生成 (Regenerate)，取消开场白状态注入。",
@@ -259,6 +262,7 @@ import { objectToYaml } from "./scripts/utils.js";
         console.log("[Anima] 🚨 检测到新请求，重置状态标志并取消倒计时。");
         cancelStatusTimer();
       });
+
       context.eventSource.on("generation_stopped", () => {
         console.log("[Anima] 🛑 用户手动取消了生成 (Generation Stopped)");
         wasGenerationStopped = true;

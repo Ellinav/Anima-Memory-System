@@ -679,17 +679,12 @@ export async function saveStatusToMessage(
   console.log("调用堆栈:", new Error().stack); // 🔥 这行代码会告诉你到底是谁调用的
   console.groupEnd();
   console.log(`[Anima Debug] 💾 准备写入状态到楼层 #${msgId}`);
+  let targetMsg = null;
 
   if (window.TavernHelper) {
-    try {
-      // 获取目标消息的元数据
-      const msgs = window.TavernHelper.getChatMessages("0-{{lastMessageId}}", {
-        include_swipes: false,
-      });
-      // 兼容 msgId 可能是字符串或数字的情况
-      const targetMsg = msgs.find(
-        (m) => String(m.message_id) === String(msgId),
-      );
+      const msgs = window.TavernHelper.getChatMessages("0-{{lastMessageId}}", { include_swipes: false });
+      targetMsg = msgs.find((m) => String(m.message_id) === String(msgId));
+  }
 
       if (targetMsg) {
         const context = SillyTavern.getContext();

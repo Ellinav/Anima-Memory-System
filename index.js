@@ -305,10 +305,46 @@ import { objectToYaml } from "./scripts/utils.js";
 
         // 🔴【核心修复点】如果最新的消息不是 AI (说明生成失败被回滚了)，直接终止！
         if (!isAi) {
-          console.log(
-            "[Anima] 🛑 最新消息不是 Assistant (可能是生成出错被回滚)，停止状态更新。",
-          );
-          return;
+          console.log("[Anima] 🛑 最新消息不是 Assistant (生成出错回滚)。");
+
+          // 🚑 检查当前 User 楼层是否莫名其妙带上了变量
+          try {
+            const ghostVars = window.TavernHelper.getVariables({
+              type: "message",
+              message_id: lastMsg.message_id,
+            });
+
+            if (
+              ghostVars &&
+              ghostVars.anima_data &&
+              Object.keys(ghostVars.anima_data).length > 0
+            ) {
+              console.warn(
+                "[Anima] 🧹 捕获到 User 楼层的幽灵变量 (Ghost Data)！正在执行强制净化...",
+              );
+
+              // 💥 强制清空该楼层的 anima_data
+              // 注意：这里我们只清空 anima_data，保留其他可能的插件数据
+              // 如果你想彻底清空，传 {} 即可，但下面的写法更安全
+              const cleanData = { ...ghostVars };
+              delete cleanData.anima_data;
+
+              await window.TavernHelper.replaceVariables(cleanData, {
+                type: "message",
+                message_id: lastMsg.message_id,
+              });
+
+              console.log("[Anima] ✅ 净化完成，User 楼层已恢复纯净。");
+              if (window.toastr)
+                window.toastr.info("已自动清理异常残留的变量数据");
+            } else {
+              console.log("[Anima] ✅ User 楼层干净，无异常。");
+            }
+          } catch (e) {
+            console.error("[Anima] 净化过程出错:", e);
+          }
+
+          return; // ⛔ 终止后续流程
         }
 
         // 2. 只有确认是 AI 后，才检查完整性

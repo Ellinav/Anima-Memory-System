@@ -433,14 +433,14 @@ export async function triggerStatusUpdate(targetMsgId) {
   const statusConfig = getStatusSettings();
   const contextData = getContextData();
 
-  // 构建
+  // 构建 Prompt
   const { messages, baseStatus } = await constructStatusPrompt(
     statusConfig,
     contextData,
     targetMsgId,
   );
 
-  if (!messages || messages.length === 0) return false;
+  // 辅助函数：强制刷新 UI (显示未同步或错误状态)
   const forceRefreshUI = () => {
     window.dispatchEvent(
       new CustomEvent("anima:status_updated", {
@@ -448,76 +448,73 @@ export async function triggerStatusUpdate(targetMsgId) {
       }),
     );
   };
+
+  if (!messages || messages.length === 0) return false;
+
   try {
-    // API 请求
+    // 1. 请求 API
     const responseText = await generateText(messages, "status");
-    // 测试代码
-    /* const mockResponse = {
-            updates: { Location: "Volcano" }, // 不在列表里
-        };
-        const responseText = JSON.stringify(mockResponse);*/
-    // 测试代码
+
+    // 2. 基础检查：API 是否返回了空内容
     if (
       !responseText ||
       typeof responseText !== "string" ||
       responseText.trim().length === 0
     ) {
-      console.warn(
-        "[Anima] 🛑 副API未返回有效文本 (可能是API报错被吞没)，停止更新。",
-      );
+      console.warn("[Anima] 🛑 副API返回内容为空，停止更新。");
       forceRefreshUI();
-      return false;
+      return false; // ❌ 终止：不写入
     }
 
     console.log(`[Anima Debug] 📡 副API 原始返回 (Raw):\n${responseText}`);
+
+    // 3. 解析 JSON
     const rawResult = extractJsonResult(responseText);
-    console.log("[Anima Debug] ⚙️ 解析后的 JSON 对象:", rawResult);
     const payload =
       Array.isArray(rawResult) && rawResult.length > 0
         ? rawResult[0]
         : rawResult;
 
-    // 🛑 防线 2: 解析失败拦截
+    // 4. JSON 完整性检查
     if (!payload) {
-      console.warn("[Anima] ❌ JSON 解析失败或为空，停止更新。");
+      console.warn("[Anima] ❌ JSON 解析失败 (payload为空)，停止更新。");
       forceRefreshUI();
-      return false;
+      return false; // ❌ 终止：不写入
     }
 
-    // 🛑 防线 3: 显式错误字段拦截 (防止 { "error": "401..." } 被当成有效数据)
+    // 防止模型返回了报错信息 (例如 { "error": "..." })
     if (payload.error || payload.code || payload.detail) {
-      console.error("[Anima] ❌ 检测到 JSON 包含错误信息:", payload);
+      console.error("[Anima] ❌ 检测到 JSON 包含错误信息，停止更新:", payload);
       forceRefreshUI();
-      return false;
+      return false; // ❌ 终止：不写入
     }
 
-    // 深度合并： 基准状态 + 增量变化 = 新状态
-    // 必须基于 baseStatus.data 进行合并，而不是最新的
+    // 5. 获取更新内容
+    // 注意：这里我们只取 updates。如果模型直接返回了全量状态，extractJsonResult 可能会处理，
+    // 但为了逻辑安全，我们假设 payload.updates 才是增量。
     const updates = payload.updates || payload;
 
-    // 🛑 防线 4: 空更新拦截 (关键修复)
-    // 只有当 updates 确实存在且有内容时，才允许进入写入流程
-    // 如果 updates 为空，说明无需变更，则【什么都不做】，直接 return true
+    // 🔥【关键修复 Q1】空更新拦截
+    // 如果 updates 为空对象，说明无需变更。
+    // 此时直接返回 true (流程成功)，但**不调用** saveStatusToMessage。
+    // 这样 4楼 就不会被写入数据，系统会自动回溯使用 2楼 的数据。
     if (!updates || Object.keys(updates).length === 0) {
       console.log(
         "[Anima] ⚠️ 检测到空更新 (No Changes)，保持继承状态，不执行写入。",
       );
-      forceRefreshUI();
-      return true; // 流程结束，6楼保持无状态（继承5楼显示，但不覆盖）
+      forceRefreshUI(); // 刷新 UI 以去除加载状态
+      return true; // ✅ 流程结束
     }
 
-    // 1. 获取旧数据 (必须深拷贝，否则合并时会污染)
+    // 6. 准备合并数据
+    // 只有到了这一步，确定有内容要写了，我们才去获取旧数据
     const oldAnimaData = structuredClone(baseStatus.data || {});
-
-    // 2. 执行合并 (得到 待校验的新数据)
     let candidateData = deepMergeUpdates(
       structuredClone(oldAnimaData),
       updates,
     );
 
-    // --------------------------------------------------------
-    // 🔥 Zod 校验介入点
-    // --------------------------------------------------------
+    // 7. Zod 校验
     try {
       candidateData = validateStatusData(candidateData, oldAnimaData);
       console.log("[Anima] Zod 校验通过 ✅");
@@ -528,29 +525,34 @@ export async function triggerStatusUpdate(targetMsgId) {
         window.toastr.error(
           `状态更新被拦截: ${validationError.message}`,
           "Anima 安全中心",
-          { timeOut: 8000 },
         );
       }
       forceRefreshUI();
-      return false; // 🟢 改动：明确返回 false，表示拦截
+      return false; // ❌ 终止：校验失败不写入
     }
-    // --------------------------------------------------------
 
-    // 3. 写入目标楼层 (使用校验过的数据)
+    // 8. 📝 最终写入 (只有这一行代码会修改数据库)
     await saveStatusToMessage(targetMsgId, { anima_data: candidateData });
 
+    // 9. 成功后的事件广播
     const event = new CustomEvent("anima:status_updated", {
       detail: { msgId: targetMsgId },
     });
     window.dispatchEvent(event);
     console.log(`[Anima] Update Complete...`);
 
-    return true; // 🟢 改动：成功走完全程，返回 true
+    return true;
   } catch (e) {
+    // 🔥【关键修复 Q2】异常捕获
+    // 这里捕获所有错误（包括 api.js 抛出的 401/500/空内容）
+    // 只要进入 catch，绝对不执行写入。
     console.error("[Anima] Update failed (Exception):", e);
+
+    // 显示更友好的错误提示 (e.message 现在会包含 api.js 传递的状态码)
     if (window.toastr) window.toastr.error("状态更新异常: " + e.message);
+
     forceRefreshUI();
-    return false;
+    return false; // ❌ 终止：报错不写入
   }
 }
 
@@ -665,6 +667,42 @@ export async function saveStatusToMessage(
   updateType = "auto",
 ) {
   console.log(`[Anima Debug] 💾 准备写入状态到楼层 #${msgId}`);
+
+  if (window.TavernHelper) {
+    try {
+      // 获取目标消息的元数据
+      const msgs = window.TavernHelper.getChatMessages("0-{{lastMessageId}}", {
+        include_swipes: false,
+      });
+      // 兼容 msgId 可能是字符串或数字的情况
+      const targetMsg = msgs.find(
+        (m) => String(m.message_id) === String(msgId),
+      );
+
+      if (targetMsg) {
+        // 检查是否为 User (is_user 为 true，或者 role 为 'user')
+        // 注意：有时 is_user 可能是 undefined，所以要多重检查
+        const isUser = targetMsg.is_user || targetMsg.role === "user";
+
+        if (isUser) {
+          console.error(
+            `[Anima Security] 🛑 严重警告：拦截了一次向 User 楼层 (#${msgId}) 写入变量的尝试！请求来源: ${updateType}`,
+          );
+
+          // 如果是 UI 手动触发的（比如你强行要写），可以放行（可选），但建议默认拦截
+          // 如果你想允许手动编辑历史记录里的 User 楼层，可以加: if (updateType !== 'manual_ui') return;
+          // 但为了安全，建议全部拦截：
+          if (window.toastr)
+            window.toastr.warning(
+              `安全拦截：禁止向 User 楼层 (#${msgId}) 写入状态`,
+            );
+          return; // ❌ 直接终止，不执行后续写入
+        }
+      }
+    } catch (e) {
+      console.warn("[Anima Security] 安全检查时发生异常 (非致命):", e);
+    }
+  }
 
   if (!fullStatusData) {
     console.warn("[Anima Debug] ❌ 数据为空，取消写入");

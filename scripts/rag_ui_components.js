@@ -248,7 +248,7 @@ export function renderPromptList(promptList) {
                     <div style="display:flex; justify-content:space-between; align-items:center; height: 30px;">
                         <div style="display:flex; align-items:center;">
                             <i class="fa-solid fa-bars anima-drag-handle"></i>
-                            <span style="font-weight:bold; color:#60a5fa;">📚 最新楼层内容 (Context)</span>
+                            <span style="font-weight:bold; color:#60a5fa;">📚 最新楼层内容</span>
                         </div>
                         <div style="display:flex; align-items:center; gap:5px;">
                             <span style="font-size:12px; color:#aaa; line-height:24px;">插入数量:</span>

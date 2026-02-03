@@ -1,7 +1,11 @@
 // 引入各个页面的管理器
 import { initApiSettings } from "./scripts/api.js";
 import { initStatusSettings, refreshStatusPanel } from "./scripts/status.js";
-import { initSummarySettings, updateStatusInputs } from "./scripts/summary.js";
+import {
+  initSummarySettings,
+  updateStatusInputs,
+  refreshAutomationUI,
+} from "./scripts/summary.js";
 import {
   runSummarizationTask,
   getIsSummarizing,
@@ -201,6 +205,7 @@ import { objectToYaml } from "./scripts/utils.js";
             initStatusSettings();
             updateStatusInputs();
             refreshStatusPanel();
+            refreshAutomationUI();
           }
 
           if (!chatId) {

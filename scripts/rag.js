@@ -393,7 +393,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
             <div class="anima-card" style="border-left: 4px solid var(--anima-primary);">
                 <div class="anima-flex-row">
                     <div class="anima-label-group">
-                        <span class="anima-label-text" style="font-size: 1.1em; font-weight: bold;">启用向量功能 (RAG)</span>
+                        <span class="anima-label-text" style="font-size: 1.1em; font-weight: bold;">向量功能总开关</span>
                         <span class="anima-desc-inline">开启后启用自动向量化、聊天检索与注入功能</span>
                     </div>
                     <label class="anima-switch">
@@ -473,7 +473,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                     <div class="anima-flex-row">
                         <div class="anima-label-group">
                             <span class="anima-label-text">知识库构建</span>
-                            <span class="anima-desc-inline">支持上传txt和markdown文档</span>
+                            <span class="anima-desc-inline">仅支持上传 txt 和 markdown 格式</span>
                         </div>
                         <div style="display:flex; gap:5px;">
                              <button id="rag_btn_kb_import" class="anima-btn primary small">
@@ -611,7 +611,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
 
             <div class="anima-setting-group">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 5px;">
-                    <h2 class="anima-title" style="margin:0;"><i class="fa-solid fa-sliders"></i> 检索策略 (Chat)</h2>
+                    <h2 class="anima-title" style="margin:0;"><i class="fa-solid fa-sliders"></i> 检索策略 (聊天数据库)</h2>
                     <div style="display:flex; gap:5px;">
                         <input type="file" id="rag_input_strategy_json" accept=".json" style="display:none;" />
                         <button id="rag_strategy_import" class="anima-btn secondary small" title="导入策略配置">
@@ -626,7 +626,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                     <div class="anima-flex-row">
                         <div class="anima-label-group">
                             <span class="anima-label-text">基础结果数量</span>
-                            <span class="anima-desc-inline">最少检索切片数 (Base)</span>
+                            <span class="anima-desc-inline">最少检索切片数</span>
                         </div>
                         <div class="anima-input-wrapper">
                             <input type="number" id="rag_base_count" class="anima-input" 
@@ -637,7 +637,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
 
                     <div class="anima-flex-row">
                         <div class="anima-label-group">
-                            <span class="anima-label-text">最低相关性 (Min Score)</span>
+                            <span class="anima-label-text">最低相关性</span>
                             <span class="anima-desc-inline">低于此分数的切片将被丢弃</span>
                         </div>
                         <div class="anima-input-wrapper">
@@ -650,7 +650,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                     <div class="anima-flex-row">
                         <div class="anima-label-group">
                             <span class="anima-label-text">启用分布式检索策略</span>
-                            <span class="anima-desc-inline">开启后启用多级召回 (Tag/Holiday/Status)</span>
+                            <span class="anima-desc-inline">开启后启用多级召回</span>
                         </div>
                         <label class="anima-switch">
                             <input type="checkbox" id="rag_distributed_switch" ${settings.distributed_retrieval ? "checked" : ""}>
@@ -663,7 +663,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                         <div class="anima-flex-row">
                             <div class="anima-label-group">
                                 <span class="anima-label-text">虚拟时间模式</span>
-                                <span class="anima-desc-inline">使用当前世界书时间计算节日/周期</span>
+                                <span class="anima-desc-inline">使用当前状态信息的事件计算节日/生理</span>
                             </div>
                             <label class="anima-switch">
                                 <input type="checkbox" id="rag_virtual_time_switch" ${settings.virtual_time_mode ? "checked" : ""}>
@@ -707,7 +707,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                     
                     <div style="margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px;">
                         <div style="font-size:14px; font-weight:bold; color:var(--anima-primary); margin-bottom:10px;">
-                            <i class="fa-solid fa-comment-dots"></i> 聊天总结注入 (Chat Memory)
+                            <i class="fa-solid fa-comment-dots"></i> 聊天数据检索结果注入
                         </div>
 
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 12px;">
@@ -738,12 +738,12 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                                 </select>
                             </div>
                             <div class="anima-compact-input" id="rag_inject_depth_wrapper">
-                                <div class="anima-label-small">深度 (Depth)</div>
+                                <div class="anima-label-small">深度</div>
                                 <input type="number" id="rag_inject_depth" class="anima-input rag-inject-control" 
                                     value="${settings.injection_settings?.depth ?? 2}" step="1" min="0" placeholder="0">
                             </div>
                             <div class="anima-compact-input">
-                                <div class="anima-label-small">顺序 (Order)</div>
+                                <div class="anima-label-small">顺序</div>
                                 <input type="number" id="rag_inject_order" class="anima-input rag-inject-control" 
                                     value="${settings.injection_settings?.order ?? 100}" step="1">
                             </div>
@@ -779,10 +779,6 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                             <i class="fa-solid fa-book"></i> 知识库注入
                         </div>
 
-                        <div class="anima-desc-inline" style="margin-bottom:12px;">
-                            将写入独立的世界书条目。使用 <code>{{knowledge}}</code> 作为占位符。
-                        </div>
-
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 12px;">
                              <div class="anima-compact-input">
                                 <div class="anima-label-small">触发策略</div>
@@ -813,13 +809,13 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                             </div>
 
                             <div class="anima-compact-input">
-                                <div class="anima-label-small">深度 (Depth)</div>
+                                <div class="anima-label-small">深度</div>
                                 <input type="number" id="rag_k_inject_depth" class="anima-input rag-inject-control" 
                                     value="${settings.knowledge_injection?.depth ?? 0}" step="1" min="0">
                             </div>
 
                             <div class="anima-compact-input">
-                                <div class="anima-label-small">顺序 (Order)</div>
+                                <div class="anima-label-small">顺序</div>
                                 <input type="number" id="rag_k_inject_order" class="anima-input rag-inject-control" 
                                     value="${settings.knowledge_injection?.order ?? 100}" step="1">
                             </div>
@@ -829,8 +825,11 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                             <div class="anima-label-group" style="margin-bottom: 5px;">
                                 <span class="anima-label-text">知识库模板</span>
                             </div>
+                            <div class="anima-desc-inline" style="margin-bottom:12px;">
+                            将写入独立的世界书条目。使用 <code>{{knowledge}}</code> 作为占位符。
+                            </div>
                             <textarea id="rag_k_inject_template" class="anima-textarea" rows="4" 
-                                placeholder="例如：以下是参考资料...\n{{knowledge}}">${escapeHtml(settings.knowledge_injection?.template || "以下是相关的设定：\n{{knowledge}}")}</textarea>
+                                placeholder="例如：以下是相关设定\n{{knowledge}}">${escapeHtml(settings.knowledge_injection?.template || "以下是相关设定：\n{{knowledge}}")}</textarea>
                         </div>
                     </div>
 

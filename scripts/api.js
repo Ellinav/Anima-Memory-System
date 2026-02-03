@@ -13,7 +13,7 @@ const defaultSettings = {
       model: "",
       stream: false,
       temperature: 1.0,
-      context_limit: 64000,
+      context_limit: 1000000,
       max_output: 8192,
     },
     status: {
@@ -23,8 +23,8 @@ const defaultSettings = {
       model: "",
       stream: false, // 状态更新通常后台运行，流式非必须，但保持一致性可保留
       temperature: 0.5, // 建议默认低温度，保证格式稳定
-      context_limit: 32000,
-      max_output: 4096,
+      context_limit: 1000000,
+      max_output: 8192,
     },
     rag: {
       source: "openai",

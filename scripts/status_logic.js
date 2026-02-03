@@ -674,6 +674,10 @@ export async function saveStatusToMessage(
   fullStatusData,
   updateType = "auto",
 ) {
+  console.group(`[Anima Trace] 正在尝试写入楼层 #${msgId}`);
+  console.log("写入源 (updateType):", updateType);
+  console.log("调用堆栈:", new Error().stack); // 🔥 这行代码会告诉你到底是谁调用的
+  console.groupEnd();
   console.log(`[Anima Debug] 💾 准备写入状态到楼层 #${msgId}`);
 
   if (window.TavernHelper) {
@@ -688,29 +692,27 @@ export async function saveStatusToMessage(
       );
 
       if (targetMsg) {
-        // 🟢【修改】增强 User 判断逻辑
-        // 获取当前用户名，防止 is_user 字段缺失导致的误判
         const context = SillyTavern.getContext();
         const currentUserName = context.userName;
 
+        // 🟢 增强判断：名字匹配、Role 匹配、is_user 标志
+        // 只要沾一点边，就认为是 User，绝对不准写
         const isUser =
           targetMsg.is_user === true ||
           targetMsg.role === "user" ||
-          (targetMsg.name && targetMsg.name === currentUserName); // 新增：名字匹配
+          (targetMsg.name && targetMsg.name === currentUserName) ||
+          (targetMsg.name && targetMsg.name === "You"); // 有些 ST 版本 User 名字是 You
 
         if (isUser) {
           console.error(
-            `[Anima Security] 🛑 严重警告：拦截了一次向 User 楼层 (#${msgId}) 写入变量的尝试！请求来源: ${updateType}`,
+            `[Anima Security] 🛑 严重拦截：阻止了向 User 楼层 (#${msgId}) 写入变量！来源: ${updateType}`,
           );
+          // 打印堆栈，看看是哪个不懂事的函数想写 User
+          console.log(new Error().stack);
 
-          // 如果是 UI 手动触发的（比如你强行要写），可以放行（可选），但建议默认拦截
-          // 如果你想允许手动编辑历史记录里的 User 楼层，可以加: if (updateType !== 'manual_ui') return;
-          // 但为了安全，建议全部拦截：
           if (window.toastr)
-            window.toastr.warning(
-              `安全拦截：禁止向 User 楼层 (#${msgId}) 写入状态`,
-            );
-          return; // ❌ 直接终止，不执行后续写入
+            window.toastr.warning(`安全拦截：禁止修改 User 消息`);
+          return; // ❌ 立即终止
         }
       }
     } catch (e) {

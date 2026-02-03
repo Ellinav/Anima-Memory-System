@@ -468,7 +468,7 @@ import { objectToYaml } from "./scripts/utils.js";
       startAnima();
     } else {
       if (retryCount >= MAX_RETRIES) {
-        toastr.error("Anima 启动失败：等待 TavernHelper 超时。", "依赖缺失");
+        toastr.error("Anima 启动失败：等待 酒馆助手 超时。", "依赖缺失");
         return;
       }
       setTimeout(() => waitForTavernHelper(retryCount + 1), 500);

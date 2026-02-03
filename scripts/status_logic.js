@@ -530,7 +530,11 @@ export async function triggerStatusUpdate(targetMsgId) {
       forceRefreshUI();
       return false; // ❌ 终止：校验失败不写入
     }
-
+    if (JSON.stringify(candidateData) === JSON.stringify(oldAnimaData)) {
+      console.log("[Anima] ⚠️ 新旧状态完全一致，跳过写入操作。");
+      forceRefreshUI();
+      return true;
+    }
     // 8. 📝 最终写入 (只有这一行代码会修改数据库)
     await saveStatusToMessage(targetMsgId, { anima_data: candidateData });
 
@@ -679,9 +683,15 @@ export async function saveStatusToMessage(
       );
 
       if (targetMsg) {
-        // 检查是否为 User (is_user 为 true，或者 role 为 'user')
-        // 注意：有时 is_user 可能是 undefined，所以要多重检查
-        const isUser = targetMsg.is_user || targetMsg.role === "user";
+        // 🟢【修改】增强 User 判断逻辑
+        // 获取当前用户名，防止 is_user 字段缺失导致的误判
+        const context = SillyTavern.getContext();
+        const currentUserName = context.userName;
+
+        const isUser =
+          targetMsg.is_user === true ||
+          targetMsg.role === "user" ||
+          (targetMsg.name && targetMsg.name === currentUserName); // 新增：名字匹配
 
         if (isUser) {
           console.error(
@@ -1051,12 +1061,22 @@ function createCountdownUI(seconds, onConfirm, onCancel) {
 
   let remaining = seconds;
   const tick = () => {
+    // 🟢【新增】僵尸检查：如果面板已经被移除了（用户点了取消或外部清理了），直接停止
+    if (!document.getElementById("anima-status-countdown")) {
+      console.log("[Anima] 倒计时面板已消失，终止执行。");
+      return;
+    }
+
     remaining--;
     // innerText 和 style 也不报错了
     if (textEl) textEl.innerText = `${remaining}s`;
     if (timerBar) timerBar.style.width = `${(remaining / seconds) * 100}%`;
-    if (remaining <= 0) onConfirm();
-    else updateTimer = setTimeout(tick, 1000);
+
+    if (remaining <= 0) {
+      onConfirm();
+    } else {
+      updateTimer = setTimeout(tick, 1000);
+    }
   };
   updateTimer = setTimeout(tick, 1000);
 }

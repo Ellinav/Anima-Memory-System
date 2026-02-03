@@ -1,23 +1,23 @@
 import {
-    toggleAllSummariesState,
-    syncRagSettingsToWorldbook,
+  toggleAllSummariesState,
+  syncRagSettingsToWorldbook,
 } from "./worldbook_api.js"; // 🟢 引入 updateSummaryContent
 
 import { getAvailableCollections, getSmartCollectionId } from "./rag_logic.js";
 import { RegexListComponent, getRegexModalHTML } from "./regex_ui.js";
 import {
-    renderStrategyTable,
-    renderPromptList,
-    renderFileList,
-    renderHolidayModal,
-    constructRagQueryMock,
-    renderTagTable,
-    renderUnifiedFileList,
+  renderStrategyTable,
+  renderPromptList,
+  renderFileList,
+  renderHolidayModal,
+  constructRagQueryMock,
+  renderTagTable,
+  renderUnifiedFileList,
 } from "./rag_ui_components.js";
 
 import {
-    showVectorStatusModal,
-    checkAndSyncDirtyVectors,
+  showVectorStatusModal,
+  checkAndSyncDirtyVectors,
 } from "./rag_status.js";
 
 let regexComponent = null;
@@ -29,235 +29,231 @@ let _lastRetrievalResult = null;
 
 // ✅ 2. 新增：导出清理函数
 export function clearLastRetrievalResult() {
-    _lastRetrievalResult = null;
-    $("#rag_btn_last_result").removeClass("glow-effect"); // 去掉高亮
-    // console.log("[Anima RAG] Last result cache cleared.");
+  _lastRetrievalResult = null;
+  $("#rag_btn_last_result").removeClass("glow-effect"); // 去掉高亮
+  // console.log("[Anima RAG] Last result cache cleared.");
 }
 
 // 3. 导出这个更新函数 (这就 rag_logic.js 调用的那个)
 export function updateLastRetrievalResult(data) {
-    _lastRetrievalResult = data;
+  _lastRetrievalResult = data;
 
-    // 可选：给按钮加个视觉反馈，告诉用户有新数据了
-    const $btn = $("#rag_btn_last_result");
-    $btn.addClass("glow-effect");
-    // 你可以在 CSS 里加个简单动画，或者只是简单地闪烁一下
-    setTimeout(() => $btn.removeClass("glow-effect"), 1000);
+  // 可选：给按钮加个视觉反馈，告诉用户有新数据了
+  const $btn = $("#rag_btn_last_result");
+  $btn.addClass("glow-effect");
+  // 你可以在 CSS 里加个简单动画，或者只是简单地闪烁一下
+  setTimeout(() => $btn.removeClass("glow-effect"), 1000);
 }
 
 const PARENT_MODULE_NAME = "anima_memory_system";
 
 // 默认全局设置
 export const DEFAULT_RAG_SETTINGS = {
-    rag_enabled: true,
+  rag_enabled: true,
 
-    knowledge_base: {
-        delimiter: "", // 切片自定义分隔符 (如 "###")
-        chunk_size: 500, // 切片字符数 (delimiter为空时生效)
-        search_top_k: 3, // 每个文档检索数量
-        min_score: 0.5, // 知识库最低相关度
+  knowledge_base: {
+    delimiter: "", // 切片自定义分隔符 (如 "###")
+    chunk_size: 500, // 切片字符数 (delimiter为空时生效)
+    search_top_k: 3, // 每个文档检索数量
+    min_score: 0.5, // 知识库最低相关度
+  },
+
+  // === 1. 基础区域 (通用) ===
+  min_score: 0.5,
+  base_count: 2, // 既是未开启时的总数，也是开启后的“基础切片”数量
+  // 虚拟时间模式 (新增)
+  virtual_time_mode: false,
+
+  // === 2. 分布式策略开关 ===
+  distributed_retrieval: true,
+
+  // === 3. 详细策略配置 (新) ===
+  strategy_settings: {
+    candidate_multiplier: 2,
+    important: { labels: ["Important"], count: 1 },
+
+    // 节日 (自动匹配)
+    special: { count: 1 },
+
+    // 🔥 新增：生理 (Period) 独立配置
+    period: { count: 1 },
+
+    // 状态 (Status) 独立配置
+    status: {
+      labels: ["Sick", "Injury"], // 这里的 labels 变为“只读”，由 rules 自动生成用于显示
+      count: 1,
+      // 新增 rules 数组
+      rules: [
+        // 示例结构
+        // { tag: "Injury", path: "Player.HP", op: "<", value: "50" },
+        // { tag: "Sick", path: "Player.Status", op: "includes", value: "Sick" }
+      ],
     },
 
-    // === 1. 基础区域 (通用) ===
-    min_score: 0.5,
-    base_count: 2, // 既是未开启时的总数，也是开启后的“基础切片”数量
-    // 虚拟时间模式 (新增)
-    virtual_time_mode: false,
+    diversity: { count: 2 },
+  },
 
-    // === 2. 分布式策略开关 ===
-    distributed_retrieval: true,
+  holidays: [{ date: "12-25", name: "Christmas", trigger_days: 7 }], // 示例数据
+  // 生理周期配置 (新增)
+  period_config: {
+    enabled: true, // 默认开启
+    events: [], // 默认清空 (空数组)
+  },
 
-    // === 3. 详细策略配置 (新) ===
-    strategy_settings: {
-        candidate_multiplier: 2,
-        important: { labels: ["Important"], count: 1 },
-
-        // 节日 (自动匹配)
-        special: { count: 1 },
-
-        // 🔥 新增：生理 (Period) 独立配置
-        period: { count: 1 },
-
-        // 状态 (Status) 独立配置
-        status: {
-            labels: ["Sick", "Injury"], // 这里的 labels 变为“只读”，由 rules 自动生成用于显示
-            count: 1,
-            // 新增 rules 数组
-            rules: [
-                // 示例结构
-                // { tag: "Injury", path: "Player.HP", op: "<", value: "50" },
-                // { tag: "Sick", path: "Player.Status", op: "includes", value: "Sick" }
-            ],
-        },
-
-        diversity: { count: 2 },
-    },
-
-    holidays: [{ date: "12-25", name: "Christmas", trigger_days: 7 }], // 示例数据
-    // 生理周期配置 (新增)
-    period_config: {
-        enabled: true, // 默认开启
-        events: [], // 默认清空 (空数组)
-    },
-
-    regex_strings: [],
-    skip_layer_zero: true,
-    regex_skip_user: true, // 注意补全这个之前的配置
-    vector_prompt: [{ type: "context", count: 2 }],
-    auto_vectorize: true,
-    injection_settings: {
-        strategy: "constant", // constant | selective
-        position: "at_depth", // at_depth | before_character_definition | after_character_definition
-        role: "system", // system | user | assistant
-        depth: 9999,
-        order: 100,
-        recent_count: 2,
-        template:
-            "<recalledMemories>\n{{rag}}\n</recalledMemories>\n<immediateHistory>\n{{recent_history}}\n</immediateHistory>",
-    },
-    knowledge_injection: {
-        enabled: true,
-        strategy: "constant",
-        position: "before_character_definition",
-        role: "system",
-        depth: 0,
-        template: "<knowledge>\n{{knowledge}}\n</knowledge>", // 默认模板
-    },
+  regex_strings: [],
+  skip_layer_zero: true,
+  regex_skip_user: true, // 注意补全这个之前的配置
+  vector_prompt: [{ type: "context", count: 2 }],
+  auto_vectorize: true,
+  injection_settings: {
+    strategy: "constant", // constant | selective
+    position: "at_depth", // at_depth | before_character_definition | after_character_definition
+    role: "system", // system | user | assistant
+    depth: 9999,
+    order: 100,
+    recent_count: 2,
+    template:
+      "<recalledMemories>\n{{rag}}\n</recalledMemories>\n<immediateHistory>\n{{recent_history}}\n</immediateHistory>",
+  },
+  knowledge_injection: {
+    enabled: true,
+    strategy: "constant",
+    position: "before_character_definition",
+    role: "system",
+    depth: 0,
+    template: "<knowledge>\n{{knowledge}}\n</knowledge>", // 默认模板
+  },
 };
 
 const CHARACTER_SETTING_KEYS = [
-    "distributed_retrieval",
-    "virtual_time_mode",
-    "strategy_settings", // 包含 Important, Special, Period, Status, Diversity
-    "holidays", // 节日配置通常也跟角色世界观相关
-    "period_config", // 生理期配置跟角色绑定
+  "distributed_retrieval",
+  "virtual_time_mode",
+  "strategy_settings", // 包含 Important, Special, Period, Status, Diversity
+  "holidays", // 节日配置通常也跟角色世界观相关
+  "period_config", // 生理期配置跟角色绑定
 ];
 const GLOBAL_STRATEGY_SUB_KEYS = ["candidate_multiplier"];
 // ==========================================
 // 1. 数据存取逻辑
 // ==========================================
 export function getRagSettings() {
-    const context = SillyTavern.getContext();
+  const context = SillyTavern.getContext();
 
-    // A. 基础：获取全局设置（包含技术参数）
-    const parentSettings = context.extensionSettings[PARENT_MODULE_NAME] || {};
-    const globalSettings =
-        parentSettings.rag || structuredClone(DEFAULT_RAG_SETTINGS);
-    let merged = { ...globalSettings };
+  // A. 基础：获取全局设置（包含技术参数）
+  const parentSettings = context.extensionSettings[PARENT_MODULE_NAME] || {};
+  const globalSettings =
+    parentSettings.rag || structuredClone(DEFAULT_RAG_SETTINGS);
+  let merged = { ...globalSettings };
 
-    // B. 覆盖：尝试从角色卡读取个性化策略
-    const charId = context.characterId;
-    if (charId !== undefined) {
-        const character = context.characters[charId];
-        const charExtensions = character?.data?.extensions?.anima_rag_settings;
+  // B. 覆盖：尝试从角色卡读取个性化策略
+  const charId = context.characterId;
+  if (charId !== undefined) {
+    const character = context.characters[charId];
+    const charExtensions = character?.data?.extensions?.anima_rag_settings;
 
-        if (charExtensions) {
-            CHARACTER_SETTING_KEYS.forEach((key) => {
-                if (Object.hasOwn(charExtensions, key)) {
-                    merged[key] = structuredClone(charExtensions[key]);
-                }
-            });
+    if (charExtensions) {
+      CHARACTER_SETTING_KEYS.forEach((key) => {
+        if (Object.hasOwn(charExtensions, key)) {
+          merged[key] = structuredClone(charExtensions[key]);
         }
+      });
     }
+  }
 
-    // C. 特殊处理：确保 candidate_multiplier 始终取自全局
-    if (merged.strategy_settings) {
-        merged.strategy_settings.candidate_multiplier =
-            globalSettings.candidate_multiplier ||
-            globalSettings.strategy_settings?.candidate_multiplier ||
-            2;
-    }
+  // C. 特殊处理：确保 candidate_multiplier 始终取自全局
+  if (merged.strategy_settings) {
+    merged.strategy_settings.candidate_multiplier =
+      globalSettings.candidate_multiplier ||
+      globalSettings.strategy_settings?.candidate_multiplier ||
+      2;
+  }
 
-    return merged;
+  return merged;
 }
 
 export async function saveRagSettings(settings) {
-    const context = SillyTavern.getContext();
+  const context = SillyTavern.getContext();
 
-    // --- 1. 处理全局部分 (extensionSettings) ---
-    if (!context.extensionSettings[PARENT_MODULE_NAME]) {
-        context.extensionSettings[PARENT_MODULE_NAME] = {};
+  // --- 1. 处理全局部分 (extensionSettings) ---
+  if (!context.extensionSettings[PARENT_MODULE_NAME]) {
+    context.extensionSettings[PARENT_MODULE_NAME] = {};
+  }
+
+  const globalPart = structuredClone(settings);
+  // 移除角色卡特有的个性化配置
+  CHARACTER_SETTING_KEYS.forEach((key) => delete globalPart[key]);
+
+  // 强制将倍率存入全局根目录或保留在全局对象中
+  globalPart.candidate_multiplier =
+    settings.strategy_settings?.candidate_multiplier || 2;
+
+  context.extensionSettings[PARENT_MODULE_NAME].rag = globalPart;
+  context.saveSettingsDebounced();
+
+  // --- 2. 处理角色卡部分 (Character Extensions) ---
+  const charId = context.characterId;
+  if (charId !== undefined) {
+    const charPart = {};
+    CHARACTER_SETTING_KEYS.forEach((key) => {
+      if (settings[key] !== undefined) {
+        charPart[key] = structuredClone(settings[key]);
+      }
+    });
+
+    // 角色卡内不存储全局技术参数 (倍率)
+    if (charPart.strategy_settings) {
+      delete charPart.strategy_settings.candidate_multiplier;
     }
 
-    const globalPart = structuredClone(settings);
-    // 移除角色卡特有的个性化配置
-    CHARACTER_SETTING_KEYS.forEach((key) => delete globalPart[key]);
-
-    // 强制将倍率存入全局根目录或保留在全局对象中
-    globalPart.candidate_multiplier =
-        settings.strategy_settings?.candidate_multiplier || 2;
-
-    context.extensionSettings[PARENT_MODULE_NAME].rag = globalPart;
-    context.saveSettingsDebounced();
-
-    // --- 2. 处理角色卡部分 (Character Extensions) ---
-    const charId = context.characterId;
-    if (charId !== undefined) {
-        const charPart = {};
-        CHARACTER_SETTING_KEYS.forEach((key) => {
-            if (settings[key] !== undefined) {
-                charPart[key] = structuredClone(settings[key]);
-            }
-        });
-
-        // 角色卡内不存储全局技术参数 (倍率)
-        if (charPart.strategy_settings) {
-            delete charPart.strategy_settings.candidate_multiplier;
-        }
-
-        await context.writeExtensionField(
-            charId,
-            "anima_rag_settings",
-            charPart,
-        );
-    }
+    await context.writeExtensionField(charId, "anima_rag_settings", charPart);
+  }
 }
 
 // 🟢 [新增] 获取当前聊天关联的知识库文件
 export function getChatKbFiles() {
-    const context = SillyTavern.getContext();
-    if (!context.chatId || !context.chatMetadata) return [];
-    return context.chatMetadata["anima_kb_active_files"] || [];
+  const context = SillyTavern.getContext();
+  if (!context.chatId || !context.chatMetadata) return [];
+  return context.chatMetadata["anima_kb_active_files"] || [];
 }
 
 // 🟢 [新增] 保存知识库关联
 export async function saveChatKbFiles(files) {
-    const context = SillyTavern.getContext();
-    if (!context.chatId) return;
-    const uniqueFiles = [...new Set(files)].filter(Boolean);
-    context.chatMetadata["anima_kb_active_files"] = uniqueFiles;
-    await context.saveMetadata();
-    console.log("[Anima KB] Metadata saved:", uniqueFiles);
+  const context = SillyTavern.getContext();
+  if (!context.chatId) return;
+  const uniqueFiles = [...new Set(files)].filter(Boolean);
+  context.chatMetadata["anima_kb_active_files"] = uniqueFiles;
+  await context.saveMetadata();
+  console.log("[Anima KB] Metadata saved:", uniqueFiles);
 }
 
 export function getChatRagFiles() {
-    const context = SillyTavern.getContext();
-    if (!context.chatId || !context.chatMetadata) return [];
+  const context = SillyTavern.getContext();
+  if (!context.chatId || !context.chatMetadata) return [];
 
-    // 如果是 undefined (从未设置过)，返回 undefined 以便 init 判断“首次”
-    return context.chatMetadata["anima_rag_active_files"];
+  // 如果是 undefined (从未设置过)，返回 undefined 以便 init 判断“首次”
+  return context.chatMetadata["anima_rag_active_files"];
 }
 
 export async function saveChatRagFiles(files) {
-    const context = SillyTavern.getContext();
-    if (!context.chatId) return;
+  const context = SillyTavern.getContext();
+  if (!context.chatId) return;
 
-    // 🟢 核心修复：强制去重，过滤空值
-    const uniqueFiles = [...new Set(files)].filter(Boolean);
+  // 🟢 核心修复：强制去重，过滤空值
+  const uniqueFiles = [...new Set(files)].filter(Boolean);
 
-    context.chatMetadata["anima_rag_active_files"] = uniqueFiles;
-    await context.saveMetadata();
-    console.log("[Anima RAG] Metadata saved:", uniqueFiles);
+  context.chatMetadata["anima_rag_active_files"] = uniqueFiles;
+  await context.saveMetadata();
+  console.log("[Anima RAG] Metadata saved:", uniqueFiles);
 }
 
 export function escapeHtml(text) {
-    if (!text) return text;
-    return text
-        .toString()
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
+  if (!text) return text;
+  return text
+    .toString()
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 // ==========================================
@@ -265,62 +261,58 @@ export function escapeHtml(text) {
 // ==========================================
 
 export function initRagSettings() {
-    const container = document.getElementById("tab-rag");
-    if (!container) return;
+  const container = document.getElementById("tab-rag");
+  if (!container) return;
 
-    const context = SillyTavern.getContext();
-    const currentChatId = context ? context.chatId : null;
-    const settings = getRagSettings();
+  const context = SillyTavern.getContext();
+  const currentChatId = context ? context.chatId : null;
+  const settings = getRagSettings();
 
-    // 1. 获取 Metadata 中的数据
-    let ragFiles = getChatRagFiles();
+  // 1. 获取 Metadata 中的数据
+  let ragFiles = getChatRagFiles();
 
-    // 🟢 修改点 A：记录是否是初次加载（undefined）
-    const isFirstLoad = ragFiles === undefined;
+  // 🟢 修改点 A：记录是否是初次加载（undefined）
+  const isFirstLoad = ragFiles === undefined;
 
-    // 🟢 修改点 B：不再强行绑定 currentChatId！
-    // 如果是 undefined，就初始化为空数组，保持界面干净
-    ragFiles = ragFiles || [];
+  // 🟢 修改点 B：不再强行绑定 currentChatId！
+  // 如果是 undefined，就初始化为空数组，保持界面干净
+  ragFiles = ragFiles || [];
 
-    renderMainUI(container, settings, ragFiles, currentChatId);
+  renderMainUI(container, settings, ragFiles, currentChatId);
 
-    // 🟢 修改点 C：异步执行“智能发现”逻辑
-    // 只有在从未设置过（FirstLoad）且有聊天ID时才检查
-    if (isFirstLoad && currentChatId) {
-        tryAutoBindExistingDB();
-    }
+  // 🟢 修改点 C：异步执行“智能发现”逻辑
+  // 只有在从未设置过（FirstLoad）且有聊天ID时才检查
+  if (isFirstLoad && currentChatId) {
+    tryAutoBindExistingDB();
+  }
 }
 
 // 🟢 新增辅助函数：尝试自动绑定已存在的、命名正确的数据库
 async function tryAutoBindExistingDB() {
-    // 1. 获取标准化的后端ID (e.g. "角色名_2023-05-12_...")
-    const smartId = getSmartCollectionId();
-    if (!smartId) return;
+  // 1. 获取标准化的后端ID (e.g. "角色名_2023-05-12_...")
+  const smartId = getSmartCollectionId();
+  if (!smartId) return;
 
-    try {
-        // 2. 问后端：你有哪些数据库？
-        const availableDbs = await getAvailableCollections();
+  try {
+    // 2. 问后端：你有哪些数据库？
+    const availableDbs = await getAvailableCollections();
 
-        // 3. 检查：我们要找的 smartId 是否真的存在？
-        if (availableDbs && availableDbs.includes(smartId)) {
-            console.log(
-                `[Anima RAG] 发现已存在的同名数据库，自动关联: ${smartId}`,
-            );
+    // 3. 检查：我们要找的 smartId 是否真的存在？
+    if (availableDbs && availableDbs.includes(smartId)) {
+      console.log(`[Anima RAG] 发现已存在的同名数据库，自动关联: ${smartId}`);
 
-            // 4. 存在才关联，并且关联的是 smartId (带下划线的)，不是原始 ID
-            await saveChatRagFiles([smartId]);
+      // 4. 存在才关联，并且关联的是 smartId (带下划线的)，不是原始 ID
+      await saveChatRagFiles([smartId]);
 
-            // 5. 刷新界面显示
-            renderUnifiedFileList();
-        } else {
-            console.log(
-                `[Anima RAG] 暂无同名数据库 (${smartId})，保持未关联状态。`,
-            );
-            // 什么都不做，界面保持为空，符合你的要求
-        }
-    } catch (e) {
-        console.warn("[Anima RAG] 自动关联检查失败:", e);
+      // 5. 刷新界面显示
+      renderUnifiedFileList();
+    } else {
+      console.log(`[Anima RAG] 暂无同名数据库 (${smartId})，保持未关联状态。`);
+      // 什么都不做，界面保持为空，符合你的要求
     }
+  } catch (e) {
+    console.warn("[Anima RAG] 自动关联检查失败:", e);
+  }
 }
 
 // ==========================================
@@ -328,9 +320,9 @@ async function tryAutoBindExistingDB() {
 // ==========================================
 
 function renderMainUI(container, settings, ragFiles, currentChatId) {
-    const safeRagFiles = ragFiles || [];
+  const safeRagFiles = ragFiles || [];
 
-    const styleFix = `
+  const styleFix = `
     <style>
         /* 复用 Summary 样式 */
         .anima-rag-tag-table { width: 100%; border-collapse: collapse; margin-top: 10px; background: rgba(0,0,0,0.1); border-radius: 4px; }
@@ -396,7 +388,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
         }
     </style>`;
 
-    const masterSwitchHtml = `
+  const masterSwitchHtml = `
         <div class="anima-setting-group" style="margin-bottom: 10px;">
             <div class="anima-card" style="border-left: 4px solid var(--anima-primary);">
                 <div class="anima-flex-row">
@@ -412,11 +404,11 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
             </div>
         </div>
     `;
-    const contentVisibilityClass = settings.rag_enabled ? "" : "hidden";
+  const contentVisibilityClass = settings.rag_enabled ? "" : "hidden";
 
-    const mainContentHtml =
-        styleFix +
-        `
+  const mainContentHtml =
+    styleFix +
+    `
         <div id="rag_main_content_wrapper" class="${contentVisibilityClass}">
             
             <div class="anima-setting-group">
@@ -852,50 +844,50 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
             </div>
         </div>
         `;
-    container.innerHTML = styleFix + masterSwitchHtml + mainContentHtml;
-    // 渲染各个子模块
-    regexComponent = new RegexListComponent(
-        "rag_regex_list", // 容器 ID (保持 rag.js 原有的 div id="rag_regex_list")
-        () => settings.regex_strings, // 获取数据
-        (newData) => {
-            // 保存回调
-            settings.regex_strings = newData;
-        },
-    );
-    regexComponent.render();
-    renderPromptList(settings.vector_prompt);
-    renderStrategyTable(settings);
-    renderFileList(safeRagFiles, currentChatId);
-    $("#rag_master_switch").on("change", async function () {
-        const isEnabled = $(this).prop("checked");
+  container.innerHTML = styleFix + masterSwitchHtml + mainContentHtml;
+  // 渲染各个子模块
+  regexComponent = new RegexListComponent(
+    "rag_regex_list", // 容器 ID (保持 rag.js 原有的 div id="rag_regex_list")
+    () => settings.regex_strings, // 获取数据
+    (newData) => {
+      // 保存回调
+      settings.regex_strings = newData;
+    },
+  );
+  regexComponent.render();
+  renderPromptList(settings.vector_prompt);
+  renderStrategyTable(settings);
+  renderFileList(safeRagFiles, currentChatId);
+  $("#rag_master_switch").on("change", async function () {
+    const isEnabled = $(this).prop("checked");
 
-        // A. 更新设置
-        settings.rag_enabled = isEnabled;
-        saveRagSettings(settings);
+    // A. 更新设置
+    settings.rag_enabled = isEnabled;
+    saveRagSettings(settings);
 
-        // 🔥🔥 B. [新增] 触发世界书条目状态联动 🔥🔥
-        // RAG 开启 -> 禁用所有 Summary 条目
-        // RAG 关闭 -> 启用所有 Summary 条目
-        await toggleAllSummariesState(isEnabled);
+    // 🔥🔥 B. [新增] 触发世界书条目状态联动 🔥🔥
+    // RAG 开启 -> 禁用所有 Summary 条目
+    // RAG 关闭 -> 启用所有 Summary 条目
+    await toggleAllSummariesState(isEnabled);
 
-        // C. 控制 UI 显隐
-        if (isEnabled) {
-            $("#rag_main_content_wrapper").removeClass("hidden");
-            toastr.success("向量功能已开启");
+    // C. 控制 UI 显隐
+    if (isEnabled) {
+      $("#rag_main_content_wrapper").removeClass("hidden");
+      toastr.success("向量功能已开启");
 
-            // D. 自动检查脏数据
-            if (settings.auto_vectorize) {
-                // 假设 checkAndSyncDirtyVectors 已经在该文件其他地方定义或引入
-                if (typeof checkAndSyncDirtyVectors === "function") {
-                    checkAndSyncDirtyVectors();
-                }
-            }
-        } else {
-            $("#rag_main_content_wrapper").addClass("hidden");
-            toastr.info("向量功能已关闭 (已回退至纯文本模式)"); // 提示语也可以稍微改一下
+      // D. 自动检查脏数据
+      if (settings.auto_vectorize) {
+        // 假设 checkAndSyncDirtyVectors 已经在该文件其他地方定义或引入
+        if (typeof checkAndSyncDirtyVectors === "function") {
+          checkAndSyncDirtyVectors();
         }
-    });
-    bindRagEvents(settings);
+      }
+    } else {
+      $("#rag_main_content_wrapper").addClass("hidden");
+      toastr.info("向量功能已关闭 (已回退至纯文本模式)"); // 提示语也可以稍微改一下
+    }
+  });
+  bindRagEvents(settings);
 }
 
 // ==========================================
@@ -903,280 +895,262 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
 // ==========================================
 
 export function showRagModal(title, html) {
-    $("#anima-rag-modal-title").text(title);
-    $("#anima-rag-modal-body").html(html);
-    $("#anima-rag-modal").removeClass("hidden");
+  $("#anima-rag-modal-title").text(title);
+  $("#anima-rag-modal-body").html(html);
+  $("#anima-rag-modal").removeClass("hidden");
 }
 
 function bindRagEvents(settings) {
-    const $container = $("#tab-rag");
+  const $container = $("#tab-rag");
 
-    // 1. 注入位置联动
-    $("#rag_inject_position")
-        .off("change")
-        .on("change", function () {
-            const val = $(this).val();
-            const $depthInput = $("#rag_inject_depth");
-            const $depthRow = $("#rag_inject_depth_row");
+  // 1. 注入位置联动
+  $("#rag_inject_position")
+    .off("change")
+    .on("change", function () {
+      const val = $(this).val();
+      const $depthInput = $("#rag_inject_depth");
+      const $depthRow = $("#rag_inject_depth_row");
 
-            if (val === "at_depth") {
-                $depthInput.prop("disabled", false).css("opacity", 1);
-                $depthRow.css("opacity", 1);
-            } else {
-                $depthInput.prop("disabled", true).css("opacity", 0.5);
-                $depthRow.css("opacity", 0.5);
-            }
-        });
-
-    // 关闭 RAG 主弹窗
-    $(".anima-close-rag-modal").on("click", () =>
-        $("#anima-rag-modal").addClass("hidden"),
-    );
-
-    // 关闭 Regex 弹窗
-    $container.find(".anima-close-regex-modal").on("click", () => {
-        $container.find("#anima-regex-input-modal").addClass("hidden");
+      if (val === "at_depth") {
+        $depthInput.prop("disabled", false).css("opacity", 1);
+        $depthRow.css("opacity", 1);
+      } else {
+        $depthInput.prop("disabled", true).css("opacity", 0.5);
+        $depthRow.css("opacity", 0.5);
+      }
     });
 
-    // --- 正则事件 ---
-    $("#rag_btn_open_regex_modal").on("click", () => {
-        // 使用 $container.find 确保清空的是当前页面的输入框
-        $container.find("#anima_new_regex_str").val("");
-        $container.find("#anima_new_regex_type").val("extract");
-        $container.find("#anima-regex-input-modal").removeClass("hidden");
+  // 关闭 RAG 主弹窗
+  $(".anima-close-rag-modal").on("click", () =>
+    $("#anima-rag-modal").addClass("hidden"),
+  );
+
+  // 关闭 Regex 弹窗
+  $container.find(".anima-close-regex-modal").on("click", () => {
+    $container.find("#anima-regex-input-modal").addClass("hidden");
+  });
+
+  // --- 正则事件 ---
+  $("#rag_btn_open_regex_modal").on("click", () => {
+    // 使用 $container.find 确保清空的是当前页面的输入框
+    $container.find("#anima_new_regex_str").val("");
+    $container.find("#anima_new_regex_type").val("extract");
+    $container.find("#anima-regex-input-modal").removeClass("hidden");
+  });
+
+  $container.find("#anima_btn_confirm_add_regex").on("click", () => {
+    const str = $container.find("#anima_new_regex_str").val().trim();
+    const type = $container.find("#anima_new_regex_type").val();
+
+    if (!str) return toastr.warning("正则不能为空");
+
+    // 使用组件添加
+    if (regexComponent) {
+      regexComponent.addRule(str, type);
+    }
+
+    $container.find("#anima-regex-input-modal").addClass("hidden");
+  });
+
+  // --- 提示词事件 ---
+  $("#rag_btn_add_prompt_item").on("click", () => {
+    // 🟢 修改：添加时显式指定 type: "text"，防止预览时被忽略
+    settings.vector_prompt.push({
+      role: "system",
+      content: "",
+      type: "text",
+    });
+    renderPromptList(settings.vector_prompt);
+  });
+
+  // --- 分布式开关 ---
+  $("#rag_distributed_switch").on("change", function () {
+    const isChecked = $(this).prop("checked");
+    if (isChecked) {
+      $("#rag_simple_config").addClass("hidden");
+      $("#rag_distributed_config").removeClass("hidden");
+    } else {
+      $("#rag_simple_config").removeClass("hidden");
+      $("#rag_distributed_config").addClass("hidden");
+    }
+  });
+
+  // --- 标签编辑 ---
+  $("#btn_edit_tags").on("click", () => {
+    $("#rag_tags_action_btns").hide();
+    $("#rag_tags_edit_btns").css("display", "flex");
+    renderTagTable(settings.tags_config, true);
+  });
+  $("#btn_cancel_tags").on("click", () => {
+    $("#rag_tags_edit_btns").hide();
+    $("#rag_tags_action_btns").show();
+    renderTagTable(settings.tags_config, false);
+  });
+  $("#btn_save_tags").on("click", () => {
+    $(".tag-labels-input").each(function () {
+      const key = $(this).data("key");
+      const arr = $(this)
+        .val()
+        .split(/[,，]/)
+        .map((s) => s.trim())
+        .filter((s) => s);
+      settings.tags_config[key].labels = arr;
+    });
+    $(".tag-count-input").each(function () {
+      const key = $(this).data("key");
+      settings.tags_config[key].count = parseInt($(this).val()) || 0;
+    });
+    $("#rag_tags_edit_btns").hide();
+    $("#rag_tags_action_btns").show();
+    renderTagTable(settings.tags_config, false);
+  });
+
+  // --- 节日配置 ---
+  $("#rag_btn_holidays").on("click", () => {
+    renderHolidayModal(settings);
+  });
+
+  const handleSave = async () => {
+    // 🟢 必须是 async
+    try {
+      const currentSettings = getRagSettings();
+
+      // 1. 获取 DOM 数据
+      const impTagsArr = (
+        $("#rag_row_important").find(".tag-input").val() || ""
+      )
+        .split(/[,，]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      // 2. 组装新对象 (遵循你的分类要求)
+      const newSettings = {
+        ...currentSettings,
+        // 全局项
+        base_count: parseInt($("#rag_base_count").val()) || 2,
+        min_score: parseFloat($("#rag_min_score").val()) || 0.5,
+        auto_vectorize: $("#rag_auto_vectorize").prop("checked"),
+
+        // 角色项
+        distributed_retrieval: $("#rag_distributed_switch").prop("checked"),
+        virtual_time_mode: $("#rag_virtual_time_switch").prop("checked"),
+
+        strategy_settings: {
+          candidate_multiplier: parseInt($("#rag_multiplier").val()) || 2, // 存全局
+          important: {
+            labels: impTagsArr,
+            count: parseInt($("#rag_strat_imp_count").val()) || 1,
+          },
+          period: {
+            labels: currentSettings.strategy_settings?.period?.labels || [
+              "Period",
+            ],
+            count: parseInt($("#rag_strat_period_count").val()) || 1,
+          },
+          status: {
+            labels: currentSettings.strategy_settings?.status?.labels || [],
+            count: parseInt($("#rag_strat_status_count").val()) || 1,
+            rules: currentSettings.strategy_settings?.status?.rules || [],
+          },
+          special: {
+            count: parseInt($("#rag_strat_holiday_count").val()) || 1,
+          },
+          diversity: {
+            count: parseInt($("#rag_strat_div_count").val()) || 2,
+          },
+        },
+      };
+
+      // 3. 执行异步分流保存
+      await saveRagSettings(newSettings);
+
+      // 4. 反馈与刷新
+      toastr.success("设置已成功分流保存至全局与角色卡");
+      renderStrategyTable(newSettings);
+    } catch (err) {
+      console.error("[Anima RAG] Save Error:", err);
+      toastr.error("保存失败: " + err.message);
+    }
+  };
+
+  // 🔥🔥🔥 修改绑定：同时绑定顶部和底部的保存按钮 🔥🔥🔥
+  // 使用逗号分隔选择器，或者分别绑定
+  $("#rag_btn_save_settings_top, #rag_btn_save_settings_bottom")
+    .off("click")
+    .on("click", handleSave);
+
+  // 绑定其他可能存在的保存按钮（如果有的话）
+  $("#rag_btn_save_simple").on("click", handleSave);
+  $("#rag_btn_save_kb_settings").on("click", handleSave);
+  $("#rag_btn_save_dist").on("click", handleSave);
+  $("#rag_btn_save_prompt_cfg").on("click", handleSave);
+  $("#rag_btn_save_prompt_bottom").on("click", handleSave);
+
+  $("#rag_btn_save_injection")
+    .off("click")
+    // 🟢 修改 1: 在这里加上 async
+    .on("click", async () => {
+      // 1. 获取 Chat Memory 注入配置 (原有)
+      const newInjectionSettings = {
+        strategy: $("#rag_inject_strategy").val(),
+        position: $("#rag_inject_position").val(),
+        role: $("#rag_inject_role").val(),
+        depth: parseInt($("#rag_inject_depth").val()) || 0,
+        order: parseInt($("#rag_inject_order").val()) || 100,
+        recent_count: parseInt($("#rag_inject_recent_count").val()) || 2,
+
+        template: $("#rag_inject_template").val(),
+      };
+
+      // 2. 获取 Knowledge Base 注入配置 (新增)
+      const newKnowledgeInjection = {
+        enabled: true, // 默认强制开启
+        strategy: $("#rag_k_inject_strategy").val(),
+        position: $("#rag_k_inject_position").val(),
+        role: $("#rag_k_inject_role").val(),
+        depth: parseInt($("#rag_k_inject_depth").val()) || 0,
+        order: parseInt($("#rag_k_inject_order").val()) || 100,
+        template: $("#rag_k_inject_template").val(),
+      };
+
+      // 3. 更新内存对象
+      settings.injection_settings = newInjectionSettings;
+      settings.knowledge_injection = newKnowledgeInjection;
+
+      // 4. 持久化
+      saveRagSettings(settings);
+
+      // 🟢 修改 2: 加上 await，确保同步完成后再提示
+      await syncRagSettingsToWorldbook();
+
+      if (window.toastr) toastr.success("注入配置已保存并应用！");
     });
 
-    $container.find("#anima_btn_confirm_add_regex").on("click", () => {
-        const str = $container.find("#anima_new_regex_str").val().trim();
-        const type = $container.find("#anima_new_regex_type").val();
+  $("#rag_btn_preview_query").on("click", async () => {
+    // 获取当前上下文
+    const context = SillyTavern.getContext();
+    const chat = context.chat;
 
-        if (!str) return toastr.warning("正则不能为空");
+    if (!chat || chat.length === 0) {
+      toastr.warning("当前没有聊天记录，无法预览");
+      return;
+    }
 
-        // 使用组件添加
-        if (regexComponent) {
-            regexComponent.addRule(str, type);
-        }
-
-        $container.find("#anima-regex-input-modal").addClass("hidden");
-    });
-
-    // --- 提示词事件 ---
-    $("#rag_btn_add_prompt_item").on("click", () => {
-        // 🟢 修改：添加时显式指定 type: "text"，防止预览时被忽略
-        settings.vector_prompt.push({
-            role: "system",
-            content: "",
-            type: "text",
-        });
-        renderPromptList(settings.vector_prompt);
-    });
-
-    // --- 分布式开关 ---
-    $("#rag_distributed_switch").on("change", function () {
-        const isChecked = $(this).prop("checked");
-        if (isChecked) {
-            $("#rag_simple_config").addClass("hidden");
-            $("#rag_distributed_config").removeClass("hidden");
-        } else {
-            $("#rag_simple_config").removeClass("hidden");
-            $("#rag_distributed_config").addClass("hidden");
-        }
-    });
-
-    // --- 标签编辑 ---
-    $("#btn_edit_tags").on("click", () => {
-        $("#rag_tags_action_btns").hide();
-        $("#rag_tags_edit_btns").css("display", "flex");
-        renderTagTable(settings.tags_config, true);
-    });
-    $("#btn_cancel_tags").on("click", () => {
-        $("#rag_tags_edit_btns").hide();
-        $("#rag_tags_action_btns").show();
-        renderTagTable(settings.tags_config, false);
-    });
-    $("#btn_save_tags").on("click", () => {
-        $(".tag-labels-input").each(function () {
-            const key = $(this).data("key");
-            const arr = $(this)
-                .val()
-                .split(/[,，]/)
-                .map((s) => s.trim())
-                .filter((s) => s);
-            settings.tags_config[key].labels = arr;
-        });
-        $(".tag-count-input").each(function () {
-            const key = $(this).data("key");
-            settings.tags_config[key].count = parseInt($(this).val()) || 0;
-        });
-        $("#rag_tags_edit_btns").hide();
-        $("#rag_tags_action_btns").show();
-        renderTagTable(settings.tags_config, false);
-    });
-
-    // --- 节日配置 ---
-    $("#rag_btn_holidays").on("click", () => {
-        renderHolidayModal(settings);
-    });
-
-    const handleSave = async () => {
-        // 🟢 必须是 async
-        try {
-            const currentSettings = getRagSettings();
-
-            // 1. 获取 DOM 数据
-            const impTagsArr = (
-                $("#rag_row_important").find(".tag-input").val() || ""
-            )
-                .split(/[,，]/)
-                .map((s) => s.trim())
-                .filter(Boolean);
-
-            // 2. 组装新对象 (遵循你的分类要求)
-            const newSettings = {
-                ...currentSettings,
-                // 全局项
-                base_count: parseInt($("#rag_base_count").val()) || 2,
-                min_score: parseFloat($("#rag_min_score").val()) || 0.5,
-                auto_vectorize: $("#rag_auto_vectorize").prop("checked"),
-
-                // 角色项
-                distributed_retrieval: $("#rag_distributed_switch").prop(
-                    "checked",
-                ),
-                virtual_time_mode: $("#rag_virtual_time_switch").prop(
-                    "checked",
-                ),
-
-                strategy_settings: {
-                    candidate_multiplier:
-                        parseInt($("#rag_multiplier").val()) || 2, // 存全局
-                    important: {
-                        labels: impTagsArr,
-                        count: parseInt($("#rag_strat_imp_count").val()) || 1,
-                    },
-                    period: {
-                        labels: currentSettings.strategy_settings?.period
-                            ?.labels || ["Period"],
-                        count:
-                            parseInt($("#rag_strat_period_count").val()) || 1,
-                    },
-                    status: {
-                        labels:
-                            currentSettings.strategy_settings?.status?.labels ||
-                            [],
-                        count:
-                            parseInt($("#rag_strat_status_count").val()) || 1,
-                        rules:
-                            currentSettings.strategy_settings?.status?.rules ||
-                            [],
-                    },
-                    special: {
-                        count:
-                            parseInt($("#rag_strat_holiday_count").val()) || 1,
-                    },
-                    diversity: {
-                        count: parseInt($("#rag_strat_div_count").val()) || 2,
-                    },
-                },
-            };
-
-            // 3. 执行异步分流保存
-            await saveRagSettings(newSettings);
-
-            // 4. 反馈与刷新
-            toastr.success("设置已成功分流保存至全局与角色卡");
-            renderStrategyTable(newSettings);
-        } catch (err) {
-            console.error("[Anima RAG] Save Error:", err);
-            toastr.error("保存失败: " + err.message);
-        }
+    // 临时构建 Settings 对象
+    const currentSettings = {
+      ...settings,
+      skip_layer_zero: $("#rag_skip_layer_zero").prop("checked"),
+      regex_skip_user: $("#rag_regex_skip_user").prop("checked"),
+      regex_strings: settings.regex_strings,
+      vector_prompt: settings.vector_prompt,
     };
 
-    // 🔥🔥🔥 修改绑定：同时绑定顶部和底部的保存按钮 🔥🔥🔥
-    // 使用逗号分隔选择器，或者分别绑定
-    $("#rag_btn_save_settings_top, #rag_btn_save_settings_bottom")
-        .off("click")
-        .on("click", handleSave);
+    // 1. 获取结构化数据
+    const blocks = await constructRagQueryMock(chat, currentSettings);
 
-    // 绑定其他可能存在的保存按钮（如果有的话）
-    $("#rag_btn_save_simple").on("click", handleSave);
-    $("#rag_btn_save_kb_settings").on("click", handleSave);
-    $("#rag_btn_save_dist").on("click", handleSave);
-    $("#rag_btn_save_prompt_cfg").on("click", handleSave);
-    $("#rag_btn_save_prompt_bottom").on("click", handleSave);
-
-    $("#rag_btn_save_injection")
-        .off("click")
-        // 🟢 修改 1: 在这里加上 async
-        .on("click", async () => {
-            // 1. 获取 Chat Memory 注入配置 (原有)
-            const newInjectionSettings = {
-                strategy: $("#rag_inject_strategy").val(),
-                position: $("#rag_inject_position").val(),
-                role: $("#rag_inject_role").val(),
-                depth: parseInt($("#rag_inject_depth").val()) || 0,
-                order: parseInt($("#rag_inject_order").val()) || 100,
-                recent_count:
-                    parseInt($("#rag_inject_recent_count").val()) || 2,
-
-                template: $("#rag_inject_template").val(),
-            };
-
-            // 2. 获取 Knowledge Base 注入配置 (新增)
-            const newKnowledgeInjection = {
-                enabled: true, // 默认强制开启
-                strategy: $("#rag_k_inject_strategy").val(),
-                position: $("#rag_k_inject_position").val(),
-                role: $("#rag_k_inject_role").val(),
-                depth: parseInt($("#rag_k_inject_depth").val()) || 0,
-                order: parseInt($("#rag_k_inject_order").val()) || 100,
-                template: $("#rag_k_inject_template").val(),
-            };
-
-            // 3. 更新内存对象
-            settings.injection_settings = newInjectionSettings;
-            settings.knowledge_injection = newKnowledgeInjection;
-
-            // 4. 持久化
-            saveRagSettings(settings);
-
-            // 🟢 修改 2: 加上 await，确保同步完成后再提示
-            await syncRagSettingsToWorldbook();
-
-            if (window.toastr) toastr.success("注入配置已保存并应用！");
-        });
-
-    $("#rag_btn_preview_query").on("click", async () => {
-        // 获取当前上下文
-        const context = SillyTavern.getContext();
-        const chat = context.chat;
-
-        if (!chat || chat.length === 0) {
-            toastr.warning("当前没有聊天记录，无法预览");
-            return;
-        }
-
-        // 临时构建 Settings 对象
-        const currentSettings = {
-            ...settings,
-            skip_layer_zero: $("#rag_skip_layer_zero").prop("checked"),
-            regex_skip_user: $("#rag_regex_skip_user").prop("checked"),
-            regex_strings: settings.regex_strings,
-            vector_prompt: settings.vector_prompt,
-        };
-
-        // 1. 获取结构化数据
-        const blocks = await constructRagQueryMock(chat, currentSettings);
-
-        // 2. 辅助渲染函数 (完全复刻 Summary 样式)
-        const createBlock = (
-            title,
-            contentHtml,
-            color,
-            borderColor,
-            bgColor,
-        ) => {
-            return `
+    // 2. 辅助渲染函数 (完全复刻 Summary 样式)
+    const createBlock = (title, contentHtml, color, borderColor, bgColor) => {
+      return `
             <div class="anima-preview-block" style="border-color: ${borderColor};">
                 <div class="block-header" style="background: ${bgColor}; color: ${color};">
                     <span>${title}</span>
@@ -1184,62 +1158,60 @@ function bindRagEvents(settings) {
                 </div>
                 <div class="block-content" style="display: none;">${contentHtml}</div>
             </div>`;
-        };
+    };
 
-        let finalPreviewHtml = "";
-        let totalChars = 0;
+    let finalPreviewHtml = "";
+    let totalChars = 0;
 
-        // 3. 遍历构建 HTML
-        blocks.forEach((block) => {
-            if (block.type === "text") {
-                totalChars += block.content.length;
-                finalPreviewHtml += createBlock(
-                    block.title,
-                    `<div style="white-space: pre-wrap; color: #ccc;">${escapeHtml(block.content)}</div>`,
-                    "#aaa",
-                    "#444",
-                    "rgba(0,0,0,0.3)",
-                );
-            } else if (block.type === "context") {
-                let contextHtml = "";
-                if (block.messages.length === 0) {
-                    contextHtml = `<div style='padding:5px; color:#aaa; font-style:italic;'>⚠️ 此范围内没有有效消息 (可能被过滤或正则清洗为空)</div>`;
-                } else {
-                    contextHtml = block.messages
-                        .map((m) => {
-                            totalChars += m.content.length;
-                            // 复刻 Summary 的颜色逻辑
-                            const colorClass =
-                                m.role === "user"
-                                    ? "color:#4ade80"
-                                    : "color:#60a5fa"; // 绿/蓝
-                            const roleLabel = m.role.toUpperCase();
-                            const skipBadge = m.skippedRegex
-                                ? `<span style="font-size:10px; background:rgba(255,255,255,0.1); border-radius:3px; padding:0 3px; margin-left:5px; color:#aaa;" title="正则已跳过">RAW</span>`
-                                : "";
+    // 3. 遍历构建 HTML
+    blocks.forEach((block) => {
+      if (block.type === "text") {
+        totalChars += block.content.length;
+        finalPreviewHtml += createBlock(
+          block.title,
+          `<div style="white-space: pre-wrap; color: #ccc;">${escapeHtml(block.content)}</div>`,
+          "#aaa",
+          "#444",
+          "rgba(0,0,0,0.3)",
+        );
+      } else if (block.type === "context") {
+        let contextHtml = "";
+        if (block.messages.length === 0) {
+          contextHtml = `<div style='padding:5px; color:#aaa; font-style:italic;'>⚠️ 此范围内没有有效消息 (可能被过滤或正则清洗为空)</div>`;
+        } else {
+          contextHtml = block.messages
+            .map((m) => {
+              totalChars += m.content.length;
+              // 复刻 Summary 的颜色逻辑
+              const colorClass =
+                m.role === "user" ? "color:#4ade80" : "color:#60a5fa"; // 绿/蓝
+              const roleLabel = m.role.toUpperCase();
+              const skipBadge = m.skippedRegex
+                ? `<span style="font-size:10px; background:rgba(255,255,255,0.1); border-radius:3px; padding:0 3px; margin-left:5px; color:#aaa;" title="正则已跳过">RAW</span>`
+                : "";
 
-                            return (
-                                `<div style="margin-bottom: 8px; border-left: 2px solid rgba(255,255,255,0.1); padding-left: 6px;">` +
-                                `<div style="font-weight:bold; font-size: 11px; margin-bottom: 2px; line-height: 1; ${colorClass}">[${roleLabel}]${skipBadge}</div>` +
-                                `<div style="white-space: pre-wrap; color: #ccc; line-height: 1.4; font-size: 12px; margin: 0;">${escapeHtml(m.content).trim()}</div>` +
-                                `</div>`
-                            );
-                        })
-                        .join("");
-                }
+              return (
+                `<div style="margin-bottom: 8px; border-left: 2px solid rgba(255,255,255,0.1); padding-left: 6px;">` +
+                `<div style="font-weight:bold; font-size: 11px; margin-bottom: 2px; line-height: 1; ${colorClass}">[${roleLabel}]${skipBadge}</div>` +
+                `<div style="white-space: pre-wrap; color: #ccc; line-height: 1.4; font-size: 12px; margin: 0;">${escapeHtml(m.content).trim()}</div>` +
+                `</div>`
+              );
+            })
+            .join("");
+        }
 
-                finalPreviewHtml += createBlock(
-                    block.title,
-                    contextHtml,
-                    "#93c5fd", // 标题文字颜色
-                    "#64748b", // 边框颜色
-                    "rgba(100, 149, 237, 0.2)", // 标题背景颜色
-                );
-            }
-        });
+        finalPreviewHtml += createBlock(
+          block.title,
+          contextHtml,
+          "#93c5fd", // 标题文字颜色
+          "#64748b", // 边框颜色
+          "rgba(100, 149, 237, 0.2)", // 标题背景颜色
+        );
+      }
+    });
 
-        // 4. 定义 CSS (复刻 Summary)
-        const style = `<style>
+    // 4. 定义 CSS (复刻 Summary)
+    const style = `<style>
             .anima-preview-block { border: 1px solid #444; border-radius: 6px; margin-bottom: 10px; overflow: hidden; background: rgba(0,0,0,0.1); } 
             .block-header { padding: 8px 10px; font-size: 12px; font-weight: bold; cursor: pointer; display: flex; justify-content: space-between; align-items: center; } 
             .block-header:hover { filter: brightness(1.2); } 
@@ -1247,8 +1219,8 @@ function bindRagEvents(settings) {
             .anima-preview-block.expanded .arrow-icon { transform: rotate(180deg); }
         </style>`;
 
-        // 5. 元数据头部
-        const metaInfo = `
+    // 5. 元数据头部
+    const metaInfo = `
             <div style="margin-bottom: 10px; color: #aaa; font-size: 12px; border-bottom:1px solid #444; padding-bottom:10px;">
                 <div style="display:flex; justify-content:space-between;">
                     <span><strong>Source:</strong> Current Chat</span>
@@ -1257,77 +1229,77 @@ function bindRagEvents(settings) {
             </div>
         `;
 
-        // 6. 显示弹窗
-        showRagModal(
-            "向量提示词预览 (Preview)",
-            style +
-                metaInfo +
-                `<div id="rag-preview-container">${finalPreviewHtml}</div>`,
-        );
+    // 6. 显示弹窗
+    showRagModal(
+      "向量提示词预览 (Preview)",
+      style +
+        metaInfo +
+        `<div id="rag-preview-container">${finalPreviewHtml}</div>`,
+    );
 
-        // 7. 绑定折叠逻辑
-        setTimeout(() => {
-            $("#rag-preview-container")
-                .off("click")
-                .on("click", ".block-header", function () {
-                    const $block = $(this).closest(".anima-preview-block");
-                    const $content = $block.find(".block-content");
-                    if ($content.is(":visible")) {
-                        $content.slideUp(150);
-                        $block.removeClass("expanded");
-                    } else {
-                        $content.slideDown(150);
-                        $block.addClass("expanded");
-                    }
-                });
-        }, 100);
-    });
+    // 7. 绑定折叠逻辑
+    setTimeout(() => {
+      $("#rag-preview-container")
+        .off("click")
+        .on("click", ".block-header", function () {
+          const $block = $(this).closest(".anima-preview-block");
+          const $content = $block.find(".block-content");
+          if ($content.is(":visible")) {
+            $content.slideUp(150);
+            $block.removeClass("expanded");
+          } else {
+            $content.slideDown(150);
+            $block.addClass("expanded");
+          }
+        });
+    }, 100);
+  });
 
-    // 绑定到三个保存按钮
-    $("#rag_btn_save_simple").on("click", handleSave);
-    $("#rag_btn_save_dist").on("click", handleSave);
-    // 🟢 新增：绑定提示词下方的保存按钮 (上方那个)
-    $("#rag_btn_save_prompt_cfg").on("click", handleSave);
-    // ✅ 修复：绑定提示词列表下方的按钮 (新增的唯一ID)
-    $("#rag_btn_save_prompt_bottom").on("click", handleSave);
+  // 绑定到三个保存按钮
+  $("#rag_btn_save_simple").on("click", handleSave);
+  $("#rag_btn_save_dist").on("click", handleSave);
+  // 🟢 新增：绑定提示词下方的保存按钮 (上方那个)
+  $("#rag_btn_save_prompt_cfg").on("click", handleSave);
+  // ✅ 修复：绑定提示词列表下方的按钮 (新增的唯一ID)
+  $("#rag_btn_save_prompt_bottom").on("click", handleSave);
 
-    // --- 状态弹窗 ---
-    $("#rag_btn_status").on("click", async () => {
-        // 1. 预检查：先判断是否有打开的聊天
-        const context = SillyTavern.getContext();
-        if (!context.chatId) {
-            toastr.warning("请先打开一个聊天窗口");
-            return;
-        }
+  // --- 状态弹窗 ---
+  $("#rag_btn_status").on("click", async () => {
+    // 1. 预检查：先判断是否有打开的聊天
+    const context = SillyTavern.getContext();
+    if (!context.chatId) {
+      toastr.warning("请先打开一个聊天窗口");
+      return;
+    }
 
-        // 2. 安全调用：捕获可能的其他异步错误
-        try {
-            await showVectorStatusModal();
-        } catch (err) {
-            console.error("[Anima RAG] Status Error:", err);
-            // 提取错误信息提示给用户
-            toastr.error("获取状态失败: " + (err.message || "未知错误"));
-        }
-    });
+    // 2. 安全调用：捕获可能的其他异步错误
+    try {
+      await showVectorStatusModal();
+    } catch (err) {
+      console.error("[Anima RAG] Status Error:", err);
+      // 提取错误信息提示给用户
+      toastr.error("获取状态失败: " + (err.message || "未知错误"));
+    }
+  });
 
-    $("#rag_btn_last_result").on("click", () => {
-        $(this).removeClass("glow-effect");
+  $("#rag_btn_last_result").on("click", () => {
+    $(this).removeClass("glow-effect");
 
-        if (!_lastRetrievalResult) {
-            toastr.info("暂无检索记录 (请先进行一次对话)");
-            return;
-        }
+    if (!_lastRetrievalResult) {
+      toastr.info("暂无检索记录 (请先进行一次对话)");
+      return;
+    }
 
-        const r = _lastRetrievalResult;
+    const r = _lastRetrievalResult;
 
-        const queryLen = r.query ? r.query.length : 0;
-        // 累加所有结果的 text 长度
-        const totalResultLen = r.results
-            ? r.results.reduce((acc, item) => acc + (item.text || "").length, 0)
-            : 0;
-        const headerStyle = "font-size:12px; color:#aaa; font-weight:bold;";
-        // --- 1. 构建主结果区域 ---
-        let contentHtml = `
+    const queryLen = r.query ? r.query.length : 0;
+    // 累加所有结果的 text 长度
+    const totalResultLen = r.results
+      ? r.results.reduce((acc, item) => acc + (item.text || "").length, 0)
+      : 0;
+    const headerStyle = "font-size:12px; color:#aaa; font-weight:bold;";
+    // --- 1. 构建主结果区域 ---
+    let contentHtml = `
             <div style="margin-bottom:10px; padding:10px; background:rgba(0,0,0,0.2); border-radius:4px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
                     <div style="${headerStyle}">Query</div>
@@ -1342,32 +1314,32 @@ function bindRagEvents(settings) {
             </div>
         `;
 
-        if (r.results && r.results.length > 0) {
-            contentHtml += r.results
-                .map((item, idx) => {
-                    // 🟢 修改 2：增加 uniqueID / index 显示
-                    // 优先取 uniqueID，如果没有取 index (兼容不同后端返回格式)
-                    const displayId = item.uniqueID || item.index || "N/A";
+    if (r.results && r.results.length > 0) {
+      contentHtml += r.results
+        .map((item, idx) => {
+          // 🟢 修改 2：增加 uniqueID / index 显示
+          // 优先取 uniqueID，如果没有取 index (兼容不同后端返回格式)
+          const displayId = item.uniqueID || item.index || "N/A";
 
-                    const sourceDb = item.source || "Unknown";
-                    const isKb = sourceDb.startsWith("kb_");
+          const sourceDb = item.source || "Unknown";
+          const isKb = sourceDb.startsWith("kb_");
 
-                    // 🟢 样式分歧配置
-                    const theme = isKb
-                        ? {
-                              borderColor: "#eab308", // Yellow-500
-                              headerBg: "rgba(234, 179, 8, 0.15)",
-                              countColor: "#facc15",
-                              icon: "fa-book",
-                          }
-                        : {
-                              borderColor: "#444", // 默认灰色或保留原来的
-                              headerBg: "rgba(59, 130, 246, 0.15)", // Blue
-                              countColor: "#60a5fa",
-                              icon: "fa-database",
-                          };
+          // 🟢 样式分歧配置
+          const theme = isKb
+            ? {
+                borderColor: "#eab308", // Yellow-500
+                headerBg: "rgba(234, 179, 8, 0.15)",
+                countColor: "#facc15",
+                icon: "fa-book",
+              }
+            : {
+                borderColor: "#444", // 默认灰色或保留原来的
+                headerBg: "rgba(59, 130, 246, 0.15)", // Blue
+                countColor: "#60a5fa",
+                icon: "fa-database",
+              };
 
-                    return `
+          return `
             <div class="anima-preview-block" style="border:1px solid ${theme.borderColor}; margin-bottom:8px; border-radius:4px; overflow:hidden;">
                 <div class="block-header" style="background:${theme.headerBg}; padding:6px 10px; font-size:12px; display:flex; justify-content:space-between; align-items:center;">
                     <div>
@@ -1382,44 +1354,41 @@ function bindRagEvents(settings) {
                 <div class="block-content" style="padding:10px; font-size:12px; color:#ccc; background:rgba(0,0,0,0.2); white-space:pre-wrap; max-height:150px; overflow-y:auto;">${escapeHtml(item.text)}</div>
             </div>
         `;
-                })
-                .join("");
-        } else {
-            contentHtml += `<div style="padding:20px; text-align:center; color:#666;">本次未检索到相关内容 (Score Too Low)</div>`;
+        })
+        .join("");
+    } else {
+      contentHtml += `<div style="padding:20px; text-align:center; color:#666;">本次未检索到相关内容 (Score Too Low)</div>`;
+    }
+
+    // --- 2. 构建策略追踪日志 ---
+    if (r.strategy_log && r.strategy_log.length > 0) {
+      const renderLogCard = (logItem) => {
+        let data = logItem;
+        if (typeof logItem === "string") {
+          try {
+            data = JSON.parse(logItem);
+          } catch (e) {
+            data = null;
+          }
         }
 
-        // --- 2. 构建策略追踪日志 ---
-        if (r.strategy_log && r.strategy_log.length > 0) {
-            const renderLogCard = (logItem) => {
-                let data = logItem;
-                if (typeof logItem === "string") {
-                    try {
-                        data = JSON.parse(logItem);
-                    } catch (e) {
-                        data = null;
-                    }
-                }
+        if (!data || !data.step) {
+          return `<div style="padding:4px 0; color:#888; border-bottom:1px dashed #444; font-family:monospace;">> ${escapeHtml(logItem)}</div>`;
+        }
 
-                if (!data || !data.step) {
-                    return `<div style="padding:4px 0; color:#888; border-bottom:1px dashed #444; font-family:monospace;">> ${escapeHtml(logItem)}</div>`;
-                }
+        let stepColor = "#666";
+        const stepName = data.step.toUpperCase();
+        if (stepName.includes("BASE")) stepColor = "#3b82f6";
+        else if (stepName.includes("IMPORTANT")) stepColor = "#eab308";
+        else if (stepName.includes("STATUS")) stepColor = "#ef4444";
+        else if (stepName.includes("HOLIDAY") || stepName.includes("SPECIAL"))
+          stepColor = "#a855f7";
+        else if (stepName.includes("PERIOD")) stepColor = "#48ecd1";
+        else if (stepName.includes("DIVERSITY")) stepColor = "#59e451";
 
-                let stepColor = "#666";
-                const stepName = data.step.toUpperCase();
-                if (stepName.includes("BASE")) stepColor = "#3b82f6";
-                else if (stepName.includes("IMPORTANT")) stepColor = "#eab308";
-                else if (stepName.includes("STATUS")) stepColor = "#ef4444";
-                else if (
-                    stepName.includes("HOLIDAY") ||
-                    stepName.includes("SPECIAL")
-                )
-                    stepColor = "#a855f7";
-                else if (stepName.includes("PERIOD")) stepColor = "#48ecd1";
-                else if (stepName.includes("DIVERSITY")) stepColor = "#59e451";
+        const libraryName = data.library || "Unknown DB";
 
-                const libraryName = data.library || "Unknown DB";
-
-                return `
+        return `
                 <div class="anima-log-card" style="
                     background: rgba(0,0,0,0.3); 
                     border: 1px solid rgba(255,255,255,0.08); 
@@ -1446,10 +1415,10 @@ function bindRagEvents(settings) {
                         <span style="color:#555; margin-left:8px;">Tags:</span> ${escapeHtml(data.tags || "-")}
                     </div>
                 </div>`;
-            };
+      };
 
-            // ✅ 修改点：移除了 border-top:1px solid #444
-            contentHtml += `
+      // ✅ 修改点：移除了 border-top:1px solid #444
+      contentHtml += `
             <div style="margin-top:15px;">
                 <details style="cursor: pointer;">
                     <summary style="font-size:14px; color:#ddd; font-weight:bold; outline:none; list-style:none; display:flex; align-items:center;">
@@ -1466,109 +1435,134 @@ function bindRagEvents(settings) {
                     details[open] summary i.fa-caret-right { transform: rotate(90deg); }
                 </style>
             </div>`;
-        }
+    }
 
-        showRagModal(
-            "本次检索结果",
-            `<div style="padding:10px;">${contentHtml}</div>`,
-        );
+    showRagModal(
+      "本次检索结果",
+      `<div style="padding:10px;">${contentHtml}</div>`,
+    );
+  });
+
+  async function openDatabaseSelector(options) {
+    const {
+      title, // 弹窗标题
+      confirmText, // 确认按钮文字
+      multiSelect, // (保留扩展) 默认 true
+      filterOrphans, // 是否过滤掉不存在的库 (导出时需要过滤)
+      onConfirm, // 确认回调 (selectedIds) => {}
+    } = options;
+
+    // 1. 获取后端真实存在的库
+    let allCollections = [];
+    try {
+      allCollections = await getAvailableCollections();
+    } catch (e) {
+      toastr.error("无法获取服务器数据库列表");
+      return;
+    }
+
+    // 2. 获取当前关联状态 (用于高亮 Current)
+    const context = SillyTavern.getContext();
+    // const smartCurrentId = getSmartCollectionId();
+    const currentChatFiles = getChatRagFiles() || [];
+    const currentKbFiles = getChatKbFiles() || [];
+    const currentChatId = context ? context.chatId : null;
+
+    // 归一化处理 (仅用于 Linked 判定，Current 判定改用新逻辑)
+    // A. 定义归一化 (保持和 rag_ui_components.js 一致)
+    const normalizeId = (id) => (id || "").toString().replace(/_/g, " ").trim();
+
+    // B. 定义 isSelf 判断函数 (完全复刻 rag_ui_components.js 的逻辑)
+    const isSelf = (dbId) => {
+      if (!currentChatId || !dbId) return false;
+      // 去掉后缀
+      const rawChatId = currentChatId.replace(/\.jsonl?$/i, "");
+
+      const normDb = normalizeId(dbId);
+      const normChat = normalizeId(rawChatId);
+
+      // 核心匹配：相等 或 数据库名包含了聊天文件名作为后缀 (例如 "角色_时间" endsWith "时间")
+      return normDb === normChat || normDb.endsWith(normChat);
+    };
+
+    const allLinkedSet = new Set([
+      ...currentChatFiles.map(normalizeId),
+      ...currentKbFiles.map(normalizeId),
+    ]);
+
+    const normCurrentFilesSet = new Set([
+      ...currentChatFiles.map(normalizeId),
+      ...currentKbFiles.map(normalizeId),
+    ]);
+
+    // 3. 构建列表 HTML
+    const listItems = allCollections.map((backendName) => {
+      const normBackendName = normalizeId(backendName);
+
+      // 判断是否在当前聊天中已关联
+      const isLinked = allLinkedSet.has(normBackendName);
+
+      // ✨ [修改点] 判断是否是当前 ChatID 对应的库 (支持带前缀的中文名)
+      const isCurrentChat = isSelf(backendName);
+
+      // 标记处理：如果是“关联”模式，已关联的默认勾选；如果是“导出”模式，默认不勾选（或者只勾选当前）
+      // 这里我们采用灵活策略：外部不传 defaultSelected，让用户自己选，但我们可以高亮
+      let isChecked = false;
+
+      // 💡 特殊逻辑：如果是关联模式(title里包含关联)，则回显已关联的；如果是导出，默认勾选当前同名的
+      if (title.includes("关联") || title.includes("Import")) {
+        isChecked = isLinked;
+      } else if (title.includes("导出") || title.includes("Export")) {
+        isChecked = isCurrentChat;
+      }
+
+      // 徽章
+      let badges = "";
+      if (isCurrentChat)
+        badges += `<span style="font-size:10px; background:rgba(74, 222, 128, 0.2); color:#4ade80; padding:1px 4px; border-radius:3px; margin-left:5px;">Current</span>`;
+      if (isLinked)
+        badges += `<span style="font-size:10px; background:rgba(96, 165, 250, 0.2); color:#60a5fa; padding:1px 4px; border-radius:3px; margin-left:5px;">Linked</span>`;
+
+      // 如果是关联模式，我们从 set 里删掉它，方便最后找孤儿
+      if (normCurrentFilesSet.has(normBackendName)) {
+        normCurrentFilesSet.delete(normBackendName);
+      }
+
+      const showDelete = !title.includes("Export") && !title.includes("导出");
+      return `
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.05); padding-right:5px;">
+                <label class="anima-checkbox-item" style="flex:1; display:flex; justify-content:space-between; align-items:center; padding:8px; cursor:pointer; border-bottom:none; margin:0;">
+                    <div style="display:flex; align-items:center; overflow:hidden;">
+                        <i class="fa-solid fa-database" style="color:${isCurrentChat ? "var(--anima-primary)" : "#aaa"}; margin-right:8px; flex-shrink:0;"></i>
+                        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#ddd;" title="${escapeHtml(backendName)}">
+                            ${escapeHtml(backendName)}
+                        </span>
+                        ${badges}
+                    </div>
+                    <input type="checkbox" class="anima-checkbox collection-checkbox" value="${escapeHtml(backendName)}" ${isChecked ? "checked" : ""}>
+                </label>
+                
+                ${
+                  showDelete
+                    ? `
+                <button class="anima-btn danger small btn-delete-db-modal" data-id="${escapeHtml(backendName)}" title="物理删除此数据库" style="margin-left:5px; height:24px; width:24px; padding:0; display:flex; align-items:center; justify-content:center;">
+                    <i class="fa-solid fa-trash" style="font-size:12px;"></i>
+                </button>`
+                    : ""
+                }
+            </div>`;
     });
 
-    async function openDatabaseSelector(options) {
-        const {
-            title, // 弹窗标题
-            confirmText, // 确认按钮文字
-            multiSelect, // (保留扩展) 默认 true
-            filterOrphans, // 是否过滤掉不存在的库 (导出时需要过滤)
-            onConfirm, // 确认回调 (selectedIds) => {}
-        } = options;
+    // 4. 处理“孤儿” (仅在不过滤孤儿时显示，例如“关联”模式需要显示出来以便用户解绑)
+    let orphanItems = [];
+    if (!filterOrphans) {
+      // 合并所有关联文件列表进行遍历
+      const allActiveFiles = [...currentChatFiles, ...currentKbFiles];
 
-        // 1. 获取后端真实存在的库
-        let allCollections = [];
-        try {
-            allCollections = await getAvailableCollections();
-        } catch (e) {
-            toastr.error("无法获取服务器数据库列表");
-            return;
-        }
-
-        // 2. 获取当前关联状态 (用于高亮 Current)
-        const context = SillyTavern.getContext();
-        const smartCurrentId = getSmartCollectionId();
-        const currentChatFiles = getChatRagFiles() || [];
-        const currentKbFiles = getChatKbFiles() || [];
-        const currentChatId = context ? context.chatId : null;
-
-        // 归一化处理 (仅用于 Linked 判定，Current 判定改用新逻辑)
-        const normalizeId = (id) =>
-            (id || "").toString().replace(/_/g, " ").trim();
-
-        const allLinkedSet = new Set([
-            ...currentChatFiles.map(normalizeId),
-            ...currentKbFiles.map(normalizeId),
-        ]);
-
-        const normCurrentFilesSet = new Set([
-            ...currentChatFiles.map(normalizeId),
-            ...currentKbFiles.map(normalizeId),
-        ]);
-
-        // 3. 构建列表 HTML
-        const listItems = allCollections.map((backendName) => {
-            const normBackendName = normalizeId(backendName);
-
-            // 判断是否在当前聊天中已关联
-            const isLinked = allLinkedSet.has(normBackendName);
-
-            // ✨ [修改点] 判断是否是当前 ChatID 对应的库 (支持带前缀的中文名)
-            const isCurrentChat = backendName === smartCurrentId;
-
-            // 标记处理：如果是“关联”模式，已关联的默认勾选；如果是“导出”模式，默认不勾选（或者只勾选当前）
-            // 这里我们采用灵活策略：外部不传 defaultSelected，让用户自己选，但我们可以高亮
-            let isChecked = false;
-
-            // 💡 特殊逻辑：如果是关联模式(title里包含关联)，则回显已关联的；如果是导出，默认勾选当前同名的
-            if (title.includes("关联") || title.includes("Import")) {
-                isChecked = isLinked;
-            } else if (title.includes("导出") || title.includes("Export")) {
-                isChecked = isCurrentChat;
-            }
-
-            // 徽章
-            let badges = "";
-            if (isCurrentChat)
-                badges += `<span style="font-size:10px; background:rgba(74, 222, 128, 0.2); color:#4ade80; padding:1px 4px; border-radius:3px; margin-left:5px;">Current</span>`;
-            if (isLinked)
-                badges += `<span style="font-size:10px; background:rgba(96, 165, 250, 0.2); color:#60a5fa; padding:1px 4px; border-radius:3px; margin-left:5px;">Linked</span>`;
-
-            // 如果是关联模式，我们从 set 里删掉它，方便最后找孤儿
-            if (normCurrentFilesSet.has(normBackendName)) {
-                normCurrentFilesSet.delete(normBackendName);
-            }
-
-            return `
-            <label class="anima-checkbox-item" style="display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid rgba(255,255,255,0.05); cursor:pointer;">
-                <div style="display:flex; align-items:center; overflow:hidden;">
-                    <i class="fa-solid fa-database" style="color:${isCurrentChat ? "var(--anima-primary)" : "#aaa"}; margin-right:8px; flex-shrink:0;"></i>
-                    <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#ddd;" title="${escapeHtml(backendName)}">
-                        ${escapeHtml(backendName)}
-                    </span>
-                    ${badges}
-                </div>
-                <input type="checkbox" class="anima-checkbox collection-checkbox" value="${escapeHtml(backendName)}" ${isChecked ? "checked" : ""}>
-            </label>`;
-        });
-
-        // 4. 处理“孤儿” (仅在不过滤孤儿时显示，例如“关联”模式需要显示出来以便用户解绑)
-        let orphanItems = [];
-        if (!filterOrphans) {
-            // 合并所有关联文件列表进行遍历
-            const allActiveFiles = [...currentChatFiles, ...currentKbFiles];
-
-            orphanItems = allActiveFiles
-                .filter((f) => normCurrentFilesSet.has(normalizeId(f))) // 剩下的就是孤儿
-                .map(
-                    (orphanName) => `
+      orphanItems = allActiveFiles
+        .filter((f) => normCurrentFilesSet.has(normalizeId(f))) // 剩下的就是孤儿
+        .map(
+          (orphanName) => `
                 <label class="anima-checkbox-item" style="display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid rgba(255,255,255,0.05); cursor:pointer; opacity: 0.7;">
                     <div style="display:flex; align-items:center; overflow:hidden;">
                         <i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b; margin-right:8px; flex-shrink:0;"></i>
@@ -1578,13 +1572,13 @@ function bindRagEvents(settings) {
                     </div>
                     <input type="checkbox" class="anima-checkbox collection-checkbox" value="${escapeHtml(orphanName)}" checked>
                 </label>`,
-                );
-        }
+        );
+    }
 
-        const finalListHtml = [...listItems, ...orphanItems].join("");
+    const finalListHtml = [...listItems, ...orphanItems].join("");
 
-        // 5. 渲染弹窗
-        const modalContent = `
+    // 5. 渲染弹窗
+    const modalContent = `
         <div style="margin-bottom:10px; font-size:12px; color:#aaa;">
             请选择目标数据库：
         </div>
@@ -1597,342 +1591,372 @@ function bindRagEvents(settings) {
         </div>
         `;
 
-        showRagModal(title, modalContent);
+    showRagModal(title, modalContent);
 
-        // 绑定确认
-        $(document)
-            .off("click", "#btn_generic_confirm")
-            .on("click", "#btn_generic_confirm", () => {
-                const selected = [];
-                $(".collection-checkbox:checked").each(function () {
-                    selected.push($(this).val());
-                });
+    $("#anima-rag-modal-body")
+      .off("click", ".btn-delete-db-modal")
+      .on("click", ".btn-delete-db-modal", async function (e) {
+        e.stopPropagation(); // 防止冒泡触发 checkbox 勾选
+        const dbId = $(this).data("id");
 
-                // 关闭弹窗
-                $("#anima-rag-modal").addClass("hidden");
+        if (
+          !confirm(
+            `⚠️ 严重警告：\n\n确定要物理删除数据库 "${dbId}" 吗？\n此操作将彻底删除服务器上的文件，不可恢复！`,
+          )
+        )
+          return;
 
-                // 执行回调
-                if (onConfirm) onConfirm(selected);
+        // UI 交互反馈
+        const $btn = $(this);
+        const originHtml = $btn.html();
+        $btn
+          .html('<i class="fa-solid fa-spinner fa-spin"></i>')
+          .prop("disabled", true);
+
+        try {
+          // 动态导入删除逻辑
+          const { deleteCollection } = await import("./rag_logic.js");
+          const res = await deleteCollection(dbId);
+
+          if (res && res.success) {
+            toastr.success("已物理删除: " + dbId);
+            // 移除 UI 行
+            $btn.closest("div").fadeOut(300, function () {
+              $(this).remove();
             });
+          } else {
+            toastr.error("删除失败");
+            $btn.html(originHtml).prop("disabled", false);
+          }
+        } catch (err) {
+          toastr.error("删除出错: " + err.message);
+          $btn.html(originHtml).prop("disabled", false);
+        }
+      });
 
-        // 绑定取消
-        $(".anima-close-rag-modal").on("click", () =>
-            $("#anima-rag-modal").addClass("hidden"),
-        );
-    }
-
-    $("#rag_btn_import")
-        .off("click")
-        .on("click", () => {
-            openDatabaseSelector({
-                title: "管理数据库关联",
-                confirmText: "确认关联",
-                filterOrphans: false, // 显示孤儿以便解绑
-                onConfirm: async (selectedIds) => {
-                    // 🟢 核心修改：分流保存逻辑
-                    const newKbFiles = [];
-                    const newChatFiles = [];
-
-                    selectedIds.forEach((id) => {
-                        if (id.startsWith("kb_")) {
-                            newKbFiles.push(id);
-                        } else {
-                            newChatFiles.push(id);
-                        }
-                    });
-
-                    // 分别保存
-                    await saveChatKbFiles(newKbFiles);
-                    await saveChatRagFiles(newChatFiles);
-
-                    // 刷新界面
-                    const ctx = SillyTavern.getContext();
-                    // 注意：此时不需要传参数，因为 renderUnifiedFileList 会自己读 Metadata
-                    renderUnifiedFileList();
-
-                    toastr.success(
-                        `关联已更新: ${newChatFiles.length} 个记录, ${newKbFiles.length} 个知识库`,
-                    );
-                },
-            });
+    // 绑定确认
+    $(document)
+      .off("click", "#btn_generic_confirm")
+      .on("click", "#btn_generic_confirm", () => {
+        const selected = [];
+        $(".collection-checkbox:checked").each(function () {
+          selected.push($(this).val());
         });
 
-    $("#rag_btn_download_zip")
-        .off("click")
-        .on("click", () => {
-            openDatabaseSelector({
-                title: "选择要导出的数据库 (Export)",
-                confirmText: `<i class="fa-solid fa-file-arrow-down"></i> 导出选定`,
-                filterOrphans: true,
-                onConfirm: async (selectedIds) => {
-                    if (selectedIds.length === 0)
-                        return toastr.warning("未选择任何数据库");
+        // 关闭弹窗
+        $("#anima-rag-modal").addClass("hidden");
 
-                    const $btn = $("#rag_btn_download_zip");
-                    const originalHtml = $btn.html();
-                    $btn.prop("disabled", true).html(
-                        '<i class="fa-solid fa-spinner fa-spin"></i> 处理中...',
-                    );
+        // 执行回调
+        if (onConfirm) onConfirm(selected);
+      });
 
-                    // 定义类型强转，防止 VSCode 报错
-                    const safeToastr = /** @type {any} */ (toastr);
+    // 绑定取消
+    $(".anima-close-rag-modal").on("click", () =>
+      $("#anima-rag-modal").addClass("hidden"),
+    );
+  }
 
-                    // 提示开始
-                    const total = selectedIds.length;
-                    safeToastr.info(
-                        `准备导出 ${total} 个数据库，请允许浏览器下载多个文件...`,
-                    );
+  $("#rag_btn_import")
+    .off("click")
+    .on("click", () => {
+      openDatabaseSelector({
+        title: "管理数据库关联",
+        confirmText: "确认关联",
+        filterOrphans: false, // 显示孤儿以便解绑
+        onConfirm: async (selectedIds) => {
+          // 🟢 核心修改：分流保存逻辑
+          const newKbFiles = [];
+          const newChatFiles = [];
 
-                    // 🔥 核心逻辑：串行循环下载
-                    // 我们使用 for...of 循环 + await，一个个下，防止浏览器同时弹太多请求被拦截
-                    for (let i = 0; i < total; i++) {
-                        const dbName = selectedIds[i];
+          selectedIds.forEach((id) => {
+            if (id.startsWith("kb_")) {
+              newKbFiles.push(id);
+            } else {
+              newChatFiles.push(id);
+            }
+          });
 
-                        try {
-                            // 显示当前正在处理哪个
-                            const progressToast = safeToastr.info(
-                                `正在导出 (${i + 1}/${total}): ${dbName}`,
-                                "",
-                                { timeOut: 2000 },
-                            );
+          // 分别保存
+          await saveChatKbFiles(newKbFiles);
+          await saveChatRagFiles(newChatFiles);
 
-                            // 调用封装好的下载函数 (返回 Promise)
-                            await downloadSingleCollection(dbName);
+          // 刷新界面
+          const ctx = SillyTavern.getContext();
+          // 注意：此时不需要传参数，因为 renderUnifiedFileList 会自己读 Metadata
+          renderUnifiedFileList();
 
-                            // 稍微等待一下，给浏览器喘息时间，防止被判定为恶意弹窗
-                            if (i < total - 1) {
-                                await new Promise((r) => setTimeout(r, 1000));
-                            }
-                        } catch (err) {
-                            toastr.error(
-                                `数据库 ${dbName} 导出失败: ${err.message}`,
-                            );
-                        }
-                    }
-
-                    $btn.prop("disabled", false).html(originalHtml);
-                    toastr.success("所有导出任务已完成");
-                },
-            });
-        });
-
-    function downloadSingleCollection(dbName) {
-        return new Promise((resolve, reject) => {
-            $.ajax({
-                type: "POST",
-                url: "/api/plugins/anima-rag/export_collection", // 调用单个导出接口
-                data: JSON.stringify({ collectionId: dbName }),
-                contentType: "application/json",
-                xhrFields: { responseType: "blob" }, // 关键：二进制流
-                success: function (blob) {
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = `${dbName}_backup.zip`;
-                    document.body.appendChild(a);
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    document.body.removeChild(a);
-                    resolve();
-                },
-                error: function (xhr) {
-                    let errMsg = xhr.statusText;
-                    if (xhr.response instanceof Blob) {
-                        const reader = new FileReader();
-                        reader.onload = function () {
-                            // 🔥 修复：强制类型断言，告诉编辑器 this.result 是 string
-                            const errorText = /** @type {string} */ (
-                                this.result
-                            );
-                            reject(new Error(errorText || "未知错误"));
-                        };
-                        reader.readAsText(xhr.response);
-                    } else {
-                        reject(new Error(errMsg));
-                    }
-                },
-            });
-        });
-    }
-    // 1. 点击按钮触发 input
-    $("#rag_btn_upload_zip")
-        .off("click")
-        .on("click", () => {
-            $("#rag_input_import_zip").click();
-        });
-    // 2. 监听文件选择
-    $("#rag_input_import_zip")
-        .off("change")
-        .on("change", async function () {
-            const file = this.files[0];
-            if (!file) return;
-
-            // 重置 input value
-            $(this).val("");
-
-            const dbName = file.name.replace(/\.zip$/i, "");
-            if (!dbName) return toastr.error("文件名无效");
-
-            // A. 预检查：使用 $.ajax
-            $.ajax({
-                type: "POST",
-                url: "/api/plugins/anima-rag/check_collection_exists",
-                data: JSON.stringify({ collectionId: dbName }),
-                contentType: "application/json",
-                success: function (checkData) {
-                    let force = false;
-                    if (checkData.exists) {
-                        if (
-                            !confirm(
-                                `数据库 "${dbName}" 已存在于服务器。\n\n是否覆盖？(原有数据将丢失)`,
-                            )
-                        ) {
-                            return; // 用户取消
-                        }
-                        force = true;
-                    }
-
-                    // 开始读取文件
-                    readFileAndUpload(file, dbName, force);
-                },
-                error: function (xhr) {
-                    toastr.error("检查文件状态失败: " + xhr.responseText);
-                },
-            });
-        });
-
-    // 辅助函数：读取并上传
-    function readFileAndUpload(file, dbName, force) {
-        const reader = new FileReader();
-        reader.onload = function (e) {
-            const base64Content = e.target.result;
-
-            // 类型转换，防止 VSCode 报错
-            const safeToastr = /** @type {any} */ (toastr);
-            const loadingToast = safeToastr.info("正在上传并解压...", "", {
-                timeOut: 0,
-            });
-
-            // B. 上传：使用 $.ajax
-            $.ajax({
-                type: "POST",
-                url: "/api/plugins/anima-rag/import_collection",
-                data: JSON.stringify({
-                    collectionId: dbName,
-                    zipData: base64Content,
-                    force: force,
-                }),
-                contentType: "application/json",
-                success: function (uploadResult) {
-                    if (safeToastr.clear) safeToastr.clear(loadingToast);
-
-                    if (uploadResult.success) {
-                        toastr.success(`导入成功: ${dbName}`);
-
-                        // 刷新列表
-                        const context = SillyTavern.getContext();
-                        if (context.chatId) {
-                            const currentFiles = getChatRagFiles() || [];
-                            renderFileList(currentFiles, context.chatId);
-                        }
-                    } else {
-                        toastr.error("导入失败");
-                    }
-                },
-                error: function (xhr) {
-                    if (safeToastr.clear) safeToastr.clear(loadingToast);
-                    toastr.error(
-                        "上传错误: " + (xhr.responseText || xhr.statusText),
-                    );
-                },
-            });
-        };
-        reader.readAsDataURL(file);
-    }
-    $("#rag_btn_kb_import").on("click", () => {
-        $("#rag_input_knowledge_file").click();
+          toastr.success(
+            `关联已更新: ${newChatFiles.length} 个记录, ${newKbFiles.length} 个知识库`,
+          );
+        },
+      });
     });
 
-    // 监听文件选择
-    // 🟢 [新增] 知识库文件上传处理
-    $("#rag_input_knowledge_file")
-        .off("change")
-        .on("change", async function () {
-            const files = this.files;
-            if (!files || files.length === 0) return;
+  $("#rag_btn_download_zip")
+    .off("click")
+    .on("click", () => {
+      openDatabaseSelector({
+        title: "选择要导出的数据库 (Export)",
+        confirmText: `<i class="fa-solid fa-file-arrow-down"></i> 导出选定`,
+        filterOrphans: true,
+        onConfirm: async (selectedIds) => {
+          if (selectedIds.length === 0)
+            return toastr.warning("未选择任何数据库");
 
-            // 获取当前配置 (切片参数)
-            const currentSettings = getRagSettings(); // 确保你导出了这个或在作用域内
+          const $btn = $("#rag_btn_download_zip");
+          const originalHtml = $btn.html();
+          $btn
+            .prop("disabled", true)
+            .html('<i class="fa-solid fa-spinner fa-spin"></i> 处理中...');
 
-            const safeToastr = /** @type {any} */ (toastr);
-            safeToastr.info(`正在处理 ${files.length} 个文档，请稍候...`, "", {
-                timeOut: 0,
-            });
+          // 定义类型强转，防止 VSCode 报错
+          const safeToastr = /** @type {any} */ (toastr);
 
-            const newKbIds = [];
+          // 提示开始
+          const total = selectedIds.length;
+          safeToastr.info(
+            `准备导出 ${total} 个数据库，请允许浏览器下载多个文件...`,
+          );
 
-            // 引入 rag_logic 中的上传函数
-            const { uploadKnowledgeBase } = await import("./rag_logic.js");
+          // 🔥 核心逻辑：串行循环下载
+          // 我们使用 for...of 循环 + await，一个个下，防止浏览器同时弹太多请求被拦截
+          for (let i = 0; i < total; i++) {
+            const dbName = selectedIds[i];
 
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                try {
-                    // 1. 上传
-                    const result = await uploadKnowledgeBase(
-                        file,
-                        currentSettings,
-                    );
+            try {
+              // 显示当前正在处理哪个
+              const progressToast = safeToastr.info(
+                `正在导出 (${i + 1}/${total}): ${dbName}`,
+                "",
+                { timeOut: 2000 },
+              );
 
-                    if (result.success) {
-                        // 后端返回的 collectionId 是 "kb_xxx"
-                        newKbIds.push(result.collectionId);
-                        toastr.success(`导入成功: ${file.name}`);
-                    }
-                } catch (err) {
-                    toastr.error(`导入失败 ${file.name}: ${err.message}`);
-                }
+              // 调用封装好的下载函数 (返回 Promise)
+              await downloadSingleCollection(dbName);
+
+              // 稍微等待一下，给浏览器喘息时间，防止被判定为恶意弹窗
+              if (i < total - 1) {
+                await new Promise((r) => setTimeout(r, 1000));
+              }
+            } catch (err) {
+              toastr.error(`数据库 ${dbName} 导出失败: ${err.message}`);
             }
+          }
 
-            // 2. 自动关联到当前聊天
-            if (newKbIds.length > 0) {
-                toastr.info("文档已存入数据库。请在下方列表中手动勾选以启用。");
-                renderUnifiedFileList();
+          $btn.prop("disabled", false).html(originalHtml);
+          toastr.success("所有导出任务已完成");
+        },
+      });
+    });
+
+  function downloadSingleCollection(dbName) {
+    return new Promise((resolve, reject) => {
+      $.ajax({
+        type: "POST",
+        url: "/api/plugins/anima-rag/export_collection", // 调用单个导出接口
+        data: JSON.stringify({ collectionId: dbName }),
+        contentType: "application/json",
+        xhrFields: { responseType: "blob" }, // 关键：二进制流
+        success: function (blob) {
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `${dbName}_backup.zip`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+          resolve();
+        },
+        error: function (xhr) {
+          let errMsg = xhr.statusText;
+          if (xhr.response instanceof Blob) {
+            const reader = new FileReader();
+            reader.onload = function () {
+              // 🔥 修复：强制类型断言，告诉编辑器 this.result 是 string
+              const errorText = /** @type {string} */ (this.result);
+              reject(new Error(errorText || "未知错误"));
+            };
+            reader.readAsText(xhr.response);
+          } else {
+            reject(new Error(errMsg));
+          }
+        },
+      });
+    });
+  }
+  // 1. 点击按钮触发 input
+  $("#rag_btn_upload_zip")
+    .off("click")
+    .on("click", () => {
+      $("#rag_input_import_zip").click();
+    });
+  // 2. 监听文件选择
+  $("#rag_input_import_zip")
+    .off("change")
+    .on("change", async function () {
+      const file = this.files[0];
+      if (!file) return;
+
+      // 重置 input value
+      $(this).val("");
+
+      const dbName = file.name.replace(/\.zip$/i, "");
+      if (!dbName) return toastr.error("文件名无效");
+
+      // A. 预检查：使用 $.ajax
+      $.ajax({
+        type: "POST",
+        url: "/api/plugins/anima-rag/check_collection_exists",
+        data: JSON.stringify({ collectionId: dbName }),
+        contentType: "application/json",
+        success: function (checkData) {
+          let force = false;
+          if (checkData.exists) {
+            if (
+              !confirm(
+                `数据库 "${dbName}" 已存在于服务器。\n\n是否覆盖？(原有数据将丢失)`,
+              )
+            ) {
+              return; // 用户取消
             }
+            force = true;
+          }
 
-            // 清空 input 允许重复上传同名文件
-            $(this).val("");
-            safeToastr.clear();
-        });
+          // 开始读取文件
+          readFileAndUpload(file, dbName, force);
+        },
+        error: function (xhr) {
+          toastr.error("检查文件状态失败: " + xhr.responseText);
+        },
+      });
+    });
 
-    // 查看按钮
-    $("#rag_btn_kb_view").on("click", async () => {
-        // 1. 获取所有可用数据库
-        let allCollections = [];
+  // 辅助函数：读取并上传
+  function readFileAndUpload(file, dbName, force) {
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      const base64Content = e.target.result;
+
+      // 类型转换，防止 VSCode 报错
+      const safeToastr = /** @type {any} */ (toastr);
+      const loadingToast = safeToastr.info("正在上传并解压...", "", {
+        timeOut: 0,
+      });
+
+      // B. 上传：使用 $.ajax
+      $.ajax({
+        type: "POST",
+        url: "/api/plugins/anima-rag/import_collection",
+        data: JSON.stringify({
+          collectionId: dbName,
+          zipData: base64Content,
+          force: force,
+        }),
+        contentType: "application/json",
+        success: function (uploadResult) {
+          if (safeToastr.clear) safeToastr.clear(loadingToast);
+
+          if (uploadResult.success) {
+            toastr.success(`导入成功: ${dbName}`);
+
+            // 刷新列表
+            const context = SillyTavern.getContext();
+            if (context.chatId) {
+              const currentFiles = getChatRagFiles() || [];
+              renderFileList(currentFiles, context.chatId);
+            }
+          } else {
+            toastr.error("导入失败");
+          }
+        },
+        error: function (xhr) {
+          if (safeToastr.clear) safeToastr.clear(loadingToast);
+          toastr.error("上传错误: " + (xhr.responseText || xhr.statusText));
+        },
+      });
+    };
+    reader.readAsDataURL(file);
+  }
+  $("#rag_btn_kb_import").on("click", () => {
+    $("#rag_input_knowledge_file").click();
+  });
+
+  // 监听文件选择
+  // 🟢 [新增] 知识库文件上传处理
+  $("#rag_input_knowledge_file")
+    .off("change")
+    .on("change", async function () {
+      const files = this.files;
+      if (!files || files.length === 0) return;
+
+      // 获取当前配置 (切片参数)
+      const currentSettings = getRagSettings(); // 确保你导出了这个或在作用域内
+
+      const safeToastr = /** @type {any} */ (toastr);
+      safeToastr.info(`正在处理 ${files.length} 个文档，请稍候...`, "", {
+        timeOut: 0,
+      });
+
+      const newKbIds = [];
+
+      // 引入 rag_logic 中的上传函数
+      const { uploadKnowledgeBase } = await import("./rag_logic.js");
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
         try {
-            const { getAvailableCollections } = await import("./rag_logic.js");
-            allCollections = await getAvailableCollections();
-        } catch (e) {
-            toastr.error("无法获取数据库列表");
-            return;
+          // 1. 上传
+          const result = await uploadKnowledgeBase(file, currentSettings);
+
+          if (result.success) {
+            // 后端返回的 collectionId 是 "kb_xxx"
+            newKbIds.push(result.collectionId);
+            toastr.success(`导入成功: ${file.name}`);
+          }
+        } catch (err) {
+          toastr.error(`导入失败 ${file.name}: ${err.message}`);
         }
+      }
 
-        // 2. 筛选 kb_ 开头的
-        const kbCollections = allCollections.filter((id) =>
-            id.startsWith("kb_"),
-        );
+      // 2. 自动关联到当前聊天
+      if (newKbIds.length > 0) {
+        toastr.info("文档已存入数据库。请在下方列表中手动勾选以启用。");
+        renderUnifiedFileList();
+      }
 
-        if (kbCollections.length === 0) {
-            toastr.info("暂无知识库文件");
-            return;
-        }
+      // 清空 input 允许重复上传同名文件
+      $(this).val("");
+      safeToastr.clear();
+    });
 
-        // 🟢 [UI修复] 添加样式覆盖，强制对齐
-        // 关键点：height: 32px (与按钮一致), vertical-align: middle, box-sizing: border-box
-        const inputFixStyle =
-            "height:32px !important; min-height:32px; line-height:30px; box-sizing:border-box; padding: 0 5px; vertical-align:middle; font-size:13px;";
+  // 查看按钮
+  $("#rag_btn_kb_view").on("click", async () => {
+    // 1. 获取所有可用数据库
+    let allCollections = [];
+    try {
+      const { getAvailableCollections } = await import("./rag_logic.js");
+      allCollections = await getAvailableCollections();
+    } catch (e) {
+      toastr.error("无法获取数据库列表");
+      return;
+    }
 
-        // 3. 构建弹窗 HTML 骨架
-        const modalHtml = `
+    // 2. 筛选 kb_ 开头的
+    const kbCollections = allCollections.filter((id) => id.startsWith("kb_"));
+
+    if (kbCollections.length === 0) {
+      toastr.info("暂无知识库文件");
+      return;
+    }
+
+    // 🟢 [UI修复] 添加样式覆盖，强制对齐
+    // 关键点：height: 32px (与按钮一致), vertical-align: middle, box-sizing: border-box
+    const inputFixStyle =
+      "height:32px !important; min-height:32px; line-height:30px; box-sizing:border-box; padding: 0 5px; vertical-align:middle; font-size:13px;";
+
+    // 3. 构建弹窗 HTML 骨架
+    const modalHtml = `
             <div style="display:flex; gap:10px; align-items:center; margin-bottom:15px; background:rgba(0,0,0,0.2); padding:10px; border-radius:6px;">
                 <div style="flex-shrink:0; font-weight:bold; color:#ddd; height:32px; line-height:32px;">选择知识库:</div>
                 <select id="rag_kb_viewer_select" class="anima-select" style="flex:1; ${inputFixStyle} margin:0;">
@@ -1958,63 +1982,58 @@ function bindRagEvents(settings) {
             </style>
         `;
 
-        showRagModal("📚 知识库查看器 (Knowledge Base Viewer)", modalHtml);
+    showRagModal("📚 知识库查看器 (Knowledge Base Viewer)", modalHtml);
 
-        // 4. 定义加载内容的函数
-        const loadKbContent = async (collectionId) => {
-            const $container = $("#rag_kb_viewer_content");
-            $container.html(
-                '<div style="text-align:center; padding:20px;"><i class="fa-solid fa-spinner fa-spin"></i> 加载切片中...</div>',
-            );
+    // 4. 定义加载内容的函数
+    const loadKbContent = async (collectionId) => {
+      const $container = $("#rag_kb_viewer_content");
+      $container.html(
+        '<div style="text-align:center; padding:20px;"><i class="fa-solid fa-spinner fa-spin"></i> 加载切片中...</div>',
+      );
 
-            try {
-                // 🟢 [网络修复] 将 fetch 替换为 $.ajax 以复用 ST 的 Token 和 Cookie
-                const data = await new Promise((resolve, reject) => {
-                    $.ajax({
-                        type: "POST",
-                        url: "/api/plugins/anima-rag/view_collection",
-                        data: JSON.stringify({ collectionId }),
-                        contentType: "application/json",
-                        success: (resp) => resolve(resp),
-                        error: (xhr) =>
-                            reject(
-                                new Error(
-                                    xhr.responseText ||
-                                        xhr.statusText ||
-                                        "Request failed",
-                                ),
-                            ),
-                    });
-                });
+      try {
+        // 🟢 [网络修复] 将 fetch 替换为 $.ajax 以复用 ST 的 Token 和 Cookie
+        const data = await new Promise((resolve, reject) => {
+          $.ajax({
+            type: "POST",
+            url: "/api/plugins/anima-rag/view_collection",
+            data: JSON.stringify({ collectionId }),
+            contentType: "application/json",
+            success: (resp) => resolve(resp),
+            error: (xhr) =>
+              reject(
+                new Error(
+                  xhr.responseText || xhr.statusText || "Request failed",
+                ),
+              ),
+          });
+        });
 
-                if (!data.items || data.items.length === 0) {
-                    $container.html(
-                        '<div style="text-align:center; color:#aaa; padding:20px;">此数据库为空</div>',
-                    );
-                    return;
-                }
+        if (!data.items || data.items.length === 0) {
+          $container.html(
+            '<div style="text-align:center; color:#aaa; padding:20px;">此数据库为空</div>',
+          );
+          return;
+        }
 
-                // 排序逻辑：按 chunk_index 排序
-                data.items.sort((a, b) => {
-                    const idxA = a.metadata?.chunk_index ?? 999999;
-                    const idxB = b.metadata?.chunk_index ?? 999999;
-                    return idxA - idxB;
-                });
+        // 排序逻辑：按 chunk_index 排序
+        data.items.sort((a, b) => {
+          const idxA = a.metadata?.chunk_index ?? 999999;
+          const idxB = b.metadata?.chunk_index ?? 999999;
+          return idxA - idxB;
+        });
 
-                // 渲染列表
-                const listHtml = data.items
-                    .map((item, idx) => {
-                        const meta = item.metadata || {};
-                        const chunkIndex =
-                            meta.chunk_index !== undefined
-                                ? meta.chunk_index
-                                : "N/A";
-                        // 截取前50个字符作为标题预览
-                        const preview =
-                            (item.text || "").slice(0, 50).replace(/\n/g, " ") +
-                            "...";
+        // 渲染列表
+        const listHtml = data.items
+          .map((item, idx) => {
+            const meta = item.metadata || {};
+            const chunkIndex =
+              meta.chunk_index !== undefined ? meta.chunk_index : "N/A";
+            // 截取前50个字符作为标题预览
+            const preview =
+              (item.text || "").slice(0, 50).replace(/\n/g, " ") + "...";
 
-                        return `
+            return `
                     <div class="kb-slice-item">
                         <div class="kb-slice-header">
                             <div style="display:flex; align-items:center; gap:10px; overflow:hidden;">
@@ -2025,137 +2044,137 @@ function bindRagEvents(settings) {
                         </div>
                         <div class="kb-slice-body">${escapeHtml(item.text)}</div>
                     </div>`;
-                    })
-                    .join("");
+          })
+          .join("");
 
-                $container.html(`
+        $container.html(`
                     <div style="margin-bottom:10px; font-size:12px; color:#aaa;">
                         共找到 ${data.items.length} 个切片 (按 Index 排序)
                     </div>
                     ${listHtml}
                 `);
 
-                // 绑定折叠/展开
-                $container.find(".kb-slice-header").on("click", function () {
-                    const $body = $(this).next(".kb-slice-body");
-                    const $icon = $(this).find(".fa-chevron-down");
-                    if ($body.is(":visible")) {
-                        $body.slideUp(100);
-                        $icon.css("transform", "rotate(0deg)");
-                    } else {
-                        $body.slideDown(100);
-                        $icon.css("transform", "rotate(180deg)");
-                    }
-                });
-            } catch (err) {
-                console.error(err);
-                $container.html(
-                    `<div style="text-align:center; color:#ef4444; padding:20px;">加载失败: ${err.message}</div>`,
-                );
-            }
-        };
-
-        // ... (后续绑定事件代码不变)
-        // 5. 绑定下拉框事件
-        $("#rag_kb_viewer_select").on("change", function () {
-            const val = $(this).val();
-            if (val) loadKbContent(val);
+        // 绑定折叠/展开
+        $container.find(".kb-slice-header").on("click", function () {
+          const $body = $(this).next(".kb-slice-body");
+          const $icon = $(this).find(".fa-chevron-down");
+          if ($body.is(":visible")) {
+            $body.slideUp(100);
+            $icon.css("transform", "rotate(0deg)");
+          } else {
+            $body.slideDown(100);
+            $icon.css("transform", "rotate(180deg)");
+          }
         });
+      } catch (err) {
+        console.error(err);
+        $container.html(
+          `<div style="text-align:center; color:#ef4444; padding:20px;">加载失败: ${err.message}</div>`,
+        );
+      }
+    };
 
-        // 刷新按钮
-        $("#rag_kb_viewer_refresh").on("click", () => {
-            const val = $("#rag_kb_viewer_select").val();
-            if (val) loadKbContent(val);
-        });
+    // ... (后续绑定事件代码不变)
+    // 5. 绑定下拉框事件
+    $("#rag_kb_viewer_select").on("change", function () {
+      const val = $(this).val();
+      if (val) loadKbContent(val);
     });
-    // --- 策略导入/导出逻辑 ---
 
-    // 1. 导出策略
-    $("#rag_strategy_export")
-        .off("click")
-        .on("click", function () {
-            // 导出包含：策略详情、基础计数、门槛分数、倍率、以及依赖的节日/生理配置
-            const exportData = {
-                base_count: settings.base_count,
-                min_score: settings.min_score,
-                strategy_settings: settings.strategy_settings,
-                holidays: settings.holidays,
-                period_config: settings.period_config,
-                distributed_retrieval: settings.distributed_retrieval,
-                virtual_time_mode: settings.virtual_time_mode,
-            };
+    // 刷新按钮
+    $("#rag_kb_viewer_refresh").on("click", () => {
+      const val = $("#rag_kb_viewer_select").val();
+      if (val) loadKbContent(val);
+    });
+  });
+  // --- 策略导入/导出逻辑 ---
 
-            const blob = new Blob([JSON.stringify(exportData, null, 4)], {
-                type: "application/json",
-            });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `rag_strategy_${new Date().toISOString().slice(0, 10)}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            toastr.success("包含节日/基础计数的完整策略已导出");
-        });
+  // 1. 导出策略
+  $("#rag_strategy_export")
+    .off("click")
+    .on("click", function () {
+      // 导出包含：策略详情、基础计数、门槛分数、倍率、以及依赖的节日/生理配置
+      const exportData = {
+        base_count: settings.base_count,
+        min_score: settings.min_score,
+        strategy_settings: settings.strategy_settings,
+        holidays: settings.holidays,
+        period_config: settings.period_config,
+        distributed_retrieval: settings.distributed_retrieval,
+        virtual_time_mode: settings.virtual_time_mode,
+      };
 
-    // 2. 触发导入点击
-    $("#rag_strategy_import")
-        .off("click")
-        .on("click", () => {
-            $("#rag_input_strategy_json").click();
-        });
+      const blob = new Blob([JSON.stringify(exportData, null, 4)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `rag_strategy_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toastr.success("包含节日/基础计数的完整策略已导出");
+    });
 
-    // 3. 处理导入文件读取
-    $("#rag_input_strategy_json")
-        .off("change")
-        .on("change", function (e) {
-            const file = e.target.files[0];
-            if (!file) return;
+  // 2. 触发导入点击
+  $("#rag_strategy_import")
+    .off("click")
+    .on("click", () => {
+      $("#rag_input_strategy_json").click();
+    });
 
-            const reader = new FileReader();
-            reader.onload = async (e) => {
-                // 使用 async 以便处理可能的异步保存
-                try {
-                    const importedData = JSON.parse(e.target.result);
+  // 3. 处理导入文件读取
+  $("#rag_input_strategy_json")
+    .off("change")
+    .on("change", function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
 
-                    // 1. 深度合并数据到当前的 settings 对象
-                    // 确保基础字段和 strategy_settings 都能被覆盖
-                    Object.assign(settings, importedData);
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        // 使用 async 以便处理可能的异步保存
+        try {
+          const importedData = JSON.parse(e.target.result);
 
-                    // 2. 刷新表格外的“静态”输入框 (这些不在 renderStrategyTable 渲染范围内)
-                    $("#rag_base_count").val(settings.base_count || 2);
-                    $("#rag_min_score").val(settings.min_score || 0.5);
-                    $("#rag_multiplier").val(
-                        settings.strategy_settings?.candidate_multiplier || 2,
-                    );
+          // 1. 深度合并数据到当前的 settings 对象
+          // 确保基础字段和 strategy_settings 都能被覆盖
+          Object.assign(settings, importedData);
 
-                    // 同步开关状态并手动触发 change 事件（以处理 UI 的显隐联动）
-                    $("#rag_distributed_switch")
-                        .prop("checked", !!settings.distributed_retrieval)
-                        .trigger("change");
-                    $("#rag_virtual_time_switch").prop(
-                        "checked",
-                        !!settings.virtual_time_mode,
-                    );
+          // 2. 刷新表格外的“静态”输入框 (这些不在 renderStrategyTable 渲染范围内)
+          $("#rag_base_count").val(settings.base_count || 2);
+          $("#rag_min_score").val(settings.min_score || 0.5);
+          $("#rag_multiplier").val(
+            settings.strategy_settings?.candidate_multiplier || 2,
+          );
 
-                    // 3. 核心：重新调用渲染函数刷新策略列表
-                    // 这会根据最新的 settings.strategy_settings 和 settings.holidays 生成新表格
-                    renderStrategyTable(settings);
+          // 同步开关状态并手动触发 change 事件（以处理 UI 的显隐联动）
+          $("#rag_distributed_switch")
+            .prop("checked", !!settings.distributed_retrieval)
+            .trigger("change");
+          $("#rag_virtual_time_switch").prop(
+            "checked",
+            !!settings.virtual_time_mode,
+          );
 
-                    // 4. 立即持久化到 SillyTavern 后端
-                    saveRagSettings(settings);
+          // 3. 核心：重新调用渲染函数刷新策略列表
+          // 这会根据最新的 settings.strategy_settings 和 settings.holidays 生成新表格
+          renderStrategyTable(settings);
 
-                    toastr.success("配置已成功导入并自动保存");
+          // 4. 立即持久化到 SillyTavern 后端
+          saveRagSettings(settings);
 
-                    // 可选：如果导入涉及知识库设置变化，可以刷新文件列表
-                    // renderUnifiedFileList();
-                } catch (err) {
-                    console.error("[Anima RAG] Import Error:", err);
-                    toastr.error("导入失败，请检查文件格式: " + err.message);
-                }
-            };
-            reader.readAsText(file);
-            $(this).val(""); // 清空 input 以允许重复导入同一文件
-        });
+          toastr.success("配置已成功导入并自动保存");
+
+          // 可选：如果导入涉及知识库设置变化，可以刷新文件列表
+          // renderUnifiedFileList();
+        } catch (err) {
+          console.error("[Anima RAG] Import Error:", err);
+          toastr.error("导入失败，请检查文件格式: " + err.message);
+        }
+      };
+      reader.readAsText(file);
+      $(this).val(""); // 清空 input 以允许重复导入同一文件
+    });
 }

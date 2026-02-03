@@ -178,13 +178,13 @@ export async function initInterceptor() {
       console.log(`[Anima] 检索 Query Length: ${queryText.length}`);
 
       // 3. 获取近期总结 (用于去重)
-      const recentCount = settings.injection_settings?.recent_count || 0;
+      const recentCount = settings.injection_settings?.recent_count || 2;
       let recentData = { text: "", ids: [] };
 
       if (recentCount > 0) {
         recentData = await getLatestRecentSummaries(recentCount);
       }
-
+      console.log("[Anima Debug] 准备排除的 ID:", recentData.ids);
       // =========================================================
       // 🚀 发起双轨检索 (核心修改)
       // =========================================================

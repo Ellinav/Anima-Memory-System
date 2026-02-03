@@ -561,6 +561,43 @@ export async function insertMemory(
 
     if (response && response.vectorId) {
       console.log(`[Anima] ✅ 向量更新成功. ID: ${response.vectorId}`);
+      try {
+        if (context.chatId && context.chatMetadata) {
+          // 读取当前关联列表 (如果没有则初始化为空数组)
+          const activeFiles =
+            context.chatMetadata["anima_rag_active_files"] || [];
+
+          // 如果列表中还没有这个 ID (注意：collectionId 已经是经过 getSmartCollectionId 处理过的带下划线的 ID)
+          if (!activeFiles.includes(collectionId)) {
+            console.log(
+              `[Anima Auto-Bind] 检测到新数据库连接: ${collectionId}，正在自动绑定...`,
+            );
+
+            // 1. 更新内存中的 metadata
+            activeFiles.push(collectionId);
+            context.chatMetadata["anima_rag_active_files"] = activeFiles;
+
+            // 2. 持久化保存 metadata
+            await context.saveMetadata();
+
+            // 3. (可选) 尝试通知 UI 刷新，如果 rag.js 已经加载
+            // 使用动态导入避免循环依赖
+            import("./rag.js")
+              .then((ui) => {
+                if (ui.initRagSettings && document.getElementById("tab-rag")) {
+                  // 重新初始化以刷新列表显示
+                  ui.initRagSettings();
+                }
+              })
+              .catch((e) => console.warn("[Anima Auto-Bind] UI 刷新跳过:", e));
+          }
+        }
+      } catch (bindErr) {
+        console.warn(
+          "[Anima Auto-Bind] 自动绑定失败，但不影响向量写入:",
+          bindErr,
+        );
+      }
       return response.vectorId;
     } else {
       console.warn("[Anima Debug] ⚠️ 后端返回成功但不包含 vectorId:", response);

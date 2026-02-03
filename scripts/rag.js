@@ -1097,7 +1097,6 @@ function bindRagEvents(settings) {
         depth: parseInt($("#rag_inject_depth").val()) || 0,
         order: parseInt($("#rag_inject_order").val()) || 100,
         recent_count: parseInt($("#rag_inject_recent_count").val()) || 2,
-
         template: $("#rag_inject_template").val(),
       };
 

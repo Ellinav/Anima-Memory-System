@@ -447,6 +447,11 @@ export async function triggerStatusUpdate(targetMsgId) {
         detail: { msgId: targetMsgId, status: "failed_or_skipped" },
       }),
     );
+    // 这会触发 status.js 里的 refreshStatusPanel()，从而检测到变量差异并显示"未同步"
+    if (window.$) {
+      $("#btn-refresh-status").trigger("click");
+      console.log("[Anima] ⚠️ 检测到流程中断，已自动触发面板刷新");
+    }
   };
 
   if (!messages || messages.length === 0) return false;
@@ -922,6 +927,16 @@ export function cancelStatusTimer() {
   if (removeUIOverlay) removeUIOverlay();
   updateTimer = null;
   removeUIOverlay = null;
+
+  // 🟢【新增】取消后自动刷新面板
+  // 这样面板就会重新检查当前楼层，发现没有数据，进而显示"同步"按钮
+  if (window.$) {
+    //稍微延迟一点点，确保倒计时UI彻底消失后再刷新，体验更好
+    setTimeout(() => {
+      $("#btn-refresh-status").trigger("click");
+      console.log("[Anima] 🛑 用户取消更新，已自动触发面板刷新");
+    }, 50);
+  }
 }
 
 export async function handleStatusUpdate() {

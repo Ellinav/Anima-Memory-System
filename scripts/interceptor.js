@@ -12,6 +12,7 @@ import {
   getChatKbFiles,
   getChatRagFiles,
 } from "./rag.js";
+import { getEffectiveSettings } from "./rag_logic.js";
 /**
  * 格式化并排序 RAG 结果 (纯文本版)
  * 仅负责将切片内容拼接，不添加任何硬编码提示词或标签
@@ -145,7 +146,7 @@ export async function initInterceptor() {
     const context = SillyTavern.getContext();
 
     // 获取设置
-    const settings = context.extensionSettings["anima_rag"] || {};
+    const settings = getEffectiveSettings();
 
     // 检查开关
     if (settings.rag_enabled === false) {

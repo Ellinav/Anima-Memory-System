@@ -1,6 +1,63 @@
 import { getAnimaConfig } from "./api.js"; // 引用你在 api.js 写的配置获取函数
 import { processMacros } from "./utils.js";
 
+// [新增] 统一配置获取函数：角色卡配置 > 全局配置
+export function getEffectiveSettings() {
+  const context = SillyTavern.getContext();
+
+  // 1. 获取全局配置 (Key: anima_memory_system -> rag)
+  // 这是 settings.json 里的内容
+  const globalRaw =
+    context.extensionSettings?.["anima_memory_system"]?.rag || {};
+
+  // 兼容处理：如果你全局里的 candidate_multiplier 在根目录，但在逻辑里我们需要它在 strategy_settings 里
+  // 我们手动构造一个标准化的 globalSettings
+  const globalSettings = {
+    ...globalRaw,
+    strategy_settings: {
+      ...(globalRaw.strategy_settings || {}),
+      // 如果 strategy_settings 里没有 multiplier，就去根目录拿，还没有就默认 2
+      candidate_multiplier:
+        globalRaw.strategy_settings?.candidate_multiplier ??
+        globalRaw.candidate_multiplier ??
+        2,
+    },
+  };
+
+  // 2. 获取角色专属配置 (Key: anima_rag_settings)
+  // 这是 角色卡 data.extensions 里的内容
+  let charSettings = {};
+  if (context.characterId && context.characters[context.characterId]) {
+    const charData = context.characters[context.characterId].data;
+
+    // 🎯 核心修复：这里必须读取你实际保存的 Key "anima_rag_settings"
+    if (charData?.extensions?.["anima_rag_settings"]) {
+      charSettings = charData.extensions["anima_rag_settings"];
+      // console.log("[Anima Config] 成功加载角色独立配置 (anima_rag_settings)");
+    }
+  }
+
+  // 3. 深度合并 (Global < Character)
+  const mergedSettings = { ...globalSettings, ...charSettings };
+
+  // 特殊合并：Strategy Settings (确保不会直接覆盖导致丢失)
+  if (globalSettings.strategy_settings || charSettings.strategy_settings) {
+    mergedSettings.strategy_settings = {
+      ...(globalSettings.strategy_settings || {}),
+      ...(charSettings.strategy_settings || {}),
+    };
+  }
+
+  // 特殊合并：数组通常直接覆盖 (Prompt, Holidays 等)
+  if (charSettings.vector_prompt)
+    mergedSettings.vector_prompt = charSettings.vector_prompt;
+  if (charSettings.holidays) mergedSettings.holidays = charSettings.holidays;
+  if (charSettings.period_config)
+    mergedSettings.period_config = charSettings.period_config;
+
+  return mergedSettings;
+}
+
 // ==========================================
 // 🧠 核心逻辑：状态数据与规则引擎 (新增)
 // ==========================================
@@ -188,16 +245,13 @@ function getSimulationDate(settings, animaData) {
   }
 
   if (isVirtual) {
-    console.error(
-      "[Anima RAG] ❌ 虚拟时间获取失败: 变量或聊天记录中未找到有效时间",
+    console.warn(
+      "[Anima RAG] ⚠️ 虚拟时间获取失败: 变量或聊天记录中未找到有效时间，将跳过时间相关策略。",
     );
-    // 方案 A: 抛出错误阻断流程 (推荐，避免错误触发节日)
-    throw new Error(
-      "虚拟时间模式获取时间失败，请在 World Info 或聊天中包含时间信息",
-    );
-    // 方案 B: 返回 null (需要在 checkActiveHoliday 等函数中处理 null)
-    // return null;
+    return null;
   }
+
+  // 如果没开启虚拟时间，默认用真实时间
   return new Date();
 }
 
@@ -467,7 +521,7 @@ export async function insertMemory(
   batchId = null,
 ) {
   const context = SillyTavern.getContext();
-  const settings = context.extensionSettings?.["anima_memory_system"]?.rag;
+  const settings = getEffectiveSettings();
 
   // ✨ [修改点] 智能覆盖 collectionId
   // 如果传入的 collectionId 和当前的 chatId 去掉后缀后一致，说明是在操作当前聊天
@@ -533,7 +587,7 @@ export async function queryDual({
 }) {
   // ============== 总开关拦截 ==============
   const context = SillyTavern.getContext();
-  const settings = context.extensionSettings?.["anima_memory_system"]?.rag;
+  const settings = getEffectiveSettings();
   if (settings && settings.rag_enabled === false) {
     console.warn("[Anima RAG] 总开关已关闭，阻断检索请求。");
     return { chat_results: [], kb_results: [] };
@@ -627,19 +681,28 @@ export async function queryDual({
 
   // --- 智能感知模块 (Context Awareness) ---
   // 0. 获取状态数据
-  const animaData = getAnimaStatusData(); // (注: 需确保此辅助函数在文件上方已定义)
-  // 1. 虚拟时间
-  const simDate = getSimulationDate(settings, animaData); // (注: 需确保此辅助函数已定义)
-  // 2. 节日判定
-  const activeHolidayTags = checkActiveHoliday(settings?.holidays, simDate);
-  // 3. 周期判定
+  const animaData = getAnimaStatusData();
+
+  // 1. 虚拟时间 (现在可能返回 null)
+  const simDate = getSimulationDate(settings, animaData);
+
+  // 2. 节日判定 (🔥 加个 if simDate)
+  let activeHolidayTags = [];
+  if (simDate) {
+    activeHolidayTags = checkActiveHoliday(settings?.holidays, simDate);
+  }
+
+  // 3. 周期判定 (🔥 加个 if simDate)
   const pConfig = settings?.period_config || {};
   let activeTimeTags = [];
   let definedCyclicLabels = [];
+
   if (pConfig.enabled !== false && Array.isArray(pConfig.events)) {
     pConfig.events.forEach((event) => {
       if (event.label) definedCyclicLabels.push(event.label.toLowerCase());
-      if (checkPeriodState(event, simDate)) {
+
+      // 只有当 simDate 存在时，才去计算周期
+      if (simDate && checkPeriodState(event, simDate)) {
         activeTimeTags.push(event.label);
       }
     });

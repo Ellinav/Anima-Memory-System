@@ -679,38 +679,44 @@ export async function saveStatusToMessage(
   console.log("调用堆栈:", new Error().stack); // 🔥 这行代码会告诉你到底是谁调用的
   console.groupEnd();
   console.log(`[Anima Debug] 💾 准备写入状态到楼层 #${msgId}`);
-  let targetMsg = null;
-
   if (window.TavernHelper) {
-      const msgs = window.TavernHelper.getChatMessages("0-{{lastMessageId}}", { include_swipes: false });
-      targetMsg = msgs.find((m) => String(m.message_id) === String(msgId));
-  }
+    try {
+      // 1. 获取聊天记录
+      const msgs = window.TavernHelper.getChatMessages("0-{{lastMessageId}}", {
+        include_swipes: false,
+      });
 
+      // 2. 找到目标消息
+      const targetMsg = msgs.find(
+        (m) => String(m.message_id) === String(msgId),
+      );
+
+      // 3. 【绝对防御】User 楼层禁写锁
       if (targetMsg) {
         const context = SillyTavern.getContext();
         const currentUserName = context.userName;
 
-        // 🟢 增强判断：名字匹配、Role 匹配、is_user 标志
-        // 只要沾一点边，就认为是 User，绝对不准写
+        // 判定是否为 User (名字匹配、Role匹配、is_user标志)
         const isUser =
           targetMsg.is_user === true ||
           targetMsg.role === "user" ||
           (targetMsg.name && targetMsg.name === currentUserName) ||
-          (targetMsg.name && targetMsg.name === "You"); // 有些 ST 版本 User 名字是 You
+          (targetMsg.name && targetMsg.name === "You");
 
         if (isUser) {
           console.error(
             `[Anima Security] 🛑 严重拦截：阻止了向 User 楼层 (#${msgId}) 写入变量！来源: ${updateType}`,
           );
-          // 打印堆栈，看看是哪个不懂事的函数想写 User
-          console.log(new Error().stack);
+          console.log(new Error().stack); // 打印堆栈
 
           if (window.toastr)
             window.toastr.warning(`安全拦截：禁止修改 User 消息`);
-          return; // ❌ 立即终止
+
+          return; // ❌ 立即终止函数执行
         }
       }
     } catch (e) {
+      // 这里的 catch 必须紧跟在 try 的 } 后面，不能有任何其他代码隔开
       console.warn("[Anima Security] 安全检查时发生异常 (非致命):", e);
     }
   }

@@ -540,7 +540,6 @@ export async function triggerStatusUpdate(targetMsgId) {
     });
     window.dispatchEvent(event);
     console.log(`[Anima] Update Complete...`);
-
     return true;
   } catch (e) {
     // 🔥【关键修复 Q2】异常捕获

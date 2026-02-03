@@ -269,45 +269,45 @@ import { objectToYaml } from "./scripts/utils.js";
       // 建议：与其监听 character_message_rendered (可能会在编辑消息时多次触发)
       // 不如重点监听 generation_ended，这是 AI 回复完成的确切时间点
       context.eventSource.on("generation_ended", async () => {
-        // A. 拦截中断情况
         if (wasGenerationStopped) {
+          console.log("[Anima] ⚠️ 检测到生成被中断，跳过所有自动化流程。");
+          return;
+        }
+
+        // 等待 ST 完成数组更新
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        const latestMsgs = window.TavernHelper.getChatMessages(-1);
+        if (!latestMsgs || latestMsgs.length === 0) {
+          console.warn("[Anima] ⚠️ 无法获取最新消息，跳过检查。");
+          return;
+        }
+
+        const lastMsg = latestMsgs[0];
+
+        // 1. 判断是否为 AI 消息
+        // 兼容性写法：检查 role 或 is_user 状态
+        const isAi = lastMsg.role === "assistant" || lastMsg.is_user === false;
+
+        // 🔴【核心修复点】如果最新的消息不是 AI (说明生成失败被回滚了)，直接终止！
+        if (!isAi) {
           console.log(
-            "[Anima] ⚠️ 检测到生成被中断，跳过所有自动化流程 (Status & Summary)。",
+            "[Anima] 🛑 最新消息不是 Assistant (可能是生成出错被回滚)，停止状态更新。",
           );
           return;
         }
 
-        // 🔥【修复核心】增加 50ms 延时，确保 ST 已将回复完全写入历史记录
-        // generation_ended 触发时，有时候内存里的 chat 数组还没来得及更新
-        await new Promise((resolve) => setTimeout(resolve, 50));
+        // 2. 只有确认是 AI 后，才检查完整性
+        // (之前的代码里 checkReplyIntegrity 如果不在 isAi 块里会报错，现在安全了)
+        console.log(
+          `[Anima Debug] 完整性检查: ID=${lastMsg.message_id}, 长度=${lastMsg.message?.length || 0}`,
+        );
 
-        // 🔥【修复核心】改用 TavernHelper 获取最新的 1 条消息
-        // 相比 getContext().chat，这个接口能通过 -1 准确拿到最新的 Message 对象
-        const latestMsgs = window.TavernHelper.getChatMessages(-1);
-
-        if (latestMsgs && latestMsgs.length > 0) {
-          const lastMsg = latestMsgs[0];
-
-          // 兼容检查：确保是 AI 的回复
-          // 根据你提供的类型定义，检查 role === 'assistant' 或 is_user === false
-          const isAi =
-            lastMsg.role === "assistant" || lastMsg.is_user === false;
-
-          if (isAi) {
-            // 打印一下长度，方便排查（如果还是报错，看控制台这个长度是多少）
-            console.log(
-              `[Anima Debug] 完整性检查: ID=${lastMsg.message_id}, 长度=${lastMsg.message?.length || 0}`,
-            );
-
-            if (!checkReplyIntegrity(lastMsg.message)) {
-              console.warn(
-                "[Anima] 🛑 主模型回复未通过完整性检查(过短或截断)，停止自动更新状态。",
-              );
-              return;
-            }
-          }
-        } else {
-          console.warn("[Anima] ⚠️ 无法获取最新消息，跳过检查。");
+        if (!checkReplyIntegrity(lastMsg.message)) {
+          console.warn(
+            "[Anima] 🛑 主模型回复未通过完整性检查(过短或截断)，停止自动更新状态。",
+          );
+          return;
         }
 
         console.log(

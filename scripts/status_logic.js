@@ -951,7 +951,23 @@ export async function handleStatusUpdate() {
 
   // 3. 基础检查：开关是否开启、是否是 AI 消息等
   if (!settings.status_enabled) return;
-  if (lastMsg.is_user) return; // 只有 AI 回复才触发自动更新
+
+  // 获取当前用户名，防止 is_user 字段缺失导致的误判
+  const context = SillyTavern.getContext();
+  const currentUserName = context.userName;
+
+  // 综合判定：只要满足其中一条，就认为是 User 消息
+  const isUser =
+    lastMsg.is_user === true ||
+    lastMsg.role === "user" ||
+    (lastMsg.name && lastMsg.name === currentUserName);
+
+  if (isUser) {
+    console.warn(
+      "[Anima Security] 🛑 拦截：最新楼层被判定为 User，停止状态更新。",
+    );
+    return; // ⛔ 绝对终止
+  }
 
   // 检查回复完整性 (你的防线函数)
   // 注意：如果 checkReplyIntegrity 不在导出的范围内，请确保它在这个文件内能被访问

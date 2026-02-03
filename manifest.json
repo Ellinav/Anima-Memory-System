@@ -5,7 +5,7 @@
   "js": "index.js",
   "css": "style.css",
   "author": "Ellina",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "auto_update": false,
   "minimum_client_version": "1.12.0"
 }

@@ -960,13 +960,29 @@ export async function generateText(promptOrMessages, purpose = "llm") {
       // A. 非流式
       if (!stream) {
         const data = await response.json();
+
+        // 🔥【新增】优先检查厂商返回的错误信息
+        // 很多中转站或 API 会返回 200 OK 但 body 里包含 error
+        if (data.error) {
+          console.error("[Anima] API Error Details:", data.error);
+          const errorMsg =
+            data.error.message || data.error.code || JSON.stringify(data.error);
+          throw new Error(`API 业务错误: ${errorMsg}`);
+        }
+
         const content =
           data.choices?.[0]?.message?.content || data.choices?.[0]?.text;
 
         // 🔥 2. HTTP 200 但内容为空的处理
         if (!content) {
-          console.warn("[Anima] API returned 200 OK but no content:", data);
-          throw new Error("模型返回内容为空 (Empty Response)");
+          // 将原始数据完整打印出来，方便调试
+          console.warn(
+            "[Anima] API returned 200 OK but no content. Raw Data:",
+            JSON.stringify(data, null, 2),
+          );
+          throw new Error(
+            "模型返回内容为空 (请按F12在控制台查看 [Anima] Raw Data)",
+          );
         }
         return content;
       }

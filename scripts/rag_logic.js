@@ -312,32 +312,45 @@ export function getSmartCollectionId() {
     // 去掉 .json 或 .jsonl 后缀
     filename = filename.replace(/\.jsonl?$/i, "");
 
+    // 定义清洗函数（必须与后端逻辑保持一致：空格转下划线）
+    const sanitizeName = (str) => {
+        if (!str) return "";
+        // 将所有非中文、非字母数字、非@.-的字符（包括空格）都替换为下划线
+        return str.replace(/[^a-zA-Z0-9@\-\._\u4e00-\u9fa5]/g, "_");
+    };
+
     // 尝试获取当前角色数据
-    // 利用 raw_character.d.ts 中定义的接口
     let charName = null;
     try {
-        const charData = window.TavernHelper.RawCharacter.find({
+        // 优先尝试 TavernHelper
+        const charData = window.TavernHelper?.RawCharacter?.find({
             name: "current",
         });
         if (charData && charData.name) {
             charName = charData.name;
+        }
+        // 兜底：如果 TavernHelper 没拿到，尝试从 Context 直接读
+        else if (
+            context.characterId &&
+            context.characters &&
+            context.characters[context.characterId]
+        ) {
+            charName = context.characters[context.characterId].name;
         }
     } catch (e) {
         console.warn("[Anima ID] 获取角色名失败:", e);
     }
 
     // 核心判断逻辑：
-    // 如果文件名是以 "数字" 开头的 (例如 "2026-01-30...")，说明 ST 可能剔除了中文名
-    // 此时我们需要手动把 charName 拼上去
+    // 如果文件名是以 "数字" 开头的 (例如 "2026-01-30...")，说明 ST 剔除了中文名
     if (charName && /^\d/.test(filename)) {
-        // 构造新 ID: 角色名_时间
-        // 例如: 这里的 "林黛玉" 会在后端 index.js 被再次处理为 SafeName，所以前端直接传中文没问题
-        return `${charName}_${filename}`;
+        // 🟢 修复点：先清洗角色名，再拼接
+        const safeCharName = sanitizeName(charName);
+        return `${safeCharName}_${filename}`;
     }
 
-    // 如果是英文名，通常文件名已经是 "Assistant_-_2026..." 这种格式，直接用即可
-    // 避免出现 "Assistant_Assistant_-_2026..." 的双重命名
-    return filename;
+    // 如果本身已经是英文名开头，也顺手做一次清洗，确保稳健
+    return sanitizeName(filename);
 }
 
 // 定义后端插件的路由前缀 (SillyTavern 标准)

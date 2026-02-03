@@ -3,12 +3,7 @@ import {
     syncRagSettingsToWorldbook,
 } from "./worldbook_api.js"; // 🟢 引入 updateSummaryContent
 
-import {
-    insertMemory, // 🟢 必须引入：用于刷新/重新向量化
-    deleteMemory, // 🟢 必须引入：用于删除向量
-    getAvailableCollections,
-    deleteCollection,
-} from "./rag_logic.js";
+import { getAvailableCollections, getSmartCollectionId } from "./rag_logic.js";
 import { RegexListComponent, getRegexModalHTML } from "./regex_ui.js";
 import {
     renderStrategyTable,
@@ -106,8 +101,8 @@ export const DEFAULT_RAG_SETTINGS = {
     },
 
     regex_strings: [],
-    skip_layer_zero: false,
-    regex_skip_user: false, // 注意补全这个之前的配置
+    skip_layer_zero: true,
+    regex_skip_user: true, // 注意补全这个之前的配置
     vector_prompt: [{ type: "context", count: 2 }],
     auto_vectorize: true,
     injection_settings: {
@@ -116,7 +111,7 @@ export const DEFAULT_RAG_SETTINGS = {
         role: "system", // system | user | assistant
         depth: 9999,
         order: 100,
-        recent_count: 0,
+        recent_count: 2,
         template:
             "<recalledMemories>\n{{rag}}\n</recalledMemories>\n<immediateHistory>\n{{recent_history}}\n</immediateHistory>",
     },
@@ -126,7 +121,7 @@ export const DEFAULT_RAG_SETTINGS = {
         position: "before_character_definition",
         role: "system",
         depth: 0,
-        template: "以下是相关的设定/知识：\n{{knowledge}}", // 默认模板
+        template: "<knowledge>\n{{knowledge}}\n</knowledge>", // 默认模板
     },
 };
 
@@ -278,23 +273,54 @@ export function initRagSettings() {
     const settings = getRagSettings();
 
     // 1. 获取 Metadata 中的数据
-    let ragFiles = getChatRagFiles(); // 注意：这里可能返回 undefined
+    let ragFiles = getChatRagFiles();
 
-    // 2. 核心逻辑：自动绑定
-    // 条件：(从未设置过 即 undefined) AND (当前有聊天 ID)
-    // 如果是空数组 []，说明用户手动清空过，不应该自动加回来
-    if (ragFiles === undefined && currentChatId) {
-        ragFiles = [currentChatId]; // 自动关联自己
-        saveChatRagFiles(ragFiles); // 保存到 Metadata
-        console.log(
-            `[Anima RAG] 首次初始化，自动绑定当前数据库: ${currentChatId}`,
-        );
-    } else {
-        // 如果不是 undefined，则是数组（可能是空的），兜底设为 []
-        ragFiles = ragFiles || [];
-    }
+    // 🟢 修改点 A：记录是否是初次加载（undefined）
+    const isFirstLoad = ragFiles === undefined;
+
+    // 🟢 修改点 B：不再强行绑定 currentChatId！
+    // 如果是 undefined，就初始化为空数组，保持界面干净
+    ragFiles = ragFiles || [];
 
     renderMainUI(container, settings, ragFiles, currentChatId);
+
+    // 🟢 修改点 C：异步执行“智能发现”逻辑
+    // 只有在从未设置过（FirstLoad）且有聊天ID时才检查
+    if (isFirstLoad && currentChatId) {
+        tryAutoBindExistingDB();
+    }
+}
+
+// 🟢 新增辅助函数：尝试自动绑定已存在的、命名正确的数据库
+async function tryAutoBindExistingDB() {
+    // 1. 获取标准化的后端ID (e.g. "角色名_2023-05-12_...")
+    const smartId = getSmartCollectionId();
+    if (!smartId) return;
+
+    try {
+        // 2. 问后端：你有哪些数据库？
+        const availableDbs = await getAvailableCollections();
+
+        // 3. 检查：我们要找的 smartId 是否真的存在？
+        if (availableDbs && availableDbs.includes(smartId)) {
+            console.log(
+                `[Anima RAG] 发现已存在的同名数据库，自动关联: ${smartId}`,
+            );
+
+            // 4. 存在才关联，并且关联的是 smartId (带下划线的)，不是原始 ID
+            await saveChatRagFiles([smartId]);
+
+            // 5. 刷新界面显示
+            renderUnifiedFileList();
+        } else {
+            console.log(
+                `[Anima RAG] 暂无同名数据库 (${smartId})，保持未关联状态。`,
+            );
+            // 什么都不做，界面保持为空，符合你的要求
+        }
+    } catch (e) {
+        console.warn("[Anima RAG] 自动关联检查失败:", e);
+    }
 }
 
 // ==========================================
@@ -741,7 +767,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                             <div class="anima-input-wrapper">
                                  <input type="number" id="rag_inject_recent_count" class="anima-input" 
                                         style="width: 60px; text-align:center;"
-                                        value="${settings.injection_settings?.recent_count || 0}" min="0" max="10">
+                                        value="${settings.injection_settings?.recent_count || 2}" min="0" max="10">
                                  <span style="font-size:12px; color:#aaa; margin-left:5px;">条</span>
                             </div>
                         </div>
@@ -1091,7 +1117,7 @@ function bindRagEvents(settings) {
                 depth: parseInt($("#rag_inject_depth").val()) || 0,
                 order: parseInt($("#rag_inject_order").val()) || 100,
                 recent_count:
-                    parseInt($("#rag_inject_recent_count").val()) || 1,
+                    parseInt($("#rag_inject_recent_count").val()) || 2,
 
                 template: $("#rag_inject_template").val(),
             };
@@ -1468,21 +1494,10 @@ function bindRagEvents(settings) {
 
         // 2. 获取当前关联状态 (用于高亮 Current)
         const context = SillyTavern.getContext();
+        const smartCurrentId = getSmartCollectionId();
         const currentChatFiles = getChatRagFiles() || [];
         const currentKbFiles = getChatKbFiles() || [];
         const currentChatId = context ? context.chatId : null;
-
-        // ✨ [核心修复] 同步应用 normalizeId 逻辑
-        const isFileMatchCurrent = (dbName) => {
-            if (!currentChatId || !dbName) return false;
-            const rawChatId = currentChatId.replace(/\.jsonl?$/i, "");
-
-            // 清洗双方
-            const normDb = normalizeId(dbName);
-            const normChat = normalizeId(rawChatId);
-
-            return normDb === normChat || normDb.endsWith(normChat);
-        };
 
         // 归一化处理 (仅用于 Linked 判定，Current 判定改用新逻辑)
         const normalizeId = (id) =>
@@ -1506,7 +1521,7 @@ function bindRagEvents(settings) {
             const isLinked = allLinkedSet.has(normBackendName);
 
             // ✨ [修改点] 判断是否是当前 ChatID 对应的库 (支持带前缀的中文名)
-            const isCurrentChat = isFileMatchCurrent(backendName);
+            const isCurrentChat = backendName === smartCurrentId;
 
             // 标记处理：如果是“关联”模式，已关联的默认勾选；如果是“导出”模式，默认不勾选（或者只勾选当前）
             // 这里我们采用灵活策略：外部不传 defaultSelected，让用户自己选，但我们可以高亮

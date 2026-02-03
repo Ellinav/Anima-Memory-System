@@ -278,19 +278,19 @@ function getApiCardHtml(type, title) {
         extraSettingsHtml = `
         <div class="anima-row">
             <div class="anima-col">
-                <label>温度 (Temp)</label>
+                <label>温度</label>
                 <input type="number" class="anima-input" id="anima-${type}-temperature" step="0.1" min="0" max="2" placeholder="${type === "status" ? "0.5" : "1.0"}">
             </div>
             <div class="anima-col">
-                <label>上下文 (Ctx)</label>
+                <label>上下文</label>
                 <input type="number" class="anima-input" id="anima-${type}-context" step="1024" placeholder="32000">
             </div>
             <div class="anima-col">
-                <label>最大输出 (Max)</label>
+                <label>最大输出</label>
                 <input type="number" class="anima-input" id="anima-${type}-maxout" step="128" placeholder="4096">
             </div>
             <div class="anima-col">
-                <label>流式 (Stream)</label>
+                <label>流式</label>
                 <label class="anima-switch-large">
                     <input type="checkbox" id="anima-${type}-stream">
                     <span class="slider round"></span>

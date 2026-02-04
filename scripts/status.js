@@ -1243,18 +1243,26 @@ function initBeautifyModule() {
           return String(val);
         },
       );
-      renderedHtml = `<div style="white-space: pre-wrap; font-family: inherit; line-height: 1.5;">${renderedHtml}</div>`;
+      renderedHtml = renderedHtml
+        .replace(/[\r\n]+/g, "") // 1. 彻底移除所有换行符 (\r 和 \n)
+        .replace(/>\s+</g, "><") // 2. 移除标签之间的空白 (例如 </div>  <div>)
+        .replace(/[\t ]+</g, "<") // 3. 移除标签前的多余缩进
+        .replace(/>[\t ]+/g, ">");
       $textarea.hide();
-      $previewBox.html(renderedHtml).fadeIn(200);
+      $previewBox
+        .html(
+          `<div style="font-family: inherit; line-height: 1.5;">${renderedHtml}</div>`,
+        )
+        .fadeIn(200);
 
-      // (后续按钮样式代码保持不变...)
+      // 按钮样式切换
       $btnPreview.removeClass("primary").addClass("success");
       $btnPreview.html('<i class="fa-solid fa-eye-slash"></i> 退出');
     } else {
       $previewBox.hide();
       $textarea.fadeIn(200);
 
-      // 恢复按钮颜色
+      // 按钮样式恢复
       $btnPreview.removeClass("success").addClass("primary");
       $btnPreview.html('<i class="fa-solid fa-eye"></i> 预览');
     }

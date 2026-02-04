@@ -176,27 +176,28 @@ export function initStatusSettings() {
                 </button>
             </div>
 
-            <div id="anima-zod-test-modal" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(2px); padding: 20px; box-sizing: border-box;">
-                <div style="background: var(--anima-bg-dark, #1f2937); width: 600px; max-width: 100%; height: auto; max-height: 85vh; border: 1px solid var(--anima-border); border-radius: 8px; display: flex; flex-direction: column; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
-                    
-                    <div style="padding: 12px 15px; border-bottom: 1px solid var(--anima-border); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2);">
+            <div id="anima-zod-test-modal" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; display: flex; flex-direction: column; overflow-y: auto; padding: 10px; box-sizing: border-box; backdrop-filter: blur(2px);">
+    
+                <div style="margin: auto; background: var(--anima-bg-dark, #1f2937); width: 600px; max-width: 100%; height: auto; max-height: 90vh; border: 1px solid var(--anima-border); border-radius: 8px; display: flex; flex-direction: column; box-shadow: 0 10px 25px rgba(0,0,0,0.5); position: relative;">
+        
+                    <div style="padding: 12px 15px; border-bottom: 1px solid var(--anima-border); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); flex-shrink: 0;">
                         <div style="font-weight: bold; font-size: 1.1em; color: var(--anima-text-main); display: flex; align-items: center; gap: 8px;">
                             <i class="fa-solid fa-flask"></i> 规则测试台
                         </div>
-                        <div class="anima-close-zod-test" style="cursor: pointer; opacity: 0.7;"><i class="fa-solid fa-xmark"></i></div>
+                        <div class="anima-close-zod-test" style="cursor: pointer; opacity: 0.7; padding: 5px;"><i class="fa-solid fa-xmark"></i></div>
                     </div>
 
-                    <div style="flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;">
+                    <div style="flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; min-height: 0;">
                         
                         <div style="display: flex; flex-direction: column; gap: 5px; flex: 1;">
                             <label class="anima-label-text" style="color: var(--anima-primary);">1. 输入模拟 JSON</label>
                             <textarea id="zod-test-input-json" class="anima-textarea" 
-                                placeholder='在这里粘贴副API可能返回的 JSON，例如：\n{\n  "NPC": {\n    "Sam": { "HP": -100 }\n  }\n}'
-                                style="flex: 1; font-family: monospace; font-size: 12px; resize: none; background: rgba(0,0,0,0.2);"
+                                placeholder='在这里粘贴副API可能返回的 JSON...'
+                                style="flex: 1; min-height: 100px; font-family: monospace; font-size: 12px; resize: none; background: rgba(0,0,0,0.2);"
                             ></textarea>
                         </div>
 
-                        <div style="text-align: center; color: #666; font-size: 14px;">
+                        <div style="text-align: center; color: #666; font-size: 14px; padding: 5px 0;">
                             <i class="fa-solid fa-arrow-down"></i>
                         </div>
 
@@ -204,6 +205,7 @@ export function initStatusSettings() {
                             <label class="anima-label-text" style="color: var(--anima-primary);">2. 测试日志</label>
                             <div id="zod-test-log-output" style="
                                 flex: 1; 
+                                min-height: 100px;
                                 background: #111; 
                                 color: #ccc; 
                                 border: 1px solid #444; 
@@ -213,13 +215,12 @@ export function initStatusSettings() {
                                 font-size: 12px; 
                                 overflow-y: auto; 
                                 white-space: pre-wrap;
-                                min-height: 100px;
                             ">// 点击下方“执行测试”查看结果...</div>
-                        </div>
+                            </div>
 
                     </div>
 
-                    <div style="padding: 12px 15px; border-top: 1px solid var(--anima-border); display: flex; justify-content: flex-end; gap: 10px; background: rgba(0,0,0,0.2);">
+                    <div style="padding: 12px 15px; border-top: 1px solid var(--anima-border); display: flex; justify-content: flex-end; gap: 10px; background: rgba(0,0,0,0.2); flex-shrink: 0;">
                         <button class="anima-close-zod-test anima-btn secondary">退出</button>
                         <button id="btn-run-zod-test" class="anima-btn primary">
                             <i class="fa-solid fa-play"></i> 执行测试
@@ -329,20 +330,21 @@ export function initStatusSettings() {
                 </div>
             </details>
 
-            <div id="anima-history-modal" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9999; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
-                <div style="background: var(--anima-bg-dark, #2b2b2b); width: 400px; max-width: 100%; border: 1px solid var(--anima-border); border-radius: 8px; padding: 15px; display: flex; flex-direction: column; max-height: 80vh;">
-                    
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #444; padding-bottom: 10px;">
+            <div id="anima-history-modal" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9999; display: flex; flex-direction: column; overflow-y: auto; padding: 10px; box-sizing: border-box;">
+    
+                <div style="margin: auto; background: var(--anima-bg-dark, #2b2b2b); width: 400px; max-width: 100%; border: 1px solid var(--anima-border); border-radius: 8px; padding: 15px; display: flex; flex-direction: column; max-height: 80vh; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.5);">
+        
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #444; padding-bottom: 10px; flex-shrink: 0;">
                         <span class="anima-label-text" style="font-size: 1.1em;">选择历史楼层</span>
-                        <div style="cursor: pointer;" id="btn-close-history-modal"><i class="fa-solid fa-xmark"></i></div>
+                        <div style="cursor: pointer; padding: 5px;" id="btn-close-history-modal"><i class="fa-solid fa-xmark"></i></div>
                     </div>
 
                     <div id="history-list-container" style="flex: 1; overflow-y: auto; display:flex; flex-direction:column; gap:5px; min-height: 200px;">
                         <div style="text-align:center; color:#888; margin-top: 20px;">正在加载...</div>
                     </div>
 
-                    <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #444; text-align: right;">
-                         <button id="btn-modal-cancel" class="anima-btn secondary">关闭</button>
+                    <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #444; text-align: right; flex-shrink: 0;">
+                        <button id="btn-modal-cancel" class="anima-btn secondary">关闭</button>
                     </div>
                 </div>
             </div>

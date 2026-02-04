@@ -680,10 +680,10 @@ export async function saveStatusToMessage(
   fullStatusData,
   updateType = "auto",
 ) {
-  console.group(`[Anima Trace] 正在尝试写入楼层 #${msgId}`);
+  /*console.group(`[Anima Trace] 正在尝试写入楼层 #${msgId}`);
   console.log("写入源 (updateType):", updateType);
   console.log("调用堆栈:", new Error().stack); // 🔥 这行代码会告诉你到底是谁调用的
-  console.groupEnd();
+  console.groupEnd();*/
   console.log(`[Anima Debug] 💾 准备写入状态到楼层 #${msgId}`);
   if (window.TavernHelper) {
     try {

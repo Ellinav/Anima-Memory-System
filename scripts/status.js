@@ -2510,11 +2510,16 @@ function bindGlobalEvents() {
   $(window)
     .off("anima:status_updated")
     .on("anima:status_updated", function (e) {
-      console.log("[Anima UI] 接收到更新信号，正在自动刷新...");
       refreshStatusPanel();
 
-      // 如果想要视觉反馈更明显，可以弹个小提示
-      if (window.toastr) window.toastr.success("实时状态已自动更新");
+      // 只有这几种情况才弹窗
+      // 1. manual_ui: 用户手动在面板修改了变量并保存
+      // 2. auto_update_success: 正常的副 API 流程结束 (需在 logic 里传这个 reason)
+      const allowedReasons = ["manual_ui", "auto_update_success"];
+
+      if (allowedReasons.includes(e.detail?.reason) && window.toastr) {
+        window.toastr.success("状态已同步");
+      }
     });
 }
 

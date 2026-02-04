@@ -229,10 +229,36 @@ import { objectToYaml } from "./scripts/utils.js";
       });
 
       // --- 用户消息上屏 ---
-      context.eventSource.on("user_message_rendered", () => {
-        // 💡 关键修改：
-        // 用户消息刚上屏 -> 主 API 正在请求中 -> 强制让 Anima 等待 2.5秒
-        // 这样就实现了你想要的“错峰”请求，不需要等待主API完全回复，但避开了并发高峰
+      context.eventSource.on("user_message_rendered", async (messageId) => {
+        // 🔥【新增】: 零容忍清洗。User 楼层绝对不允许持有 anima_data。
+        // 哪怕是 ST 核心或其他插件写进去的，只要是 User，一律删。
+        try {
+          // 如果 messageId 传进来了就用，没传就由 TavernHelper 找
+          const targetId = messageId || -1;
+          // 注意：这里我们不做 isUser 判断了，因为事件名就是 user_message_rendered
+          const vars = window.TavernHelper.getVariables({
+            type: "message",
+            message_id: targetId,
+          });
+
+          if (vars && vars.anima_data) {
+            console.warn(
+              `[Anima] 🧹 发现 User 楼层(#${targetId}) 被非法注入变量，正在执行【瞬杀】...`,
+            );
+            const clean = { ...vars };
+            delete clean.anima_data;
+            // 使用 await 确保在生成开始前清理完毕
+            await window.TavernHelper.replaceVariables(clean, {
+              type: "message",
+              message_id: targetId,
+            });
+            console.log("[Anima] ✅ User 楼层已净化。");
+          }
+        } catch (e) {
+          console.warn("[Anima] User净化失败:", e);
+        }
+
+        // ... 原有的 triggerAutomationCheck 代码保持不变 ...
         triggerAutomationCheck("user_message_rendered", 2500);
       });
 
@@ -253,34 +279,25 @@ import { objectToYaml } from "./scripts/utils.js";
         try {
           const msgs = window.TavernHelper.getChatMessages(-1);
           if (msgs && msgs.length > 0) {
-            const userMsg = msgs[0]; // 生成开始时，最新的一条肯定是用户的消息
-
-            // 再次确认是 User (防止误判)
-            const isUser =
-              userMsg.is_user ||
-              userMsg.role === "user" ||
-              String(userMsg.name).toLowerCase() === "you";
+            const userMsg = msgs[0]; 
+            
+            // 再次确认是 User
+            const isUser = userMsg.is_user || userMsg.role === "user" || String(userMsg.name).toLowerCase() === "you";
 
             if (isUser) {
               const vars = window.TavernHelper.getVariables({
                 type: "message",
                 message_id: userMsg.message_id,
               });
-              if (
-                vars &&
-                vars.anima_data &&
-                Object.keys(vars.anima_data).length > 0
-              ) {
-                console.warn(
-                  `[Anima] 🧹 生成开始：发现 User 楼层(#${userMsg.message_id}) 携带幽灵变量，正在净化...`,
-                );
-
-                // 深拷贝并移除 anima_data
-                const cleanVars = JSON.parse(JSON.stringify(vars));
+              
+              // 只要有 anima_data，不管是不是一样的，直接删
+              if (vars && vars.anima_data) {
+                console.warn(`[Anima] 🛑 生成前哨战：发现 User 楼层(#${userMsg.message_id}) 携带脏数据，强制清除！`);
+                const cleanVars = { ...vars };
                 delete cleanVars.anima_data;
-
-                // 立即覆写
-                window.TavernHelper.replaceVariables(cleanVars, {
+                
+                // 注意：这里虽然在事件里用 await 可能阻塞不了 ST 核心，但值得一试
+                await window.TavernHelper.replaceVariables(cleanVars, {
                   type: "message",
                   message_id: userMsg.message_id,
                 });
@@ -427,68 +444,27 @@ import { objectToYaml } from "./scripts/utils.js";
         }
 
         if (isAi) {
-          try {
-            // 1. 偷看一眼新楼层有没有变量
-            const ghostVars = window.TavernHelper.getVariables({
-              type: "message",
-              message_id: lastMsg.message_id,
-            });
-
-            if (
-              ghostVars &&
-              ghostVars.anima_data &&
-              Object.keys(ghostVars.anima_data).length > 0
-            ) {
-              console.log(
-                `[Anima] 👻 警报：新生成楼层(#${lastMsg.message_id}) 居然自带了变量！正在核实身份...`,
-              );
-
-              // 2. 找前一个“干净”的 AI 状态作为对比
-              // latestMsgs[0] 是当前(脏?), latestMsgs[1] 是 User, latestMsgs[2] 通常是上一个 AI
-              // 我们遍历找第一个非 User 的旧消息
-              const prevAiMsg = latestMsgs
-                .slice(1)
-                .find((m) => !m.is_user && m.role !== "user");
-
-              if (prevAiMsg) {
-                const prevVars = window.TavernHelper.getVariables({
-                  type: "message",
-                  message_id: prevAiMsg.message_id,
-                });
-
-                const ghostJson = JSON.stringify(ghostVars.anima_data);
-                const prevJson =
-                  prevVars && prevVars.anima_data
-                    ? JSON.stringify(prevVars.anima_data)
-                    : "{}";
-
-                // 3. 鉴定：如果数据完全一样，说明是系统误复制的 (Ghost)
-                if (ghostJson === prevJson) {
-                  console.warn(
-                    "[Anima] 🧹 鉴定完毕：确认为系统自动克隆的幽灵数据，执行强制清除！",
-                  );
-
-                  // 4. 斩杀：保留其他插件的数据，只移除 anima_data
-                  const cleanData = { ...ghostVars };
-                  delete cleanData.anima_data;
-
-                  await window.TavernHelper.replaceVariables(cleanData, {
+            try {
+                const ghostVars = window.TavernHelper.getVariables({
                     type: "message",
                     message_id: lastMsg.message_id,
-                  });
-                  console.log(
-                    "[Anima] ✅ AI 楼层净化完毕，现在它是干净的白纸了。",
-                  );
-                } else {
-                  console.log(
-                    "[Anima] ⚠️ 新楼层变量与旧楼层不同，可能是手动编辑产生，跳过清理。",
-                  );
+                });
+
+                if (ghostVars && ghostVars.anima_data) {
+                    console.warn(`[Anima] 👻 捕获 AI 楼层(#${lastMsg.message_id}) 的幽灵数据，执行无条件斩杀。`);
+                    
+                    const cleanData = { ...ghostVars };
+                    delete cleanData.anima_data; // 移除脏数据
+                    
+                    await window.TavernHelper.replaceVariables(cleanData, {
+                        type: "message",
+                        message_id: lastMsg.message_id
+                    });
+                    console.log("[Anima] ✅ AI 楼层已重置为白板状态。");
                 }
-              }
+            } catch (e) {
+                console.warn("[Anima] 斩杀失败:", e);
             }
-          } catch (e) {
-            console.warn("[Anima] 幽灵猎杀逻辑异常 (非致命):", e);
-          }
         }
         // 2. 只有确认是 AI 后，才检查完整性
         // (之前的代码里 checkReplyIntegrity 如果不在 isAi 块里会报错，现在安全了)

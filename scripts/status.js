@@ -359,7 +359,7 @@ export function initStatusSettings() {
   };
 
   const combinedPromptHtml = `
-        <h2 class="anima-title" style="margin-top: 25px;"><i class="fa-solid fa-layer-group"></i> 状态更新提示词构建</h2>
+        <h2 class="anima-title" style="margin-top: 25px;"><i class="fa-solid fa-layer-group"></i>状态更新提示词</h2>
         <div class="anima-card">
             
             <div style="margin-bottom: 20px;">
@@ -414,7 +414,7 @@ export function initStatusSettings() {
             <div>
                 <div class="anima-flex-row" style="justify-content: space-between; margin-bottom: 15px; align-items: center;">
                     <div>
-                        <div class="anima-label-text"><i class="fa-solid fa-list-ol"></i> 提示词序列构建</div>
+                        <div class="anima-label-text"><i class="fa-solid fa-list-ol"></i>状态提示词预设</div>
                         <div class="anima-desc-inline">组装发送给副 API 的最终 Payload。</div>
                     </div>
                     <div style="display: flex; gap: 8px;">
@@ -2396,7 +2396,7 @@ function initHistoryModule() {
 function bindGlobalEvents() {
   $("#btn-add-status-prompt").on("click", (e) => {
     // 【核心修改】简化为只添加普通规则
-    currentSettings.prompt_rules.push({
+    currentSettings.prompt_rules.unshift({
       role: "system",
       title: "新规则",
       content: "",

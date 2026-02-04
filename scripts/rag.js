@@ -954,10 +954,10 @@ function bindRagEvents(settings) {
   // --- 提示词事件 ---
   $("#rag_btn_add_prompt_item").on("click", () => {
     // 🟢 修改：添加时显式指定 type: "text"，防止预览时被忽略
-    settings.vector_prompt.push({
+    settings.vector_prompt.unshift({
       role: "system",
+      title: "新规则",
       content: "",
-      type: "text",
     });
     renderPromptList(settings.vector_prompt);
   });

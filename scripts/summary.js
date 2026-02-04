@@ -711,7 +711,11 @@ function bindSummaryEvents() {
   renderPromptList();
   $("#anima-btn-add-msg").on("click", () => {
     const settings = getSummarySettings();
-    settings.summary_messages.push({ role: "user", content: "" });
+    settings.summary_messages.unshift({
+      role: "system",
+      title: "新规则",
+      content: "",
+    });
     renderPromptList();
   });
 

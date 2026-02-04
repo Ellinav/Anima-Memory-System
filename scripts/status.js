@@ -831,6 +831,10 @@ export function refreshStatusPanel() {
     // 5. 【核心修复】按钮显隐控制 (加强版)
     if ($syncBtn.length > 0) {
       if (shouldShowSyncBtn) {
+        // 🔥【新增】强制重置图标为“云朵”
+        // 防止上次点击后留下的 fa-spinner 还在转
+        $syncBtn.find("i").attr("class", "fa-solid fa-cloud-arrow-up");
+
         $syncBtn
           .css("display", "flex")
           .removeClass("anima-spin-out")
@@ -2990,8 +2994,10 @@ function initFloatingSyncButton() {
     initialLeft = rect.left;
     initialTop = rect.top;
 
-    // 阻止默认事件 (防止手机滚动)
-    // e.preventDefault(); // 注：有时候阻止默认会让点击失效，视情况而定
+    // 🟢【修改1】手机端核心修复：必须阻止默认行为，否则长按会触发菜单/滚动，导致无法拖动
+    if (e.type === "touchstart" && e.cancelable) {
+      e.preventDefault();
+    }
   });
 
   $(document).on("mousemove touchmove", function (e) {
@@ -3016,12 +3022,24 @@ function initFloatingSyncButton() {
       left: initialLeft + dx + "px",
       top: initialTop + dy + "px",
     });
+
+    // 🟢【修改2】防止拖动时页面跟着滚动
+    if (e.type === "touchmove" && e.cancelable) {
+      e.preventDefault();
+    }
   });
 
   $(document).on("mouseup touchend", function (e) {
     if (!isDragging) return;
     isDragging = false;
     $btn.css({ cursor: "grab", transition: "opacity 0.3s ease" });
+
+    // 🟢【修改3】手机端点击修复：
+    // 因为在 touchstart 里用了 preventDefault()，浏览器的原生 click 事件被杀死了。
+    // 所以如果手指抬起时没有发生移动 (!hasMoved)，我们需要手动触发 click。
+    if (e.type === "touchend" && !hasMoved) {
+      $btn.trigger("click");
+    }
   });
 
   // 4. 点击事件 (核心：如果是拖动结束，则不触发同步)

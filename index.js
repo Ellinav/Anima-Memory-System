@@ -233,9 +233,7 @@ import { objectToYaml } from "./scripts/utils.js";
         // 🔥【新增】: 零容忍清洗。User 楼层绝对不允许持有 anima_data。
         // 哪怕是 ST 核心或其他插件写进去的，只要是 User，一律删。
         try {
-          // 如果 messageId 传进来了就用，没传就由 TavernHelper 找
           const targetId = messageId || -1;
-          // 注意：这里我们不做 isUser 判断了，因为事件名就是 user_message_rendered
           const vars = window.TavernHelper.getVariables({
             type: "message",
             message_id: targetId,
@@ -247,12 +245,20 @@ import { objectToYaml } from "./scripts/utils.js";
             );
             const clean = { ...vars };
             delete clean.anima_data;
-            // 使用 await 确保在生成开始前清理完毕
+
             await window.TavernHelper.replaceVariables(clean, {
               type: "message",
               message_id: targetId,
             });
-            console.log("[Anima] ✅ User 楼层已净化。");
+
+            // 🔥【新增】: 杀完之后，告诉 UI 赶紧刷新，不要显示脏数据了
+            window.dispatchEvent(
+              new CustomEvent("anima:status_updated", {
+                detail: { msgId: targetId, reason: "user_cleanup" },
+              }),
+            );
+
+            console.log("[Anima] ✅ User 楼层已净化并通知 UI 刷新。");
           }
         } catch (e) {
           console.warn("[Anima] User净化失败:", e);
@@ -307,6 +313,14 @@ import { objectToYaml } from "./scripts/utils.js";
                   type: "message",
                   message_id: userMsg.message_id,
                 });
+                window.dispatchEvent(
+                  new CustomEvent("anima:status_updated", {
+                    detail: {
+                      msgId: userMsg.message_id,
+                      reason: "pre_gen_cleanup",
+                    },
+                  }),
+                );
               }
             }
           }
@@ -462,13 +476,25 @@ import { objectToYaml } from "./scripts/utils.js";
               );
 
               const cleanData = { ...ghostVars };
-              delete cleanData.anima_data; // 移除脏数据
+              delete cleanData.anima_data;
 
               await window.TavernHelper.replaceVariables(cleanData, {
                 type: "message",
                 message_id: lastMsg.message_id,
               });
-              console.log("[Anima] ✅ AI 楼层已重置为白板状态。");
+
+              // 🔥【新增】: 关键！通知 UI 刚才的数据是假的，现在它是白板了
+              // UI 收到这个事件后，会重绘，发现当前楼层无数据 -> 显示“未同步/红色感叹号”
+              window.dispatchEvent(
+                new CustomEvent("anima:status_updated", {
+                  detail: {
+                    msgId: lastMsg.message_id,
+                    reason: "ghost_cleanup",
+                  },
+                }),
+              );
+
+              console.log("[Anima] ✅ AI 楼层已重置为白板状态并通知 UI。");
             }
           } catch (e) {
             console.warn("[Anima] 斩杀失败:", e);

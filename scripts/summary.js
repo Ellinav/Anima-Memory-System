@@ -396,7 +396,7 @@ function getAutomationHTML(settings) {
             <i class="fa-solid fa-floppy-disk"></i> 保存配置
         </button>
         <button id="anima-btn-simulate-trigger" class="anima-btn secondary" style="flex:1;">
-            <i class="fa-solid fa-bug"></i> 模拟下一次触发
+            <i class="fa-solid fa-bug"></i> 模拟触发
         </button>
     </div>`;
 }
@@ -1261,7 +1261,7 @@ function renderHistoryPage() {
                 <div class="anima-history-meta" style="flex:1;">
                     <span style="color:#fbbf24; font-weight:bold; margin-right:8px;">#${displayId}</span>
                     <span style="color:#aaa; font-size:12px; margin-right:8px;">[${escapeHtml(item.entryName)}]</span>
-                    <span style="color:#666; font-size:12px;">楼层 ${item.range_start}-${item.range_end}</span>
+                    <span style="color:#666; font-size:12px;">${item.range_start}-${item.range_end}</span>
                 </div>
                 
                 <div class="anima-history-actions" style="display:flex; align-items:center; gap:5px;">

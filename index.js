@@ -249,6 +249,48 @@ import { objectToYaml } from "./scripts/utils.js";
           return;
         }
         isGenerationActive = true;
+
+        try {
+          const msgs = window.TavernHelper.getChatMessages(-1);
+          if (msgs && msgs.length > 0) {
+            const userMsg = msgs[0]; // 生成开始时，最新的一条肯定是用户的消息
+
+            // 再次确认是 User (防止误判)
+            const isUser =
+              userMsg.is_user ||
+              userMsg.role === "user" ||
+              String(userMsg.name).toLowerCase() === "you";
+
+            if (isUser) {
+              const vars = window.TavernHelper.getVariables({
+                type: "message",
+                message_id: userMsg.message_id,
+              });
+              if (
+                vars &&
+                vars.anima_data &&
+                Object.keys(vars.anima_data).length > 0
+              ) {
+                console.warn(
+                  `[Anima] 🧹 生成开始：发现 User 楼层(#${userMsg.message_id}) 携带幽灵变量，正在净化...`,
+                );
+
+                // 深拷贝并移除 anima_data
+                const cleanVars = JSON.parse(JSON.stringify(vars));
+                delete cleanVars.anima_data;
+
+                // 立即覆写
+                window.TavernHelper.replaceVariables(cleanVars, {
+                  type: "message",
+                  message_id: userMsg.message_id,
+                });
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[Anima] 净化逻辑异常:", e);
+        }
+
         console.log("[Anima] 🔒 生成开始，锁定自动化触发器。");
         if (debounceTimer) {
           console.log("[Anima] 🚨 生成开始，强制取消挂起的自动化检查定时器。");
@@ -298,6 +340,43 @@ import { objectToYaml } from "./scripts/utils.js";
         }
 
         const lastMsg = latestMsgs[0];
+
+        // 如果成功生成，latestMsgs[0]是AI，latestMsgs[1]是User
+        // 如果生成失败，latestMsgs[0]是User
+        // 我们通通扫描一遍最近的2条消息，只要发现 User 带着 anima_data 就干掉
+
+        try {
+          const checkQueue = latestMsgs.slice(0, 2); // 检查最近两条
+          for (const msg of checkQueue) {
+            const isUser =
+              msg.is_user ||
+              msg.role === "user" ||
+              String(msg.name).toLowerCase() === "you";
+            if (isUser) {
+              const vars = window.TavernHelper.getVariables({
+                type: "message",
+                message_id: msg.message_id,
+              });
+              if (
+                vars &&
+                vars.anima_data &&
+                Object.keys(vars.anima_data).length > 0
+              ) {
+                console.warn(
+                  `[Anima] 🧹 生成结束：检测到 User 楼层(#${msg.message_id}) 脏数据，执行清理。`,
+                );
+                const clean = JSON.parse(JSON.stringify(vars));
+                delete clean.anima_data;
+                await window.TavernHelper.replaceVariables(clean, {
+                  type: "message",
+                  message_id: msg.message_id,
+                });
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[Anima] 回溯净化失败:", e);
+        }
 
         // 1. 判断是否为 AI 消息
         // 兼容性写法：检查 role 或 is_user 状态
@@ -377,7 +456,7 @@ import { objectToYaml } from "./scripts/utils.js";
         } catch (e) {
           console.error("[Anima] Post-generation status update failed:", e);
         }
-      });
+      };);
 
       context.eventSource.on("message_edited", (payload) => {
         // payload 通常是 messageId

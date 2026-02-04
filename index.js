@@ -456,7 +456,7 @@ import { objectToYaml } from "./scripts/utils.js";
         } catch (e) {
           console.error("[Anima] Post-generation status update failed:", e);
         }
-      };);
+      });
 
       context.eventSource.on("message_edited", (payload) => {
         // payload 通常是 messageId

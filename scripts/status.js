@@ -176,18 +176,17 @@ export function initStatusSettings() {
                 </button>
             </div>
 
-            <div id="anima-zod-test-modal" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 10px; box-sizing: border-box; backdrop-filter: blur(2px);">
-    
-                <div style="background: var(--anima-bg-dark, #1f2937); width: 600px; max-width: 100%; height: auto; max-height: 90vh; border: 1px solid var(--anima-border); border-radius: 8px; display: flex; flex-direction: column; box-shadow: 0 10px 25px rgba(0,0,0,0.5); position: relative;">
-        
-                    <div style="padding: 12px 15px; border-bottom: 1px solid var(--anima-border); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); flex-shrink: 0;">
-                        <div style="font-weight: bold; font-size: 1.1em; color: var(--anima-text-main); display: flex; align-items: center; gap: 8px;">
+            <div id="anima-zod-test-modal" class="anima-modal hidden">
+                <div class="anima-modal-content" style="max-width: 600px;">
+                    
+                    <div class="anima-modal-header">
+                        <div style="font-weight: bold; font-size: 1.1em; display: flex; align-items: center; gap: 8px;">
                             <i class="fa-solid fa-flask"></i> 规则测试台
                         </div>
-                        <div class="anima-close-zod-test" style="cursor: pointer; opacity: 0.7; padding: 5px;"><i class="fa-solid fa-xmark"></i></div>
+                        <span class="anima-close-zod-test anima-close-modal">&times;</span>
                     </div>
 
-                    <div style="flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; min-height: 0;">
+                    <div class="anima-modal-body" style="display: flex; flex-direction: column; gap: 10px; min-height: 300px;">
                         
                         <div style="display: flex; flex-direction: column; gap: 5px; flex: 1;">
                             <label class="anima-label-text" style="color: var(--anima-primary);">1. 输入模拟 JSON</label>
@@ -205,7 +204,7 @@ export function initStatusSettings() {
                             <label class="anima-label-text" style="color: var(--anima-primary);">2. 测试日志</label>
                             <div id="zod-test-log-output" style="
                                 flex: 1; 
-                                min-height: 100px;
+                                min-height: 150px;
                                 background: #111; 
                                 color: #ccc; 
                                 border: 1px solid #444; 
@@ -216,11 +215,11 @@ export function initStatusSettings() {
                                 overflow-y: auto; 
                                 white-space: pre-wrap;
                             ">// 点击下方“执行测试”查看结果...</div>
-                            </div>
+                        </div>
 
                     </div>
 
-                    <div style="padding: 12px 15px; border-top: 1px solid var(--anima-border); display: flex; justify-content: flex-end; gap: 10px; background: rgba(0,0,0,0.2); flex-shrink: 0;">
+                    <div class="anima-modal-footer">
                         <button class="anima-close-zod-test anima-btn secondary">退出</button>
                         <button id="btn-run-zod-test" class="anima-btn primary">
                             <i class="fa-solid fa-play"></i> 执行测试
@@ -330,19 +329,21 @@ export function initStatusSettings() {
                 </div>
             </details>
 
-            <div id="anima-history-modal" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 10px; box-sizing: border-box;">
-    
-                <div style="background: var(--anima-bg-dark, #2b2b2b); width: 400px; max-width: 100%; height: auto; max-height: 85vh; border: 1px solid var(--anima-border); border-radius: 8px; padding: 15px; display: flex; flex-direction: column; position: relative; box-shadow: 0 5px 15px rgba(0,0,0,0.5);">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #444; padding-bottom: 10px; flex-shrink: 0;">
+            <div id="anima-history-modal" class="anima-modal hidden">
+                <div class="anima-modal-content" style="max-width: 450px;">
+                    
+                    <div class="anima-modal-header">
                         <span class="anima-label-text" style="font-size: 1.1em;">选择历史楼层</span>
-                        <div style="cursor: pointer; padding: 5px;" id="btn-close-history-modal"><i class="fa-solid fa-xmark"></i></div>
+                        <span id="btn-close-history-modal" class="anima-close-modal">&times;</span>
                     </div>
 
-                    <div id="history-list-container" style="flex: 1; overflow-y: auto; display:flex; flex-direction:column; gap:5px; min-height: 200px;">
-                        <div style="text-align:center; color:#888; margin-top: 20px;">正在加载...</div>
+                    <div class="anima-modal-body" style="padding: 10px;">
+                        <div id="history-list-container" style="flex: 1; overflow-y: auto; display:flex; flex-direction:column; gap:5px; min-height: 300px; max-height: 60vh;">
+                            <div style="text-align:center; color:#888; margin-top: 20px;">正在加载...</div>
+                        </div>
                     </div>
 
-                    <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #444; text-align: right; flex-shrink: 0;">
+                    <div class="anima-modal-footer">
                         <button id="btn-modal-cancel" class="anima-btn secondary">关闭</button>
                     </div>
                 </div>
@@ -1686,18 +1687,18 @@ function initZodModule() {
       $testInput.val('{\n  "example_key": value\n}');
     }
 
-    $testModal.css("display", "flex").hide().fadeIn(200);
+    $testModal.removeClass("hidden");
   });
 
   // 2. 关闭弹窗 (按钮 + 背景点击)
   $(".anima-close-zod-test").on("click", (e) => {
     e.preventDefault();
-    $testModal.fadeOut(200);
+    $testModal.addClass("hidden");
   });
 
   $testModal.on("click", function (e) {
     if (e.target === this) {
-      $(this).fadeOut(200);
+      $(this).addClass("hidden");
     }
   });
 
@@ -1988,7 +1989,9 @@ function initHistoryModule() {
   // 1. 打开弹窗 (选择楼层)
   $btnOpenModal.on("click", (e) => {
     e.preventDefault();
-    $modal.css("display", "flex");
+    // 【关键修改】使用 class 切换
+    $modal.removeClass("hidden");
+
     // 扫描并渲染列表
     const floors = scanChatForStatus();
     renderModalList(floors);
@@ -1997,10 +2000,10 @@ function initHistoryModule() {
   // 2. 关闭弹窗
   $btnCloseModal.on("click", (e) => {
     e.preventDefault();
-    $modal.hide();
+    $modal.addClass("hidden");
   });
   $modal.on("click", (e) => {
-    if (e.target === $modal[0]) $modal.hide();
+    if (e.target === $modal[0]) $modal.addClass("hidden");
   });
 
   // 3. 渲染弹窗列表逻辑
@@ -2038,7 +2041,7 @@ function initHistoryModule() {
       $item.on("click", async (e) => {
         e.preventDefault();
         await loadFloorStatus(floor.id);
-        $modal.hide();
+        $modal.addClass("hidden");
       });
 
       $listContainer.append($item);

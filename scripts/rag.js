@@ -1029,7 +1029,8 @@ function bindRagEvents(settings) {
         base_count: parseInt($("#rag_base_count").val()) || 2,
         min_score: parseFloat($("#rag_min_score").val()) || 0.5,
         auto_vectorize: $("#rag_auto_vectorize").prop("checked"),
-
+        skip_layer_zero: $("#rag_skip_layer_zero").prop("checked"), // 跳过开场白
+        regex_skip_user: $("#rag_regex_skip_user").prop("checked"),
         // 角色项
         distributed_retrieval: $("#rag_distributed_switch").prop("checked"),
         virtual_time_mode: $("#rag_virtual_time_switch").prop("checked"),

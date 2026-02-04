@@ -310,7 +310,7 @@ import { objectToYaml } from "./scripts/utils.js";
 
         // C. 取消上一轮的倒计时 (如果有)
         console.log("[Anima] 🚨 检测到新请求，重置状态标志并取消倒计时。");
-        cancelStatusTimer();
+        cancelStatusTimer(true);
       });
 
       context.eventSource.on("generation_stopped", () => {
@@ -318,7 +318,7 @@ import { objectToYaml } from "./scripts/utils.js";
         wasGenerationStopped = true;
         isGenerationActive = false;
         // 既然停止了，自然也要取消倒计时（虽然此时通常还没开始倒计时，但作为防御）
-        cancelStatusTimer();
+        cancelStatusTimer(true);
       });
       // --- 生成结束 (最可靠的触发点) ---
       // 建议：与其监听 character_message_rendered (可能会在编辑消息时多次触发)

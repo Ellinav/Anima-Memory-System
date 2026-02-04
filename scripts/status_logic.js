@@ -924,26 +924,27 @@ export async function previewStatusPayload() {
 let updateTimer = null;
 let removeUIOverlay = null;
 
-export function cancelStatusTimer() {
+export function cancelStatusTimer(silent = false) {
   if (updateTimer) clearTimeout(updateTimer);
   if (removeUIOverlay) removeUIOverlay();
   updateTimer = null;
   removeUIOverlay = null;
 
-  // 🟢【新增】取消后自动刷新面板
-  // 这样面板就会重新检查当前楼层，发现没有数据，进而显示"同步"按钮
-  if (window.$) {
-    //稍微延迟一点点，确保倒计时UI彻底消失后再刷新，体验更好
+  // 只有在非静默模式（即用户手动点击取消）时，才触发 UI 刷新
+  if (!silent && window.$) {
     setTimeout(() => {
       $("#btn-refresh-status").trigger("click");
       console.log("[Anima] 🛑 用户取消更新，已自动触发面板刷新");
     }, 50);
+  } else {
+    // 系统自动调用时，只清理定时器，不碰 UI
+    // console.log("[Anima] 🛑 计时器已静默重置");
   }
 }
 
 export async function handleStatusUpdate() {
   // 1. 清理旧状态
-  cancelStatusTimer();
+  cancelStatusTimer(true);
 
   // 2. 获取最新消息
   const msgs = window.TavernHelper.getChatMessages(-1);

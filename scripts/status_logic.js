@@ -431,6 +431,7 @@ async function constructStatusPrompt(statusConfig, contextData, targetMsgId) {
 
 export async function triggerStatusUpdate(targetMsgId) {
   console.log(`[Anima Status] 🚀 Trigger Update for Msg #${targetMsgId}`);
+  window.dispatchEvent(new CustomEvent("anima:status_sync_start"));
   const statusConfig = getStatusSettings();
   const contextData = getContextData();
 
@@ -1002,6 +1003,14 @@ export async function handleStatusUpdate() {
     !checkReplyIntegrity(lastMsg.message || "")
   ) {
     return;
+  }
+
+  if (window.dispatchEvent) {
+    window.dispatchEvent(
+      new CustomEvent("anima:status_updated", {
+        detail: { reason: "check_visibility" },
+      }),
+    );
   }
 
   // 4. 定义执行动作

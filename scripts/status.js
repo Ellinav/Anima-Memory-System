@@ -834,7 +834,8 @@ export function refreshStatusPanel() {
       if (shouldShowSyncBtn) {
         // 🔥【新增】强制重置图标为“云朵”
         // 防止上次点击后留下的 fa-spinner 还在转
-        $syncBtn.find("i").attr("class", "fa-solid fa-cloud-arrow-up");
+        if ($syncBtn.find)
+          $syncBtn.find("i").attr("class", "fa-solid fa-cloud-arrow-up");
 
         $syncBtn
           .css("display", "flex")

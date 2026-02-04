@@ -1137,7 +1137,6 @@ export function initStatusMacro() {
     try {
       // 1. 变量替换
       let finalOutput = template.replace(/{{\s*([^\s}]+)\s*}}/g, (m, path) => {
-        // 2. 处理 key:: 前缀
         if (path.startsWith("key::")) {
           const targetPath = path.replace("key::", "").trim();
 
@@ -1198,7 +1197,7 @@ export function initStatusMacro() {
 
         // D. 实在找不到，显示 N/A
         return "N/A";
-      };);
+      });
 
       // 2. HTML 压缩 (消除空行间隙)
       finalOutput = finalOutput

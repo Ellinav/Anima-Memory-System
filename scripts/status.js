@@ -74,8 +74,9 @@ export function initStatusSettings() {
   const yamlModuleHtml = `
         <h2 class="anima-title"><i class="fa-solid fa-heart-pulse"></i> 实时状态</h2>
         <div class="anima-card">
-            <div class="anima-flex-row" style="justify-content: space-between; margin-bottom: 5px; align-items: center;">
-                <div style="display:flex; flex-direction:column;">
+            <div class="anima-flex-row" style="justify-content: space-between; margin-bottom: 5px; align-items: center; flex-wrap: wrap; gap: 10px;">
+                
+                <div style="display:flex; flex-direction:column; min-width: 120px;">
                     <label class="anima-label-text">状态信息 (YAML)</label>
                     <div style="font-size: 12px; color: #aaa; display:flex; gap: 10px; margin-top:2px;">
                         <span title="当前状态数据的来源楼层">
@@ -87,21 +88,21 @@ export function initStatusSettings() {
                     </div>
                 </div>
                 
-                <div id="status-yaml-actions-view" style="display:flex; gap:5px;">
-                    <button id="btn-refresh-status" class="anima-btn secondary small" title="刷新UI显示 (不请求API)">
+                <div id="status-yaml-actions-view" style="display:flex; gap:5px; flex-shrink: 0;">
+                    <button id="btn-refresh-status" class="anima-btn secondary small" title="刷新UI显示 (不请求API)" style="white-space: nowrap;">
                         <i class="fa-solid fa-rotate-right"></i> 刷新
                     </button>
-                    <button id="btn-sync-status" class="anima-btn secondary small" title="请求副API进行增量更新 (Sync)">
+                    <button id="btn-sync-status" class="anima-btn secondary small" title="请求副API进行增量更新 (Sync)" style="white-space: nowrap;">
                         <i class="fa-solid fa-cloud-arrow-down"></i> 同步
                     </button>
-                    <button id="anima-btn-edit-status" class="anima-btn primary small" title="手动编辑">
+                    <button id="anima-btn-edit-status" class="anima-btn primary small" title="手动编辑" style="white-space: nowrap;">
                         <i class="fa-solid fa-pen-to-square"></i> 编辑
                     </button>
                 </div>
                 
-                <div id="status-yaml-actions-edit" style="display:none; gap:5px;">
-                    <button id="btn-confirm-status" class="anima-btn primary small" title="确认"><i class="fa-solid fa-check"></i> 确认</button>
-                    <button id="btn-cancel-status" class="anima-btn danger small" title="取消"><i class="fa-solid fa-xmark"></i> 取消</button>
+                <div id="status-yaml-actions-edit" style="display:none; gap:5px; flex-shrink: 0;">
+                    <button id="btn-confirm-status" class="anima-btn primary small" title="确认" style="white-space: nowrap;"><i class="fa-solid fa-check"></i> 确认</button>
+                    <button id="btn-cancel-status" class="anima-btn danger small" title="取消" style="white-space: nowrap;"><i class="fa-solid fa-xmark"></i> 取消</button>
                 </div>
             </div>
 

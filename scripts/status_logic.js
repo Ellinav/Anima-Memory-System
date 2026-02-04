@@ -515,6 +515,8 @@ export async function triggerStatusUpdate(targetMsgId) {
     // 6. 准备合并数据
     // 只有到了这一步，确定有内容要写了，我们才去获取旧数据
     const oldAnimaData = structuredClone(baseStatus.data || {});
+
+    // 【修改点 1】: 计算出最终的候选数据 (Candidate)
     let candidateData = deepMergeUpdates(
       structuredClone(oldAnimaData),
       updates,
@@ -536,10 +538,13 @@ export async function triggerStatusUpdate(targetMsgId) {
       forceRefreshUI();
       return false; // ❌ 终止：校验失败不写入
     }
+
     if (JSON.stringify(candidateData) === JSON.stringify(oldAnimaData)) {
-      console.log("[Anima] ⚠️ 新旧状态完全一致，跳过写入操作。");
-      forceRefreshUI();
-      return true;
+      console.log(
+        "[Anima] 🛑 状态数值无实质变化 (Data Unchanged)，跳过写入操作。",
+      );
+      forceRefreshUI(); // 移除加载动画
+      return true; // 视为成功，但不产生副作用
     }
     // 8. 📝 最终写入 (只有这一行代码会修改数据库)
     await saveStatusToMessage(targetMsgId, { anima_data: candidateData });
@@ -709,6 +714,23 @@ export async function saveStatusToMessage(
           console.error(
             `[Anima Security] 🛑 严重拦截：阻止了向 User 楼层 (#${msgId}) 写入变量！来源: ${updateType}`,
           );
+          try {
+            const dirtyVars = window.TavernHelper.getVariables({
+              type: "message",
+              message_id: msgId,
+            });
+            if (dirtyVars && dirtyVars.anima_data) {
+              console.warn(
+                "[Anima Security] 🚔 顺手牵羊：发现 User 楼层已有脏数据，正在没收...",
+              );
+              const clean = { ...dirtyVars };
+              delete clean.anima_data;
+              window.TavernHelper.replaceVariables(clean, {
+                type: "message",
+                message_id: msgId,
+              });
+            }
+          } catch (e) {}
           // 可以在这里加个 toastr 提示调试
           // if (window.toastr) window.toastr.warning(`Anima拦截：试图写入User层 #${msgId}`);
           return;

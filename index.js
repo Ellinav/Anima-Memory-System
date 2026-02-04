@@ -426,6 +426,70 @@ import { objectToYaml } from "./scripts/utils.js";
           return; // ⛔ 终止后续流程
         }
 
+        if (isAi) {
+          try {
+            // 1. 偷看一眼新楼层有没有变量
+            const ghostVars = window.TavernHelper.getVariables({
+              type: "message",
+              message_id: lastMsg.message_id,
+            });
+
+            if (
+              ghostVars &&
+              ghostVars.anima_data &&
+              Object.keys(ghostVars.anima_data).length > 0
+            ) {
+              console.log(
+                `[Anima] 👻 警报：新生成楼层(#${lastMsg.message_id}) 居然自带了变量！正在核实身份...`,
+              );
+
+              // 2. 找前一个“干净”的 AI 状态作为对比
+              // latestMsgs[0] 是当前(脏?), latestMsgs[1] 是 User, latestMsgs[2] 通常是上一个 AI
+              // 我们遍历找第一个非 User 的旧消息
+              const prevAiMsg = latestMsgs
+                .slice(1)
+                .find((m) => !m.is_user && m.role !== "user");
+
+              if (prevAiMsg) {
+                const prevVars = window.TavernHelper.getVariables({
+                  type: "message",
+                  message_id: prevAiMsg.message_id,
+                });
+
+                const ghostJson = JSON.stringify(ghostVars.anima_data);
+                const prevJson =
+                  prevVars && prevVars.anima_data
+                    ? JSON.stringify(prevVars.anima_data)
+                    : "{}";
+
+                // 3. 鉴定：如果数据完全一样，说明是系统误复制的 (Ghost)
+                if (ghostJson === prevJson) {
+                  console.warn(
+                    "[Anima] 🧹 鉴定完毕：确认为系统自动克隆的幽灵数据，执行强制清除！",
+                  );
+
+                  // 4. 斩杀：保留其他插件的数据，只移除 anima_data
+                  const cleanData = { ...ghostVars };
+                  delete cleanData.anima_data;
+
+                  await window.TavernHelper.replaceVariables(cleanData, {
+                    type: "message",
+                    message_id: lastMsg.message_id,
+                  });
+                  console.log(
+                    "[Anima] ✅ AI 楼层净化完毕，现在它是干净的白纸了。",
+                  );
+                } else {
+                  console.log(
+                    "[Anima] ⚠️ 新楼层变量与旧楼层不同，可能是手动编辑产生，跳过清理。",
+                  );
+                }
+              }
+            }
+          } catch (e) {
+            console.warn("[Anima] 幽灵猎杀逻辑异常 (非致命):", e);
+          }
+        }
         // 2. 只有确认是 AI 后，才检查完整性
         // (之前的代码里 checkReplyIntegrity 如果不在 isAi 块里会报错，现在安全了)
         console.log(

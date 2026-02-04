@@ -899,10 +899,24 @@ function initYamlEditor() {
       e.preventDefault();
       const $icon = $(this).find("i");
       $icon.addClass("fa-spin");
+
+      // 执行刷新逻辑 (始终执行)
       refreshStatusPanel();
+
       setTimeout(() => {
         $icon.removeClass("fa-spin");
-        if (window.toastr) window.toastr.success("状态已刷新");
+
+        // === 🔥 核心修改开始 ===
+        // 判断是否为用户真实操作
+        // e.originalEvent 在脚本 .trigger() 时通常为 undefined
+        // e.isTrigger 在 jQuery 触发时为 true
+        const isScriptTriggered = !e.originalEvent || e.isTrigger;
+
+        // 只有当不是脚本触发 (即用户亲手点的) 时，才弹窗
+        if (!isScriptTriggered) {
+          if (window.toastr) window.toastr.success("状态已刷新");
+        }
+        // === 🔥 核心修改结束 ===
       }, 300);
     });
 

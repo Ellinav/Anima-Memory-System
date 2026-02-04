@@ -414,7 +414,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
             
             <div class="anima-setting-group">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 5px;">
-                    <h2 class="anima-title" style="margin:0;"><i class="fa-solid fa-database"></i> 数据与任务</h2>
+                    <h2 class="anima-title" style="margin:0;"><i class="fa-solid fa-database"></i> 数据库管理</h2>
                     <div style="display:flex; gap:5px;">
                          <button id="rag_btn_status" class="anima-btn secondary small" title="当前聊天向量状态">
                              <i class="fa-solid fa-list-check"></i> 当前聊天向量
@@ -428,7 +428,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                 <div class="anima-card">
                     <div class="anima-flex-row">
                         <div class="anima-label-group">
-                            <span class="anima-label-text">聊天记录数据库</span>
+                            <span class="anima-label-text">数据库</span>
                         </div>
                         <div style="display:flex; gap:5px;">
                             <input type="file" id="rag_input_import_zip" accept=".zip" style="display:none;" />

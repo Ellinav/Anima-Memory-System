@@ -134,7 +134,7 @@ export function initStatusSettings() {
                 
                 <div style="margin-left: auto; display: flex; align-items: center; gap: 10px;">
                     <button id="btn-test-zod-rules" class="anima-btn secondary small" title="打开测试沙箱，验证当前规则对 JSON 的校验结果">
-                        <i class="fa-solid fa-vial"></i> 测试规则
+                        <i class="fa-solid fa-vial"></i> 测试
                     </button>
 
                     <select id="zod-mode-select" class="anima-select" style="width: 150px; margin: 0; height: 32px; padding: 0 5px; cursor: pointer;">

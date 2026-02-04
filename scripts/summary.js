@@ -1259,8 +1259,8 @@ function renderHistoryPage() {
             
             <div class="anima-history-header" style="padding: 8px 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
                 <div class="anima-history-meta" style="flex:1;">
-                    <span style="color:#fbbf24; font-weight:bold; margin-right:8px;">#${displayId}</span>
-                    <span style="color:#aaa; font-size:12px; margin-right:8px;">[${escapeHtml(item.entryName)}]</span>
+                    <span style="color:#fbbf24; font-weight:bold; margin-right:5px;">#${displayId}</span>
+                    <span style="color:#aaa; font-size:12px; margin-right:5px;">[${escapeHtml(item.entryName)}]</span>
                     <span style="color:#666; font-size:12px;">${item.range_start}-${item.range_end}</span>
                 </div>
                 

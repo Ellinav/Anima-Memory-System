@@ -27,7 +27,6 @@ import { RegexListComponent, getRegexModalHTML } from "./regex_ui.js";
 let currentSettings = null;
 
 export function initStatusSettings() {
-  $("#anima-history-modal, #anima-zod-test-modal").remove();
   const container = document.getElementById("tab-status");
 
   // 1. 获取设置
@@ -177,11 +176,11 @@ export function initStatusSettings() {
                 </button>
             </div>
 
-            <div id="anima-zod-test-modal" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(2px);">
-                <div style="background: var(--anima-bg-dark, #1f2937); width: 600px; max-width: 95%; height: 80vh; border: 1px solid var(--anima-border); border-radius: 8px; display: flex; flex-direction: column; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+            <div id="anima-zod-test-modal" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(2px); padding: 20px; box-sizing: border-box;">
+                <div style="background: var(--anima-bg-dark, #1f2937); width: 600px; max-width: 100%; height: auto; max-height: 85vh; border: 1px solid var(--anima-border); border-radius: 8px; display: flex; flex-direction: column; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
                     
-                    <div id="anima-zod-test-modal" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 20000; align-items: center; justify-content: center; backdrop-filter: blur(2px);">
-                        <div style="background: var(--anima-bg-dark, #1f2937); width: 600px; max-width: 95vw; height: auto; max-height: 85vh; border: 1px solid var(--anima-border); border-radius: 8px; display: flex; flex-direction: column; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+                    <div style="padding: 12px 15px; border-bottom: 1px solid var(--anima-border); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2);">
+                        <div style="font-weight: bold; font-size: 1.1em; color: var(--anima-text-main); display: flex; align-items: center; gap: 8px;">
                             <i class="fa-solid fa-flask"></i> 规则测试台
                         </div>
                         <div class="anima-close-zod-test" style="cursor: pointer; opacity: 0.7;"><i class="fa-solid fa-xmark"></i></div>
@@ -330,8 +329,8 @@ export function initStatusSettings() {
                 </div>
             </details>
 
-            <div id="anima-history-modal" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 20000; align-items: center; justify-content: center;">
-                <div style="background: var(--anima-bg-dark, #2b2b2b); width: 400px; max-width: 95vw; border: 1px solid var(--anima-border); border-radius: 8px; padding: 15px; display: flex; flex-direction: column; max-height: 85vh;">
+            <div id="anima-history-modal" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 9999; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
+                <div style="background: var(--anima-bg-dark, #2b2b2b); width: 400px; max-width: 100%; border: 1px solid var(--anima-border); border-radius: 8px; padding: 15px; display: flex; flex-direction: column; max-height: 80vh;">
                     
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #444; padding-bottom: 10px;">
                         <span class="anima-label-text" style="font-size: 1.1em;">选择历史楼层</span>
@@ -1425,7 +1424,7 @@ function initZodModule() {
   }
   const settings = currentSettings.zod_settings;
   const $container = $("#zod-rules-list");
-  $("#anima-zod-test-modal").appendTo("body");
+
   // ===========================
   // 模式切换逻辑
   // ===========================
@@ -1966,7 +1965,6 @@ function initZodModule() {
 
 function initHistoryModule() {
   // UI 元素引用
-  $("#anima-history-modal").appendTo("body");
   const $modal = $("#anima-history-modal");
   const $btnOpenModal = $("#btn-open-history-modal");
   const $btnCloseModal = $("#btn-close-history-modal, #btn-modal-cancel");

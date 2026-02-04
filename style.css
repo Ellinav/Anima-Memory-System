@@ -960,14 +960,23 @@ input:checked + .slider:before {
 /* === 手机端适配 === */
 @media (max-width: 768px) {
   #anima-floating-sync-btn {
-    /* 核心修复：使用 35vh (屏幕高度的35%) 而不是固定像素 */
-    /* 这样能确保它总是漂浮在屏幕中下方，避开底部的输入栏和键盘 */
-    bottom: 35vh;
-    right: 15px;
+    /* 1. 放弃底部定位，改用顶部定位 (抄 createCountdownUI 的作业) */
+    bottom: auto !important;
 
-    /* 手机上稍微大一点，方便触摸 */
+    /* 2. 设定一个安全的顶部距离 */
+    /* Header通常是 50-60px，倒计时弹窗在 80px，我们设在 120px 避免重叠 */
+    top: 120px !important;
+
+    /* 3. 靠右显示 */
+    right: 15px !important;
+    left: auto !important; /* 防止 JS 拖动残留的 left 干扰初始位置 */
+
+    /* 4. 手机上稍微大一点，方便触摸 */
     width: 45px;
     height: 45px;
     font-size: 20px;
+
+    /* 5. 确保层级最高，不被其他组件遮挡 */
+    z-index: 20002 !important;
   }
 }

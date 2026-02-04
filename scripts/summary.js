@@ -1258,10 +1258,16 @@ function renderHistoryPage() {
              style="margin-bottom: 5px; border: 1px solid #444; border-radius: 4px; background: rgba(0,0,0,0.2);">
             
             <div class="anima-history-header" style="padding: 8px 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center;">
-                <div class="anima-history-meta" style="flex:1;">
-                    <span style="color:#fbbf24; font-weight:bold; margin-right:5px;">#${displayId}</span>
-                    <span style="color:#aaa; font-size:12px; margin-right:5px;">[${escapeHtml(item.entryName)}]</span>
-                    <span style="color:#666; font-size:12px;">${item.range_start}-${item.range_end}</span>
+                <div class="anima-history-meta" style="flex: 1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; min-width: 0;">
+                    <span style="color:#fbbf24; font-weight:bold; white-space: nowrap; flex-shrink: 0;">#${displayId}</span>
+    
+                    <span style="color:#aaa; font-size:12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px;">
+                        [${escapeHtml(item.entryName)}]
+                    </span>
+    
+                    <span style="color:#666; font-size:12px; white-space: nowrap; flex-shrink: 0;">
+                        ${item.range_start}-${item.range_end}
+                    </span>
                 </div>
                 
                 <div class="anima-history-actions" style="display:flex; align-items:center; gap:5px;">

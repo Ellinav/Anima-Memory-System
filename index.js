@@ -269,7 +269,8 @@ import { objectToYaml } from "./scripts/utils.js";
         triggerAutomationCheck("character_message_rendered", 1000);
       });
       let wasGenerationStopped = false;
-      context.eventSource.on("generation_started", (type, arg1, arg2) => {
+
+      context.eventSource.on("generation_started", async (type, arg1, arg2) => {
         const isDryRun = arg1 === true || arg2 === true;
         if (isDryRun) {
           return;
@@ -279,23 +280,28 @@ import { objectToYaml } from "./scripts/utils.js";
         try {
           const msgs = window.TavernHelper.getChatMessages(-1);
           if (msgs && msgs.length > 0) {
-            const userMsg = msgs[0]; 
-            
+            const userMsg = msgs[0];
+
             // 再次确认是 User
-            const isUser = userMsg.is_user || userMsg.role === "user" || String(userMsg.name).toLowerCase() === "you";
+            const isUser =
+              userMsg.is_user ||
+              userMsg.role === "user" ||
+              String(userMsg.name).toLowerCase() === "you";
 
             if (isUser) {
               const vars = window.TavernHelper.getVariables({
                 type: "message",
                 message_id: userMsg.message_id,
               });
-              
+
               // 只要有 anima_data，不管是不是一样的，直接删
               if (vars && vars.anima_data) {
-                console.warn(`[Anima] 🛑 生成前哨战：发现 User 楼层(#${userMsg.message_id}) 携带脏数据，强制清除！`);
+                console.warn(
+                  `[Anima] 🛑 生成前哨战：发现 User 楼层(#${userMsg.message_id}) 携带脏数据，强制清除！`,
+                );
                 const cleanVars = { ...vars };
                 delete cleanVars.anima_data;
-                
+
                 // 注意：这里虽然在事件里用 await 可能阻塞不了 ST 核心，但值得一试
                 await window.TavernHelper.replaceVariables(cleanVars, {
                   type: "message",
@@ -444,27 +450,29 @@ import { objectToYaml } from "./scripts/utils.js";
         }
 
         if (isAi) {
-            try {
-                const ghostVars = window.TavernHelper.getVariables({
-                    type: "message",
-                    message_id: lastMsg.message_id,
-                });
+          try {
+            const ghostVars = window.TavernHelper.getVariables({
+              type: "message",
+              message_id: lastMsg.message_id,
+            });
 
-                if (ghostVars && ghostVars.anima_data) {
-                    console.warn(`[Anima] 👻 捕获 AI 楼层(#${lastMsg.message_id}) 的幽灵数据，执行无条件斩杀。`);
-                    
-                    const cleanData = { ...ghostVars };
-                    delete cleanData.anima_data; // 移除脏数据
-                    
-                    await window.TavernHelper.replaceVariables(cleanData, {
-                        type: "message",
-                        message_id: lastMsg.message_id
-                    });
-                    console.log("[Anima] ✅ AI 楼层已重置为白板状态。");
-                }
-            } catch (e) {
-                console.warn("[Anima] 斩杀失败:", e);
+            if (ghostVars && ghostVars.anima_data) {
+              console.warn(
+                `[Anima] 👻 捕获 AI 楼层(#${lastMsg.message_id}) 的幽灵数据，执行无条件斩杀。`,
+              );
+
+              const cleanData = { ...ghostVars };
+              delete cleanData.anima_data; // 移除脏数据
+
+              await window.TavernHelper.replaceVariables(cleanData, {
+                type: "message",
+                message_id: lastMsg.message_id,
+              });
+              console.log("[Anima] ✅ AI 楼层已重置为白板状态。");
             }
+          } catch (e) {
+            console.warn("[Anima] 斩杀失败:", e);
+          }
         }
         // 2. 只有确认是 AI 后，才检查完整性
         // (之前的代码里 checkReplyIntegrity 如果不在 isAi 块里会报错，现在安全了)

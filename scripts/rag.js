@@ -1075,16 +1075,18 @@ function bindRagEvents(settings) {
 
   // 🔥🔥🔥 修改绑定：同时绑定顶部和底部的保存按钮 🔥🔥🔥
   // 使用逗号分隔选择器，或者分别绑定
-  $("#rag_btn_save_settings_top, #rag_btn_save_settings_bottom")
-    .off("click")
-    .on("click", handleSave);
+  const allSaveButtons = [
+    "#rag_btn_save_settings_top",
+    "#rag_btn_save_settings_bottom",
+    "#rag_btn_save_simple",
+    "#rag_btn_save_kb_settings", // 包含了你关心的 kb_settings
+    "#rag_btn_save_dist",
+    "#rag_btn_save_prompt_cfg",
+    "#rag_btn_save_prompt_bottom",
+  ].join(", ");
 
-  // 绑定其他可能存在的保存按钮（如果有的话）
-  $("#rag_btn_save_simple").on("click", handleSave);
-  $("#rag_btn_save_kb_settings").on("click", handleSave);
-  $("#rag_btn_save_dist").on("click", handleSave);
-  $("#rag_btn_save_prompt_cfg").on("click", handleSave);
-  $("#rag_btn_save_prompt_bottom").on("click", handleSave);
+  // 使用 off() 先解绑，再绑定，防止重复
+  $(allSaveButtons).off("click").on("click", handleSave);
 
   $("#rag_btn_save_injection")
     .off("click")
@@ -1253,14 +1255,6 @@ function bindRagEvents(settings) {
         });
     }, 100);
   });
-
-  // 绑定到三个保存按钮
-  $("#rag_btn_save_simple").on("click", handleSave);
-  $("#rag_btn_save_dist").on("click", handleSave);
-  // 🟢 新增：绑定提示词下方的保存按钮 (上方那个)
-  $("#rag_btn_save_prompt_cfg").on("click", handleSave);
-  // ✅ 修复：绑定提示词列表下方的按钮 (新增的唯一ID)
-  $("#rag_btn_save_prompt_bottom").on("click", handleSave);
 
   // --- 状态弹窗 ---
   $("#rag_btn_status").on("click", async () => {

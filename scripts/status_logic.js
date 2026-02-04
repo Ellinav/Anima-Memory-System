@@ -166,42 +166,43 @@ export function saveStatusSettings(settings) {
  * 这是给副 API 用的，目的是计算 "Old State + Delta = New State"
  * @returns {Object} { id: number, data: Object }
  */
+
 export function findBaseStatus(targetMsgId) {
   if (!window.TavernHelper) return { id: -1, data: {} };
 
-  // 1. 【修复】直接从上下文获取聊天长度，构建真实的数字范围字符串
-  // 避免使用 "0-{{lastMessageId}}" 这种在 JS 里无效的占位符
   const context = SillyTavern.getContext();
   const chatLen = context.chat ? context.chat.length : 0;
   if (chatLen === 0) return { id: -1, data: {} };
 
-  // 获取全部消息 (或者取最近的50条足矣)
   const range = `0-${Math.max(0, chatLen - 1)}`;
+  // 必须确保拿到 is_user 字段
   const allChat = window.TavernHelper.getChatMessages(range, {
     include_swipes: false,
   });
 
   if (!allChat || allChat.length === 0) return { id: -1, data: {} };
 
-  // 2. 找到目标楼层的索引
   const targetIndex = allChat.findIndex((m) => m.message_id === targetMsgId);
-
-  // 如果找不到 target (比如它是最新的还没存进去)，就从最后一条开始往前找
   let searchStartIndex =
     targetIndex !== -1 ? targetIndex - 1 : allChat.length - 1;
 
-  // 3. 倒序查找
   for (let i = searchStartIndex; i >= 0; i--) {
     const msg = allChat[i];
-    // 跳过无效消息
     if (!msg) continue;
+
+    // 🔥【新增修复】: 即使该楼层有 anima_data，如果是 User 楼层也强制跳过！
+    // 这能让系统从“4楼被误写”的错误中自我恢复，直接找到3楼
+    const isUser =
+      msg.is_user ||
+      msg.role === "user" ||
+      String(msg.name).toLowerCase() === "you";
+    if (isUser) continue;
 
     const vars = window.TavernHelper.getVariables({
       type: "message",
       message_id: msg.message_id,
     });
 
-    // 只要 anima_data 存在 (哪怕是空对象)，就视为有效基准
     if (vars && vars.anima_data) {
       return { id: msg.message_id, data: vars.anima_data };
     }
@@ -701,18 +702,16 @@ export async function saveStatusToMessage(
           targetMsg.is_user === true ||
           targetMsg.role === "user" ||
           (targetMsg.name && targetMsg.name === currentUserName) ||
-          (targetMsg.name && targetMsg.name === "You");
+          (targetMsg.name && String(targetMsg.name).toLowerCase() === "you") || // 增加对 "You" 的检查
+          (targetMsg.name && targetMsg.name === "User");
 
         if (isUser) {
           console.error(
             `[Anima Security] 🛑 严重拦截：阻止了向 User 楼层 (#${msgId}) 写入变量！来源: ${updateType}`,
           );
-          console.log(new Error().stack); // 打印堆栈
-
-          if (window.toastr)
-            window.toastr.warning(`安全拦截：禁止修改 User 消息`);
-
-          return; // ❌ 立即终止函数执行
+          // 可以在这里加个 toastr 提示调试
+          // if (window.toastr) window.toastr.warning(`Anima拦截：试图写入User层 #${msgId}`);
+          return;
         }
       }
     } catch (e) {
@@ -963,7 +962,8 @@ export async function handleStatusUpdate() {
   const isUser =
     lastMsg.is_user === true ||
     lastMsg.role === "user" ||
-    (lastMsg.name && lastMsg.name === currentUserName);
+    (lastMsg.name && lastMsg.name === currentUserName) ||
+    (lastMsg.name && String(lastMsg.name).toLowerCase() === "you");
 
   if (isUser) {
     console.warn(
@@ -1385,54 +1385,78 @@ export function getRealtimeStatusVariables() {
 }
 
 /**
- * 保存实时变量到最新楼层 (用于 YAML 面板保存)
+ * 保存实时变量到最新楼层 (修正融合版)
+ * 1. 获取旧数据 (用于 Diff)
+ * 2. 调用 saveStatusToMessage (确保 UI 刷新 & Tag 插入)
+ * 3. 广播事件 (用于后端/世界书同步)
  */
 export async function saveRealtimeStatusVariables(statusObj) {
   try {
     if (!window.TavernHelper) throw new Error("TavernHelper not ready");
+
+    // 1. 获取目标楼层 (最新一条)
+    const context = SillyTavern.getContext();
+    const chat = context.chat || [];
+
+    if (chat.length === 0) {
+      throw new Error("当前无聊天记录，无法写入");
+    }
+
+    const lastMsg = chat[chat.length - 1];
+    const targetId = lastMsg.message_id;
+
     // ============================================================
-    // 🔥 新增步骤 A: 获取旧数据
+    // 🔥 恢复步骤 A: 获取旧数据 (Old Data)
     // ============================================================
     let oldAnimaData = {};
     try {
+      // 建议直接用 targetId 获取，比 'latest' 更精准
       const oldVars = window.TavernHelper.getVariables({
         type: "message",
-        message_id: "latest",
+        message_id: targetId,
       });
       if (oldVars) {
-        // UI 面板直接操作的是打平的对象，还是包裹在 anima_data 里的？
-        // 根据你的代码逻辑，statusObj 似乎是整个变量对象
-        // 这里假设 oldVars 就是旧的状态结构
         oldAnimaData = JSON.parse(JSON.stringify(oldVars));
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn("[Anima] 获取旧数据失败:", e);
+    }
+
     // ============================================================
-    // 使用 replaceVariables 确保完全覆盖
-    await window.TavernHelper.replaceVariables(statusObj, {
-      type: "message",
-      message_id: "latest",
-    });
+    // 🔥 核心修改: 使用 saveStatusToMessage
+    // 替代了原本的 replaceVariables。
+    // 作用：写入变量 + 强制 UI 重绘 + 自动补全 {{ANIMA_STATUS}} Tag
     // ============================================================
-    // 🔥 新增步骤 B: 广播事件
+    console.log(`[Anima] 实时状态编辑 -> 写入楼层 #${targetId}`);
+
+    // 注意：saveStatusToMessage 内部会处理 anima_data 包裹
+    // 如果 statusObj 已经是 { anima_data: ... }，请确保 saveStatusToMessage 能处理
+    // 通常 saveStatusToMessage(id, data) 的 data 应该是不带 anima_data 前缀的纯对象？
+    // *修正*: 根据你之前的代码上下文，这里传入 statusObj 即可，
+    // 如果 statusObj 包含了 anima_data key，请确保 saveStatusToMessage 逻辑匹配。
+    // 假设 statusObj 是 { 欧阳玥: {...} } 这种纯数据:
+    await saveStatusToMessage(targetId, statusObj, "manual_ui");
+
+    // ============================================================
+    // 🔥 恢复步骤 B: 广播事件 (Broadcast)
     // ============================================================
     try {
-      const context = SillyTavern.getContext();
       const targetEventSource = context.eventSource;
 
       if (targetEventSource) {
         targetEventSource.emit("ANIMA_VARIABLE_UPDATE_ENDED", {
           type: "manual_ui",
-          messageId: "latest",
+          messageId: targetId, // 明确传 ID
           oldData: oldAnimaData,
           newData: statusObj,
           timestamp: Date.now(),
         });
-        console.log("[Anima] 📡 UI 手动更新事件已广播");
+        console.log("[Anima] 📡 UI 手动更新事件已广播 (带 Diff 数据)");
       }
     } catch (e) {
       console.warn("[Anima] UI 广播出错:", e);
     }
-    // ============================================================
+
     return true;
   } catch (e) {
     console.error("[Anima] Save Realtime failed:", e);

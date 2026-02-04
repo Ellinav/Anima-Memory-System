@@ -1,820 +1,820 @@
 :root {
-    --anima-bg-main: #111827;
-    --anima-bg-sidebar: #1f2937;
-    --anima-bg-card: rgba(255, 255, 255, 0.03);
-    --anima-bg-input: rgba(0, 0, 0, 0.2);
-    --anima-border: #374151;
-    --anima-primary: #10b981;
-    --anima-primary-hover: #059669;
-    --anima-text-main: #f9fafb;
-    --anima-text-sub: #9ca3af;
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --anima-bg-main: #111827;
+  --anima-bg-sidebar: #1f2937;
+  --anima-bg-card: rgba(255, 255, 255, 0.03);
+  --anima-bg-input: rgba(0, 0, 0, 0.2);
+  --anima-border: #374151;
+  --anima-primary: #10b981;
+  --anima-primary-hover: #059669;
+  --anima-text-main: #f9fafb;
+  --anima-text-sub: #9ca3af;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
 /* 1. 修复：使用 vw/vh 强制撑满屏幕，解决缩放变成“一条”的问题 */
 #anima-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    z-index: 20000;
-    background-color: rgba(17, 24, 39, 0.98);
-    backdrop-filter: blur(5px);
-    display: flex;
-    flex-direction: column;
-    font-family:
-        "Inter",
-        system-ui,
-        -apple-system,
-        sans-serif;
-    color: var(--anima-text-main);
-    box-sizing: border-box; /* 确保 padding 不会撑破布局 */
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 20000;
+  background-color: rgba(17, 24, 39, 0.98);
+  backdrop-filter: blur(5px);
+  display: flex;
+  flex-direction: column;
+  font-family:
+    "Inter",
+    system-ui,
+    -apple-system,
+    sans-serif;
+  color: var(--anima-text-main);
+  box-sizing: border-box; /* 确保 padding 不会撑破布局 */
 }
 
 /* 全局隐藏类 */
 .anima-hidden {
-    display: none !important;
+  display: none !important;
 }
 
 /* 顶部栏 */
 .anima-header-bar {
-    height: 60px;
-    flex-shrink: 0; /* 防止被压缩 */
-    border-bottom: 1px solid var(--anima-border);
-    display: flex;
-    align-items: center;
-    padding: 0 24px;
-    justify-content: space-between;
-    background-color: var(--anima-bg-sidebar);
+  height: 60px;
+  flex-shrink: 0; /* 防止被压缩 */
+  border-bottom: 1px solid var(--anima-border);
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  justify-content: space-between;
+  background-color: var(--anima-bg-sidebar);
 }
 
 .anima-brand {
-    font-size: 18px;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    user-select: none;
+  font-size: 18px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  user-select: none;
 }
 
 #anima-toggle-sidebar,
 #anima-close-btn {
-    cursor: pointer;
-    padding: 8px;
-    border-radius: 6px;
-    color: var(--anima-text-sub);
-    transition: background 0.2s;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  color: var(--anima-text-sub);
+  transition: background 0.2s;
 }
 #anima-toggle-sidebar:hover,
 #anima-close-btn:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-    color: var(--anima-text-main);
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--anima-text-main);
 }
 
 /* 主体区域 */
 .anima-main-layout {
-    flex: 1; /* 自动占满剩余高度 */
-    display: flex;
-    overflow: hidden; /* 防止溢出 */
-    position: relative;
-    width: 100%;
-    height: 100%; /* 确保子元素能继承高度 */
+  flex: 1; /* 自动占满剩余高度 */
+  display: flex;
+  overflow: hidden; /* 防止溢出 */
+  position: relative;
+  width: 100%;
+  height: 100%; /* 确保子元素能继承高度 */
 }
 
 /* 左侧侧边栏 */
 .anima-sidebar {
-    width: 240px;
-    background-color: var(--anima-bg-sidebar);
-    border-right: 1px solid var(--anima-border);
-    display: flex;
-    flex-direction: column;
-    flex-shrink: 0;
-    padding-top: 20px;
+  width: 240px;
+  background-color: var(--anima-bg-sidebar);
+  border-right: 1px solid var(--anima-border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  padding-top: 20px;
 
-    /* 3. 修复：侧边栏动画优化 */
-    transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow: hidden; /* 关键：隐藏超出的内容 */
-    white-space: nowrap; /* 关键：防止文字换行/挤压 */
+  /* 3. 修复：侧边栏动画优化 */
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden; /* 关键：隐藏超出的内容 */
+  white-space: nowrap; /* 关键：防止文字换行/挤压 */
 }
 
 /* 折叠状态 */
 .anima-sidebar.collapsed {
-    width: 0; /* 彻底隐藏 */
-    border: none;
+  width: 0; /* 彻底隐藏 */
+  border: none;
 }
 
 .anima-nav-item {
-    padding: 14px 24px;
-    cursor: pointer;
-    border-left: 3px solid transparent;
-    transition: background 0.2s;
-    font-size: 14px;
-    color: var(--anima-text-sub);
-    display: flex;
-    align-items: center;
-    gap: 12px;
+  padding: 14px 24px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background 0.2s;
+  font-size: 14px;
+  color: var(--anima-text-sub);
+  display: flex;
+  align-items: center;
+  gap: 12px;
 
-    /* 确保文字不会因为宽度变化而跳动 */
-    overflow: hidden;
+  /* 确保文字不会因为宽度变化而跳动 */
+  overflow: hidden;
 }
 
 .anima-nav-item:hover {
-    background-color: rgba(255, 255, 255, 0.03);
-    color: var(--anima-text-main);
+  background-color: rgba(255, 255, 255, 0.03);
+  color: var(--anima-text-main);
 }
 
 .anima-nav-item.active {
-    background-color: rgba(16, 185, 129, 0.1);
-    border-left-color: var(--anima-primary);
-    color: var(--anima-primary);
-    font-weight: 600;
+  background-color: rgba(16, 185, 129, 0.1);
+  border-left-color: var(--anima-primary);
+  color: var(--anima-primary);
+  font-weight: 600;
 }
 
 /* 右侧内容区 */
 .anima-content-area {
-    flex-grow: 1;
-    padding: 40px;
-    overflow-y: auto;
-    width: 100%;
-    /* 增加平滑滚动 */
-    scroll-behavior: smooth;
+  flex-grow: 1;
+  padding: 40px;
+  overflow-y: auto;
+  width: 100%;
+  /* 增加平滑滚动 */
+  scroll-behavior: smooth;
 }
 
 /* 2. 修复：标签页显示逻辑 */
 /* 默认隐藏所有 tab */
 .anima-tab-content {
-    display: none !important; /* 强制隐藏 */
-    max-width: 900px;
-    margin: 0 auto;
-    animation: fadeIn 0.3s ease;
+  display: none !important; /* 强制隐藏 */
+  max-width: 900px;
+  margin: 0 auto;
+  animation: fadeIn 0.3s ease;
 }
 
 /* 只有带 active 类的才显示 */
 .anima-tab-content.active {
-    display: block !important; /* 强制显示 */
+  display: block !important; /* 强制显示 */
 }
 
 @keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(5px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* --- 以下是组件样式，保持原样 --- */
 .anima-title {
-    font-size: 24px;
-    font-weight: 600;
-    margin-bottom: 8px;
-    color: var(--anima-text-main);
+  font-size: 24px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--anima-text-main);
 }
 .anima-subtitle {
-    color: var(--anima-text-sub);
-    font-size: 14px;
-    margin-bottom: 30px;
+  color: var(--anima-text-sub);
+  font-size: 14px;
+  margin-bottom: 30px;
 }
 .anima-card {
-    background: var(--anima-bg-card);
-    border: 1px solid var(--anima-border);
-    border-radius: 12px;
-    padding: 24px;
-    margin-bottom: 24px;
+  background: var(--anima-bg-card);
+  border: 1px solid var(--anima-border);
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
 }
 .anima-input,
 .anima-textarea,
 .anima-select {
-    width: 100%;
-    background-color: var(--anima-bg-input);
-    border: 1px solid var(--anima-border);
-    color: var(--anima-text-main);
-    padding: 12px 16px;
-    border-radius: 8px;
-    margin-bottom: 16px;
-    font-size: 14px;
-    box-sizing: border-box; /* 防止 padding 撑大宽度 */
+  width: 100%;
+  background-color: var(--anima-bg-input);
+  border: 1px solid var(--anima-border);
+  color: var(--anima-text-main);
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  box-sizing: border-box; /* 防止 padding 撑大宽度 */
 }
 .anima-input:focus,
 .anima-textarea:focus,
 .anima-select:focus {
-    outline: none;
-    border-color: var(--anima-primary);
+  outline: none;
+  border-color: var(--anima-primary);
 }
 .anima-btn {
-    padding: 10px 20px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    transition: all 0.2s;
-    border: 1px solid transparent;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 .anima-btn.primary {
-    background-color: var(--anima-primary);
-    color: #fff;
+  background-color: var(--anima-primary);
+  color: #fff;
 }
 .anima-btn.primary:hover {
-    background-color: var(--anima-primary-hover);
+  background-color: var(--anima-primary-hover);
 }
 .anima-btn.secondary {
-    background-color: transparent;
-    border-color: var(--anima-border);
-    color: var(--anima-text-main);
+  background-color: transparent;
+  border-color: var(--anima-border);
+  color: var(--anima-text-main);
 }
 .anima-btn.secondary:hover {
-    background-color: rgba(255, 255, 255, 0.05);
+  background-color: rgba(255, 255, 255, 0.05);
 }
 .anima-btn.danger {
-    background-color: rgba(239, 68, 68, 0.1);
-    color: #ef4444;
+  background-color: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
 }
 
 /* 表格样式 */
 .anima-table {
-    width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
-    font-size: 14px;
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 14px;
 }
 .anima-table th {
-    text-align: left;
-    padding: 12px 16px;
-    color: var(--anima-text-sub);
-    border-bottom: 1px solid var(--anima-border);
+  text-align: left;
+  padding: 12px 16px;
+  color: var(--anima-text-sub);
+  border-bottom: 1px solid var(--anima-border);
 }
 .anima-table td {
-    padding: 12px 16px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 /* 手机适配 */
 @media (max-width: 768px) {
-    .anima-sidebar {
-        position: absolute;
-        height: 100%;
-        z-index: 50;
-        box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5);
-    }
-    .anima-sidebar.collapsed {
-        width: 0;
-        transform: translateX(-10px); /* 稍微移出一点确保阴影消失 */
-    }
-    .anima-content-area {
-        padding: 20px;
-    }
+  .anima-sidebar {
+    position: absolute;
+    height: 100%;
+    z-index: 50;
+    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5);
+  }
+  .anima-sidebar.collapsed {
+    width: 0;
+    transform: translateX(-10px); /* 稍微移出一点确保阴影消失 */
+  }
+  .anima-content-area {
+    padding: 20px;
+  }
 }
 /* 输入框组：让输入框和按钮并排 */
 .anima-input-group {
-    display: flex;
-    gap: 8px;
-    width: 100%;
-    margin-bottom: 16px;
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 16px;
 }
 
 .anima-input-group .anima-input,
 .anima-input-group .anima-select {
-    margin-bottom: 0; /* 移除原本的 margin，交给 group 控制 */
-    flex-grow: 1;
+  margin-bottom: 0; /* 移除原本的 margin，交给 group 控制 */
+  flex-grow: 1;
 }
 
 .anima-icon-btn {
-    flex-shrink: 0;
-    width: 42px;
-    height: 42px; /* 和输入框等高 */
-    background-color: var(--anima-bg-input);
-    border: 1px solid var(--anima-border);
-    color: var(--anima-text-sub);
-    border-radius: 8px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px; /* 和输入框等高 */
+  background-color: var(--anima-bg-input);
+  border: 1px solid var(--anima-border);
+  color: var(--anima-text-sub);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
 }
 
 .anima-icon-btn:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-    color: var(--anima-text-main);
-    border-color: var(--anima-primary);
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--anima-text-main);
+  border-color: var(--anima-primary);
 }
 
 /* 简单的分割线标题 */
 .anima-divider-title {
-    font-size: 12px;
-    color: var(--anima-text-sub);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin: 24px 0 12px 0;
-    border-bottom: 1px solid var(--anima-border);
-    padding-bottom: 5px;
+  font-size: 12px;
+  color: var(--anima-text-sub);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 24px 0 12px 0;
+  border-bottom: 1px solid var(--anima-border);
+  padding-bottom: 5px;
 }
 
 /* Summary部分 */
 /* 基础布局 */
 .anima-setting-group {
-    margin-bottom: 20px;
+  margin-bottom: 20px;
 }
 .anima-title {
-    font-size: 1.2em;
-    font-weight: bold;
-    margin-bottom: 10px;
-    padding-bottom: 5px;
+  font-size: 1.2em;
+  font-weight: bold;
+  margin-bottom: 10px;
+  padding-bottom: 5px;
 }
 .anima-card {
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid var(--smart-theme-border-color, #444);
-    border-radius: 8px;
-    padding: 15px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--smart-theme-border-color, #444);
+  border-radius: 8px;
+  padding: 15px;
 }
 
 .anima-flex-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-    gap: 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  gap: 15px;
 }
 .anima-label-group {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .anima-label-text {
-    font-weight: 600;
-    font-size: 14px;
+  font-weight: 600;
+  font-size: 14px;
 }
 .anima-desc-inline {
-    font-size: 12px;
-    color: var(--smart-theme-body-color-muted, #9ca3af);
-    opacity: 0.8;
-    margin-top: 2px;
+  font-size: 12px;
+  color: var(--smart-theme-body-color-muted, #9ca3af);
+  opacity: 0.8;
+  margin-top: 2px;
 }
 .anima-input-wrapper {
-    width: 100px;
-    flex-shrink: 0;
+  width: 100px;
+  flex-shrink: 0;
 }
 .anima-input-wrapper .anima-input {
-    margin-bottom: 0;
-    text-align: center;
+  margin-bottom: 0;
+  text-align: center;
 }
 
 /* 🔴 正则模块样式 */
 .anima-regex-add-row {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 15px;
-    align-items: center;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+  align-items: center;
 }
 .anima-regex-add-row .anima-input {
-    flex: 1;
-    margin: 0;
-    font-family: monospace;
+  flex: 1;
+  margin: 0;
+  font-family: monospace;
 }
 .anima-regex-list {
-    background: rgba(0, 0, 0, 0.1);
-    border-radius: 6px;
-    padding: 10px;
-    min-height: 40px;
-    margin-bottom: 15px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+  padding: 10px;
+  min-height: 40px;
+  margin-bottom: 15px;
 }
 
 .anima-regex-item {
-    display: flex;
-    flex-direction: column; /* 默认垂直排列 (用于 Prompt 列表) */
-    gap: 5px;
-    background: var(--smart-theme-bg, #202b3b);
-    border: 1px solid var(--smart-theme-border-color, #444);
-    padding: 10px;
-    border-radius: 6px;
-    margin-bottom: 8px;
-    font-family: monospace;
-    font-size: 13px;
-    position: relative;
+  display: flex;
+  flex-direction: column; /* 默认垂直排列 (用于 Prompt 列表) */
+  gap: 5px;
+  background: var(--smart-theme-bg, #202b3b);
+  border: 1px solid var(--smart-theme-border-color, #444);
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-family: monospace;
+  font-size: 13px;
+  position: relative;
 }
 
 .anima-tag.primary {
-    background-color: var(--anima-primary);
+  background-color: var(--anima-primary);
 }
 
 .anima-tag.danger {
-    background-color: #ef4444;
+  background-color: #ef4444;
 }
 
 .anima-regex-item.is-row {
-    flex-direction: row; /* 强制横向 */
-    justify-content: space-between; /* 两端对齐 */
-    align-items: center; /* 垂直居中 */
+  flex-direction: row; /* 强制横向 */
+  justify-content: space-between; /* 两端对齐 */
+  align-items: center; /* 垂直居中 */
 }
 
 .anima-regex-item.is-row span {
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    margin-right: 10px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 10px;
 }
 
 .edit-mode .anima-select,
 .edit-mode .anima-input {
-    padding: 4px 8px;
-    height: 30px;
-    font-size: 13px;
+  padding: 4px 8px;
+  height: 30px;
+  font-size: 13px;
 }
 
 /* 🔵 提示词模块样式 */
 .anima-prompt-container {
-    margin-top: 10px;
+  margin-top: 10px;
 }
 #anima_summary_prompt {
-    width: 100%;
-    min-height: 120px;
-    font-family: monospace;
-    line-height: 1.4;
-    padding: 10px;
-    resize: vertical;
-    margin-top: 5px;
+  width: 100%;
+  min-height: 120px;
+  font-family: monospace;
+  line-height: 1.4;
+  padding: 10px;
+  resize: vertical;
+  margin-top: 5px;
 }
 
 /* --- 修复点 1：Context 条目布局 --- */
 .anima-context-item {
-    background: rgba(100, 149, 237, 0.15);
-    border: 1px dashed var(--smart-theme-border-color, #444);
-    color: var(--smart-text-color, #ccc);
-    padding: 10px 15px; /* 调整内边距 */
-    font-weight: bold;
-    cursor: grab;
+  background: rgba(100, 149, 237, 0.15);
+  border: 1px dashed var(--smart-theme-border-color, #444);
+  color: var(--smart-text-color, #ccc);
+  padding: 10px 15px; /* 调整内边距 */
+  font-weight: bold;
+  cursor: grab;
 
-    /* 关键 Flex 修复 */
-    display: flex;
-    flex-direction: row; /* 强制横向排列 */
-    align-items: center; /* 垂直居中 */
-    justify-content: flex-start; /* 左对齐 */
-    gap: 15px; /* 图标和文字间距 */
+  /* 关键 Flex 修复 */
+  display: flex;
+  flex-direction: row; /* 强制横向排列 */
+  align-items: center; /* 垂直居中 */
+  justify-content: flex-start; /* 左对齐 */
+  gap: 15px; /* 图标和文字间距 */
 }
 
 .anima-context-text {
-    flex: 1;
-    text-align: left; /* 文字左对齐 */
-    opacity: 0.9;
+  flex: 1;
+  text-align: left; /* 文字左对齐 */
+  opacity: 0.9;
 }
 .anima-context-item:active {
-    cursor: grabbing;
+  cursor: grabbing;
 }
 
 /* --- 修复点 2：拖拽手柄与下拉框对齐 --- */
 .anima-drag-handle {
-    cursor: grab;
-    color: #666;
-    padding: 0 5px;
-    font-size: 14px;
-    display: flex; /* 确保图标容器也是 flex */
-    align-items: center; /* 确保图标垂直居中 */
-    height: 100%;
+  cursor: grab;
+  color: #666;
+  padding: 0 5px;
+  font-size: 14px;
+  display: flex; /* 确保图标容器也是 flex */
+  align-items: center; /* 确保图标垂直居中 */
+  height: 100%;
 }
 .anima-drag-handle:hover {
-    color: #ccc;
+  color: #ccc;
 }
 .anima-regex-item:active .anima-drag-handle {
-    cursor: grabbing;
+  cursor: grabbing;
 }
 
 /* 强制下拉框垂直居中，修正高度 */
 .role-select {
-    margin: 0 !important;
-    height: 30px !important; /* 强制高度与小按钮一致 */
-    line-height: normal;
-    padding: 0 5px;
+  margin: 0 !important;
+  height: 30px !important; /* 强制高度与小按钮一致 */
+  line-height: normal;
+  padding: 0 5px;
 }
 
 /* 🟢 手动区域样式 */
 .anima-manual-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 15px;
-    margin-bottom: 15px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  margin-bottom: 15px;
 }
 .anima-manual-input-group {
-    display: flex;
-    flex-direction: column;
+  display: flex;
+  flex-direction: column;
 }
 .anima-manual-input-group label {
-    font-size: 12px;
-    margin-bottom: 5px;
-    font-weight: bold;
+  font-size: 12px;
+  margin-bottom: 5px;
+  font-weight: bold;
 }
 
 /* 分割线与按钮 */
 .anima-divider {
-    height: 1px;
-    background-color: var(--smart-theme-border-color, rgba(255, 255, 255, 0.1));
-    margin: 20px 0;
+  height: 1px;
+  background-color: var(--smart-theme-border-color, rgba(255, 255, 255, 0.1));
+  margin: 20px 0;
 }
 .anima-btn-group {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    width: 100%;
-    margin-top: 10px;
-    flex-wrap: wrap;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  margin-top: 10px;
+  flex-wrap: wrap;
 }
 .anima-btn.small {
-    padding: 4px 10px;
-    font-size: 12px;
-    height: 30px; /* 统一样式 */
+  padding: 4px 10px;
+  font-size: 12px;
+  height: 30px; /* 统一样式 */
 }
 
 /* 模态框 */
 .anima-modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    background-color: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(2px);
-    z-index: 20001;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(2px);
+  z-index: 20001;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
 }
 .anima-modal:not(.hidden) {
-    opacity: 1;
-    pointer-events: auto;
+  opacity: 1;
+  pointer-events: auto;
 }
 .anima-modal-content {
-    background-color: var(--smart-theme-bg, #1f2937);
-    border: 1px solid var(--smart-theme-border-color, #374151);
-    border-radius: 12px;
-    width: 90%;
-    max-width: 700px;
-    max-height: 85vh;
-    display: flex;
-    flex-direction: column;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-    padding-bottom: 10px; /* 底部留点白，因为 footer 没了 */
+  background-color: var(--smart-theme-bg, #1f2937);
+  border: 1px solid var(--smart-theme-border-color, #374151);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 700px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  padding-bottom: 10px; /* 底部留点白，因为 footer 没了 */
 }
 .anima-modal-header {
-    padding: 16px 24px;
-    border-bottom: 1px solid
-        var(--smart-theme-border-color, rgba(255, 255, 255, 0.1));
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-weight: 600;
-    font-size: 16px;
+  padding: 16px 24px;
+  border-bottom: 1px solid
+    var(--smart-theme-border-color, rgba(255, 255, 255, 0.1));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  font-size: 16px;
 }
 .anima-close-modal {
-    cursor: pointer;
-    font-size: 20px;
-    opacity: 0.7;
+  cursor: pointer;
+  font-size: 20px;
+  opacity: 0.7;
 }
 .anima-close-modal:hover {
-    opacity: 1;
+  opacity: 1;
 }
 .anima-modal-body {
-    padding: 24px;
-    overflow-y: auto;
-    font-size: 14px;
-    line-height: 1.5;
+  padding: 24px;
+  overflow-y: auto;
+  font-size: 14px;
+  line-height: 1.5;
 }
 .anima-modal-footer {
-    padding: 16px 24px;
-    border-top: 1px solid
-        var(--smart-theme-border-color, rgba(255, 255, 255, 0.1));
-    display: flex;
-    justify-content: flex-end;
-    gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid
+    var(--smart-theme-border-color, rgba(255, 255, 255, 0.1));
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 /* 预览内容的样式 */
 .anima-preview-box {
-    background: rgba(0, 0, 0, 0.2);
-    padding: 15px;
-    border: 1px solid var(--smart-theme-border-color, #444);
-    border-radius: 6px;
-    max-height: 400px;
-    overflow-y: auto;
-    font-family: monospace;
-    font-size: 12px;
-    white-space: pre-wrap;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 15px;
+  border: 1px solid var(--smart-theme-border-color, #444);
+  border-radius: 6px;
+  max-height: 400px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
 }
 
 /* 历史记录列表样式 */
 .anima-history-entry {
-    border: 1px solid var(--smart-theme-border-color, #444);
-    background: rgba(0, 0, 0, 0.1);
-    border-radius: 6px;
-    margin-bottom: 12px;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
+  border: 1px solid var(--smart-theme-border-color, #444);
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+  margin-bottom: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .anima-history-header {
-    background: rgba(0, 0, 0, 0.2);
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--smart-theme-border-color, #444);
-    display: flex;
-    justify-content: space-between; /* 两端对齐 */
-    align-items: center;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--smart-theme-border-color, #444);
+  display: flex;
+  justify-content: space-between; /* 两端对齐 */
+  align-items: center;
 }
 
 .anima-history-meta {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 13px;
-    font-family: monospace;
-    color: #ccc;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-family: monospace;
+  color: #ccc;
 }
 
 .anima-meta-tag {
-    background: rgba(255, 255, 255, 0.1);
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-weight: bold;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: bold;
 }
 
 .anima-meta-tag.entry-name {
-    color: #60a5fa;
+  color: #60a5fa;
 } /* 蓝色 */
 .anima-meta-tag.index-num {
-    color: #facc15;
+  color: #facc15;
 } /* 黄色 */
 .anima-meta-tag.range-num {
-    color: #4ade80;
+  color: #4ade80;
 } /* 绿色 */
 
 .anima-history-actions {
-    display: flex;
-    gap: 8px;
+  display: flex;
+  gap: 8px;
 }
 
 /* 内容区域：默认折叠状态 */
 .anima-history-content {
-    padding: 12px;
-    font-family: monospace;
-    font-size: 12px;
-    white-space: pre-wrap;
-    color: var(--smart-text-color, #ccc);
-    line-height: 1.5;
+  padding: 12px;
+  font-family: monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: var(--smart-text-color, #ccc);
+  line-height: 1.5;
 
-    /* 🔴 折叠核心样式 */
-    max-height: 60px; /* 默认只显示约 3 行 */
-    overflow: hidden;
-    cursor: pointer; /* 提示可点击 */
-    position: relative;
-    transition: max-height 0.2s;
+  /* 🔴 折叠核心样式 */
+  max-height: 60px; /* 默认只显示约 3 行 */
+  overflow: hidden;
+  cursor: pointer; /* 提示可点击 */
+  position: relative;
+  transition: max-height 0.2s;
 
-    /* 底部渐变遮罩，提示还有内容 */
-    -webkit-mask-image: linear-gradient(180deg, #000 60%, transparent);
-    mask-image: linear-gradient(180deg, #000 60%, transparent);
+  /* 底部渐变遮罩，提示还有内容 */
+  -webkit-mask-image: linear-gradient(180deg, #000 60%, transparent);
+  mask-image: linear-gradient(180deg, #000 60%, transparent);
 }
 
 /* 悬停时稍微高亮一下，提示交互 */
 .anima-history-content:hover {
-    background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 /* 🟢 展开状态 */
 .anima-history-content.expanded {
-    max-height: none; /* 取消高度限制 */
-    -webkit-mask-image: none;
-    mask-image: none;
+  max-height: none; /* 取消高度限制 */
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 
 /* 🔵 编辑状态 */
 .anima-history-content.editing {
-    max-height: none;
-    -webkit-mask-image: none;
-    mask-image: none;
-    cursor: default; /* 编辑时取消手型 */
-    padding: 0; /* 给 textarea 让位 */
-    background: transparent;
+  max-height: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+  cursor: default; /* 编辑时取消手型 */
+  padding: 0; /* 给 textarea 让位 */
+  background: transparent;
 }
 
 /* 编辑时的文本域 */
 .anima-edit-textarea {
-    width: 100%;
-    min-height: 150px;
-    background: rgba(0, 0, 0, 0.3);
-    color: var(--smart-text-color, #ccc);
-    border: 1px solid var(--smart-theme-border-color, #555);
-    border-radius: 4px;
-    padding: 10px;
-    font-family: monospace;
-    font-size: 12px;
-    line-height: 1.5;
-    resize: vertical;
-    outline: none;
+  width: 100%;
+  min-height: 150px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--smart-text-color, #ccc);
+  border: 1px solid var(--smart-theme-border-color, #555);
+  border-radius: 4px;
+  padding: 10px;
+  font-family: monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
 }
 .anima-edit-textarea:focus {
-    border-color: var(--smart-theme-primary, #60a5fa);
+  border-color: var(--smart-theme-primary, #60a5fa);
 }
 
 /* 按钮组显隐控制 */
 .actions-normal,
 .actions-editing {
-    display: flex;
-    gap: 8px;
+  display: flex;
+  gap: 8px;
 }
 /* 默认隐藏编辑组 */
 .actions-editing {
-    display: none;
+  display: none;
 }
 
 .anima-tag {
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: bold;
-    text-transform: uppercase;
-    color: white;
-    white-space: nowrap;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: white;
+  white-space: nowrap;
 }
 
 /* 容器：相对定位，控制宽高 */
 .anima-switch {
-    position: relative;
-    display: inline-block;
-    width: 44px; /* 宽度 */
-    height: 24px; /* 高度 */
-    flex-shrink: 0;
+  position: relative;
+  display: inline-block;
+  width: 44px; /* 宽度 */
+  height: 24px; /* 高度 */
+  flex-shrink: 0;
 }
 
 /* 隐藏原本的 checkbox */
 .anima-switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
+  opacity: 0;
+  width: 0;
+  height: 0;
 }
 
 /* 滑块轨道 */
 .slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: var(--anima-bg-input); /* 默认灰色背景 */
-    transition: 0.4s;
-    border: 1px solid var(--anima-border);
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--anima-bg-input); /* 默认灰色背景 */
+  transition: 0.4s;
+  border: 1px solid var(--anima-border);
 }
 
 /* 滑块圆钮 */
 .slider:before {
-    position: absolute;
-    content: "";
-    height: 18px;
-    width: 18px;
-    left: 2px;
-    bottom: 2px; /* 居中微调 */
-    background-color: var(--anima-text-sub);
-    transition: 0.4s;
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 2px;
+  bottom: 2px; /* 居中微调 */
+  background-color: var(--anima-text-sub);
+  transition: 0.4s;
 }
 
 /* 选中状态：轨道变色 */
 input:checked + .slider {
-    background-color: var(--anima-primary); /* 激活色 (绿色) */
-    border-color: var(--anima-primary);
+  background-color: var(--anima-primary); /* 激活色 (绿色) */
+  border-color: var(--anima-primary);
 }
 
 /* 选中状态：圆钮变色/移动 */
 input:checked + .slider:before {
-    transform: translateX(20px);
-    background-color: #fff;
+  transform: translateX(20px);
+  background-color: #fff;
 }
 
 /* 圆角样式 */
 .slider.round {
-    border-radius: 24px;
+  border-radius: 24px;
 }
 
 .slider.round:before {
-    border-radius: 50%;
+  border-radius: 50%;
 }
 
 /* === 1. 修改【执行总结】按钮 (改为显眼的蓝色) === */
 #anima-btn-manual-run {
-    background-color: #982ac4 !important; /* 鲜艳蓝 */
-    color: #ffffff !important;
-    border: none;
+  background-color: #982ac4 !important; /* 鲜艳蓝 */
+  color: #ffffff !important;
+  border: none;
 }
 #anima-btn-manual-run:hover #btn-test-zod-rules:hover {
-    background-color: #6f218e !important; /* 深蓝 hover */
+  background-color: #6f218e !important; /* 深蓝 hover */
 }
 
 /* === 2. 修改【实时预览】和【历史楼层管理】按钮 (改为实心灰/蓝灰色，不再透明) === */
@@ -822,16 +822,16 @@ input:checked + .slider:before {
 #rag_btn_last_result,
 #btn-sync-status,
 #rag_btn_kb_import {
-    background-color: #2563eb !important; /* 实心深灰背景 */
-    color: #ffffff !important;
-    border: none;
+  background-color: #2563eb !important; /* 实心深灰背景 */
+  color: #ffffff !important;
+  border: none;
 }
 
 #anima-btn-view-history:hover,
 #rag_btn_last_result:hover,
 #btn-sync-status:hover,
 #rag_btn_kb_import:hover {
-    background-color: #1d4ed8 !important; /* 鼠标悬停变深 */
+  background-color: #1d4ed8 !important; /* 鼠标悬停变深 */
 }
 
 #anima-btn-manual-preview,
@@ -840,9 +840,9 @@ input:checked + .slider:before {
 #rag_btn_status,
 #btn-preview-status-prompt,
 #rag_btn_kb_view {
-    background-color: #b97f1c !important; /* 实心深灰背景 */
-    color: #ffffff !important;
-    border: none;
+  background-color: #b97f1c !important; /* 实心深灰背景 */
+  color: #ffffff !important;
+  border: none;
 }
 
 #anima-btn-manual-preview:hover,
@@ -851,16 +851,16 @@ input:checked + .slider:before {
 #rag_btn_status:hover,
 #btn-preview-status-prompt:hover,
 #rag_btn_kb_view:hover {
-    background-color: #97691a !important; /* 鼠标悬停变深 */
+  background-color: #97691a !important; /* 鼠标悬停变深 */
 }
 
 #rag_btn_holidays {
-    background-color: #c34620 !important; /* 实心深灰背景 */
-    color: #ffffff !important;
-    border: none;
+  background-color: #c34620 !important; /* 实心深灰背景 */
+  color: #ffffff !important;
+  border: none;
 }
 #rag_btn_holidays:hover {
-    background-color: #a43d1d !important; /* 鼠标悬停变深 */
+  background-color: #a43d1d !important; /* 鼠标悬停变深 */
 }
 
 /* =========================================================
@@ -869,43 +869,107 @@ input:checked + .slider:before {
 
 /* 1. 历史状态 -【选择楼层】 (黄色) */
 #btn-open-history-modal {
-    background-color: #b97f1c !important; /* 实心深黄/琥珀色 */
-    color: #ffffff !important;
-    border: none !important;
+  background-color: #b97f1c !important; /* 实心深黄/琥珀色 */
+  color: #ffffff !important;
+  border: none !important;
 }
 #btn-open-history-modal:hover {
-    background-color: #97691a !important; /* 悬停变深 */
+  background-color: #97691a !important; /* 悬停变深 */
 }
 
 /* 2. 输出校验 -【测试规则】 (紫色) */
 /* 修正：直接用 ID 选择，不要加父级 ID */
 #btn-test-zod-rules {
-    background-color: #982ac4 !important; /* 鲜艳紫 */
-    color: #ffffff !important;
-    border: none !important;
+  background-color: #982ac4 !important; /* 鲜艳紫 */
+  color: #ffffff !important;
+  border: none !important;
 }
 #btn-test-zod-rules:hover {
-    background-color: #6f218e !important; /* 悬停变深 */
+  background-color: #6f218e !important; /* 悬停变深 */
 }
 
 /* 3. 正则构建 -【添加正则】 (绿色) */
 /* 这里直接引用你系统里定义的 Primary 变量，保持和保存按钮一致 */
 #btn-add-status-regex {
-    background-color: var(--anima-primary) !important; /* #10b981 */
-    color: #ffffff !important;
-    border: none !important;
+  background-color: var(--anima-primary) !important; /* #10b981 */
+  color: #ffffff !important;
+  border: none !important;
 }
 #btn-add-status-regex:hover {
-    background-color: var(--anima-primary-hover) !important; /* #059669 */
+  background-color: var(--anima-primary-hover) !important; /* #059669 */
 }
 
 /* 4. 提示词构建 -【预览 Payload】 (黄色) */
 /* 修正：直接用 ID 选择 */
 #btn-preview-status-prompt {
-    background-color: #b97f1c !important; /* 实心深黄/琥珀色 */
-    color: #ffffff !important;
-    border: none !important;
+  background-color: #b97f1c !important; /* 实心深黄/琥珀色 */
+  color: #ffffff !important;
+  border: none !important;
 }
 #btn-preview-status-prompt:hover {
-    background-color: #97691a !important; /* 悬停变深 */
+  background-color: #97691a !important; /* 悬停变深 */
+}
+
+/* =========================================================
+   5. 修复：手机端长弹窗顶部被裁剪问题
+   ========================================================= */
+
+/* 强制接管这两个特定弹窗的布局，覆盖 JS 内联样式 */
+#anima-history-modal,
+#anima-zod-test-modal {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  /* 核心修复：使用 safely center (如果浏览器支持) 或者通过 max-height 规避 */
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 20000 !important;
+  padding: 20px !important; /* 给四周留出安全距离，防止贴边 */
+  box-sizing: border-box !important;
+}
+
+/* 针对弹窗内部的主卡片 (即 id 下的第一层 div) */
+#anima-history-modal > div,
+#anima-zod-test-modal > div {
+  /* 核心修复1：限制最大高度，留出上下空间，防止撑破屏幕导致 flex 居中裁剪 */
+  max-height: 85vh !important;
+  width: 600px !important;
+  max-width: 100% !important;
+
+  /* 核心修复2：重置 margin，依赖外层的 flex 居中 */
+  margin: 0 !important;
+
+  /* 核心修复3：确保卡片自身也是 flex column，以便让 header/footer 固定，只让 body 滚动 */
+  display: flex !important;
+  flex-direction: column !important;
+
+  /* 外观修复 */
+  background: var(--anima-bg-dark, #1f2937) !important;
+  border: 1px solid var(--anima-border) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* 针对 Zod 测试台内部的日志区域，强制自适应高度 */
+#zod-test-log-output {
+  flex: 1 !important; /* 抢占剩余空间 */
+  min-height: 0 !important; /* 允许压缩，防止撑开 */
+}
+
+/* 针对 历史记录列表 容器 */
+#history-list-container {
+  flex: 1 !important; /* 抢占剩余空间 */
+  min-height: 0 !important; /* 允许压缩 */
+  overflow-y: auto !important; /* 内部滚动 */
+}
+
+/* 手机端特别优化：进一步减小最大高度，避开软键盘和浏览器工具栏 */
+@media (max-width: 768px) {
+  #anima-history-modal > div,
+  #anima-zod-test-modal > div {
+    max-height: 80vh !important; /* 稍微再改小一点 */
+  }
 }

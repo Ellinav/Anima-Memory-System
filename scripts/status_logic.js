@@ -1137,24 +1137,31 @@ export function initStatusMacro() {
     try {
       // 1. 变量替换
       let finalOutput = template.replace(/{{\s*([^\s}]+)\s*}}/g, (m, path) => {
+        // 2. 处理 key:: 前缀
         if (path.startsWith("key::")) {
-          const targetPath = path.replace("key::", "");
-          let targetObj = undefined;
+          const targetPath = path.replace("key::", "").trim();
 
-          // 获取对象
+          // 尝试获取值
+          let val = undefined;
           if (window["_"] && window["_"].get) {
-            targetObj = window["_"].get(renderContext, targetPath);
+            val = window["_"].get(renderContext, targetPath);
           } else {
-            targetObj = targetPath
+            val = targetPath
               .split(".")
               .reduce((o, k) => (o || {})[k], renderContext);
           }
 
-          if (targetObj && typeof targetObj === "object") {
-            // 返回键名数组，用逗号连接 (你可以改成用空格或其他分隔符)
-            return Object.keys(targetObj).join(", ");
+          // 情况 A: 这是一个对象 (且不是 null/数组)，说明它是个容器
+          // 例如: key::世界 -> 返回 "时间, 当前地点, 天气"
+          if (val && typeof val === "object" && !Array.isArray(val)) {
+            return Object.keys(val).join(", ");
           }
-          return "None";
+
+          // 情况 B: 这是一个具体的值 (字符串/数字)，或者值不存在
+          // 我们直接截取路径的最后一段作为 "Key名"
+          // 例如: key::世界.时间 -> 返回 "时间"
+          const segments = targetPath.split(".");
+          return segments[segments.length - 1];
         }
         // A. 特殊硬编码路径处理
         if (path === "messageId") return msgId;
@@ -1191,7 +1198,7 @@ export function initStatusMacro() {
 
         // D. 实在找不到，显示 N/A
         return "N/A";
-      });
+      };);
 
       // 2. HTML 压缩 (消除空行间隙)
       finalOutput = finalOutput

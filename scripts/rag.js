@@ -395,7 +395,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                 <div class="anima-flex-row">
                     <div class="anima-label-group">
                         <span class="anima-label-text" style="font-size: 1.1em; font-weight: bold;">向量功能总开关</span>
-                        <span class="anima-desc-inline">开启后启用自动向量化、聊天检索与注入功能</span>
+                        <span class="anima-desc-inline">开启后启用向量化、聊天检索与注入功能</span>
                     </div>
                     <label class="anima-switch">
                         <input type="checkbox" id="rag_master_switch" ${settings.rag_enabled ? "checked" : ""}>

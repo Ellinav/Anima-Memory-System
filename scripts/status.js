@@ -2954,39 +2954,9 @@ function initFloatingSyncButton() {
 
   // 1. 创建 DOM (初始位置设为 right/bottom，后续通过 js 控制)
   const btnHtml = `
-        <div id="anima-floating-sync-btn" title="检测到当前状态未同步，点击更新 (可拖动)" 
-             style="display:none; position: fixed; bottom: 80px; right: 20px; z-index: 9990;
-                    width: 40px; height: 40px; border-radius: 50%; 
-                    background: var(--anima-warning, #f59e0b); color: white;
-                    box-shadow: 0 4px 12px rgba(0,0,0,0.4); cursor: grab;
-                    align-items: center; justify-content: center; font-size: 18px;
-                    transition: opacity 0.3s ease, transform 0.1s; user-select: none;">
+        <div id="anima-floating-sync-btn" title="检测到当前状态未同步，点击更新 (可拖动)">
             <i class="fa-solid fa-cloud-arrow-up"></i>
         </div>
-        <style>
-            /* 正常 PC 端 hover 效果 */
-            #anima-floating-sync-btn:hover {
-                transform: scale(1.1);
-                filter: brightness(1.1);
-            }
-            #anima-floating-sync-btn:active {
-                transform: scale(0.95);
-            }
-
-            /* 🔥【手机端适配】 */
-            @media (max-width: 768px) {
-                #anima-floating-sync-btn {
-                    /* 强制把按钮抬高，避开 ST 底部厚重的输入栏 */
-                    bottom: 250px !important; 
-                    right: 15px !important;
-                    width: 40px !important;
-                    height: 40px !important;
-                    font-size: 18px !important;
-                    /* 确保层级最高 */
-                    z-index: 2147483647 !important; 
-                }
-            }
-        </style>
     `;
   $("body").append(btnHtml);
 

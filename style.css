@@ -909,3 +909,65 @@ input:checked + .slider:before {
 #btn-preview-status-prompt:hover {
   background-color: #97691a !important; /* 悬停变深 */
 }
+
+/* =========================================================
+   6. 修复：悬浮同步按钮样式与移动端适配
+   ========================================================= */
+#anima-floating-sync-btn {
+  /* 默认隐藏，JS 逻辑会通过内联 display:flex 来显示它，优先级高于此 */
+  display: none;
+
+  position: fixed;
+  /* 提高层级，确保在最上层 (ST移动端有些层级很高) */
+  z-index: 20002;
+
+  /* === 核心位置配置 (PC端默认) === */
+  /* 不要加 !important，否则 JS 拖动功能(设置 bottom:auto) 会失效 */
+  bottom: 80px;
+  right: 20px;
+
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+
+  background: var(--anima-warning, #f59e0b);
+  color: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  cursor: grab;
+
+  /* Flex 居中图标 */
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+
+  transition:
+    opacity 0.3s ease,
+    transform 0.1s;
+  user-select: none;
+}
+
+/* 鼠标交互效果 */
+#anima-floating-sync-btn:hover {
+  transform: scale(1.1);
+  filter: brightness(1.1);
+}
+
+#anima-floating-sync-btn:active {
+  transform: scale(0.95);
+  cursor: grabbing;
+}
+
+/* === 手机端适配 === */
+@media (max-width: 768px) {
+  #anima-floating-sync-btn {
+    /* 核心修复：使用 35vh (屏幕高度的35%) 而不是固定像素 */
+    /* 这样能确保它总是漂浮在屏幕中下方，避开底部的输入栏和键盘 */
+    bottom: 35vh;
+    right: 15px;
+
+    /* 手机上稍微大一点，方便触摸 */
+    width: 45px;
+    height: 45px;
+    font-size: 20px;
+  }
+}

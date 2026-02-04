@@ -1204,13 +1204,9 @@ function initBeautifyModule() {
     if (show) {
       let rawHtml = $textarea.val();
 
-      // === 🔥 核心修正开始：数据源替换 ===
-
-      // 旧代码 (只看最新层，容易为空):
-      // const realData = getRealtimeStatusVariables();
-      // let renderContext = realData.anima_data || realData || {};
-
-      // 🟢 新代码 (智能回溯，找到最近的有效状态):
+      // ============================================================
+      // 0. 准备数据上下文 (保持你之前的智能回溯逻辑)
+      // ============================================================
       let renderContext = {};
       try {
         const context = SillyTavern.getContext();
@@ -1222,35 +1218,47 @@ function initBeautifyModule() {
           const lastId = lastMsg.message_id;
 
           // 2. 调用 status_logic.js 里的回溯函数
-          // 它会从 lastId 开始往上找，直到找到包含 anima_data 的楼层
           const base = findBaseStatus(lastId);
 
-          // 3. 获取找到的数据 (如果没有找到，base.data 会是 {})
+          // 3. 获取找到的数据
           if (base && base.data) {
             renderContext = base.data;
           }
-
           console.log("[Anima Preview] Loaded state from floor:", base.id);
         }
       } catch (e) {
         console.error("[Anima Preview] Failed to load history state:", e);
       }
-      // === 🔥 核心修正结束 ===
 
-      // 下面是之前写好的渲染逻辑 (保持你最新的版本，包含 key:: 和循环)
-      let processedHtml = renderAnimaTemplate(rawHtml, renderContext);
+      // ============================================================
+      // 1. 流水线第一步: 循环展开 (Loops)
+      // ============================================================
+      let step1_Looped = renderAnimaTemplate(rawHtml, renderContext);
 
-      let renderedHtml = processedHtml.replace(
+      // ============================================================
+      // 2. 流水线第二步: 特殊处理 {{status}}
+      // (必须在 processMacros 之前，防止它被误转为 API 格式)
+      // ============================================================
+      let step2_Status = step1_Looped.replace(/\{\{status\}\}/g, () => {
+        return Object.keys(renderContext).length > 0
+          ? objectToYaml(renderContext)
+          : "Status: Normal";
+      });
+
+      // ============================================================
+      // 3. 流水线第三步: ST 原生宏处理 (Global Macros)
+      // (这里处理 {{user}}, {{char}} 等)
+      // ============================================================
+      let step3_Macros = processMacros(step2_Status);
+
+      // ============================================================
+      // 4. 流水线第四步: 本地变量与 Key 处理 (Local Vars)
+      // (处理剩下的 {{HP}}, {{key::...}} 等)
+      // ============================================================
+      let renderedHtml = step3_Macros.replace(
         /{{\s*([^\s}]+)\s*}}/g,
         (match, path) => {
-          // 1. 特殊处理 {{status}}
-          if (path === "status") {
-            return Object.keys(renderContext).length > 0
-              ? objectToYaml(renderContext)
-              : "Status: Normal";
-          }
-
-          // 2. 处理 key:: 前缀 (你最新的逻辑)
+          // A. 处理 key:: 前缀
           if (path.startsWith("key::")) {
             const targetPath = path.replace("key::", "").trim();
             let val = undefined;
@@ -1270,22 +1278,25 @@ function initBeautifyModule() {
             return segments[segments.length - 1];
           }
 
-          // 3. 常规取值 & 默认值 (你最新的逻辑)
+          // B. 处理常规本地变量
           let val = window["_"].get(renderContext, path);
-          if (val === undefined || val === null) return "(变量值)"; // 这里可以显示为默认占位符
+
+          // C. 默认值与显示
+          if (val === undefined || val === null) return "(变量值)";
           if (typeof val === "object") return JSON.stringify(val);
           return String(val);
         },
       );
 
-      // 压缩 HTML (保持不变)
+      // ============================================================
+      // 5. 压缩与渲染 (Minification & Render)
+      // ============================================================
       renderedHtml = renderedHtml
         .replace(/[\r\n]+/g, "")
         .replace(/>\s+</g, "><")
         .replace(/[\t ]+</g, "<")
         .replace(/>[\t ]+/g, ">");
 
-      // 渲染 (保持不变)
       $textarea.hide();
       $previewBox
         .html(
@@ -1296,10 +1307,9 @@ function initBeautifyModule() {
       $btnPreview.removeClass("primary").addClass("success");
       $btnPreview.html('<i class="fa-solid fa-eye-slash"></i> 退出');
     } else {
+      // ... (退出预览逻辑保持不变)
       $previewBox.hide();
       $textarea.fadeIn(200);
-
-      // 按钮样式恢复
       $btnPreview.removeClass("success").addClass("primary");
       $btnPreview.html('<i class="fa-solid fa-eye"></i> 预览');
     }

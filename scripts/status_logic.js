@@ -1429,7 +1429,7 @@ export function getRealtimeStatusVariables() {
 export async function saveRealtimeStatusVariables(statusObj) {
   try {
     if (!window.TavernHelper) throw new Error("TavernHelper not ready");
-
+    const context = SillyTavern.getContext();
     // 1. 获取目标楼层 (最新一条)
     const msgs = window.TavernHelper.getChatMessages(-1);
 

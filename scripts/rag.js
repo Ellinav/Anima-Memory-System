@@ -386,6 +386,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
             border-color: var(--anima-primary);
             background-color: rgba(0, 0, 0, 0.3);
         }
+
     </style>`;
 
   const masterSwitchHtml = `
@@ -1420,7 +1421,7 @@ function bindRagEvents(settings) {
                         <span style="margin-left:auto; font-size:12px; color:#666; font-weight:normal;">${r.strategy_log.length} steps</span>
                     </summary>
                     
-                    <div style="margin-top: 10px; max-height: 300px; overflow-y: auto; padding-right: 5px;" class="anima-scroll">
+                    <div style="margin-top: 10px; padding-right: 5px;" class="anima-scroll">
                         ${r.strategy_log.map((item) => renderLogCard(item)).join("")}
                     </div>
                 </details>
@@ -1575,7 +1576,7 @@ function bindRagEvents(settings) {
         <div style="margin-bottom:10px; font-size:12px; color:#aaa;">
             请选择目标数据库：
         </div>
-        <div style="max-height:300px; overflow-y:auto; background:rgba(0,0,0,0.2); border:1px solid #444; border-radius:4px;">
+        <div style="background:rgba(0,0,0,0.2); border:1px solid #444; border-radius:4px;">
             ${finalListHtml || '<div style="padding:10px; text-align:center;">暂无数据</div>'}
         </div>
         <div style="margin-top:15px; display:flex; justify-content:flex-end; gap:10px;">
@@ -1961,7 +1962,7 @@ function bindRagEvents(settings) {
                 </button>
             </div>
             
-            <div id="rag_kb_viewer_content" class="anima-scroll" style="max-height:500px; overflow-y:auto; min-height:200px; padding-right:5px;">
+            <div id="rag_kb_viewer_content" class="anima-scroll" style="min-height:200px; padding-right:5px;">
                 <div style="text-align:center; color:#666; margin-top:50px;">
                     <i class="fa-solid fa-book-open" style="font-size:30px; margin-bottom:10px; opacity:0.5;"></i><br>
                     请选择左上方数据库以查看内容
@@ -1975,7 +1976,7 @@ function bindRagEvents(settings) {
             </style>
         `;
 
-    showRagModal("📚 知识库查看器 (Knowledge Base Viewer)", modalHtml);
+    showRagModal("📚 知识库查看器", modalHtml);
 
     // 4. 定义加载内容的函数
     const loadKbContent = async (collectionId) => {

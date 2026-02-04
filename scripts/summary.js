@@ -988,7 +988,7 @@ function bindSummaryEvents() {
       // 情况 B: 楼层不足，触发了截断
       if (safeEnd < targetEnd) {
         // 此时 safeEnd 就是 94
-        title += ` (⚠️ 楼层不足预览: ${start}-${safeEnd} / 目标 ${targetEnd})`;
+        title += ` (⚠️ 预览: ${start}-${safeEnd} / 目标 ${targetEnd})`;
       } else {
         title += ` (✅ 完整范围)`;
       }

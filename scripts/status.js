@@ -13,6 +13,7 @@ import {
   previewStatusPayload,
   findBaseStatus,
   triggerManualSync,
+  renderAnimaTemplate,
 } from "./status_logic.js";
 import { validateStatusData, createAutoNumberSchema } from "./status_zod.js";
 import {
@@ -1201,23 +1202,46 @@ function initBeautifyModule() {
     isPreviewMode = show;
     if (show) {
       let rawHtml = $textarea.val();
-      let renderedHtml = rawHtml
-        .replace(/{{status}}/g, "Sick (Cold)")
-        // 1. 修改正则以支持中文变量名 (预览效果)
-        .replace(/{{\s*([^\s}]+)\s*}}/g, "(变量值)")
+      const realData = getRealtimeStatusVariables();
+      let renderContext = realData.anima_data || realData || {};
+      // 2. 先执行循环渲染
+      let processedHtml = renderAnimaTemplate(rawHtml, renderContext);
+      // 3. 再执行原来的简单变量替换 (针对处理后的字符串)
+      let renderedHtml = processedHtml.replace(
+        /{{\s*([^\s}]+)\s*}}/g,
+        (match, path) => {
+          // 1. 特殊处理 {{status}}
+          if (path === "status") {
+            // 如果也没有数据，给个默认样板
+            return Object.keys(renderContext).length > 0
+              ? objectToYaml(renderContext)
+              : "Status: Normal\nHP: 100";
+          }
 
-        // 2. 顺手加上之前的压缩逻辑，让预览更真实
-        .replace(/[\r\n]+/g, "")
-        .replace(/>\s+</g, "><")
-        .replace(/[\t ]+</g, "<")
-        .replace(/>[\t ]+/g, ">");
-      renderedHtml = renderedHtml.replace(
-        /<details>\s*[\r\n]+\s*/gi,
-        "<details>",
-      );
-      renderedHtml = renderedHtml.replace(
-        /<\/summary>\s*[\r\n]+\s*/gi,
-        "</summary>",
+          // 2. 处理 KEYS:: 前缀
+          if (path.startsWith("key::")) {
+            const targetPath = path.replace("key::", "");
+            let val = window["_"].get(renderContext, targetPath);
+            if (val && typeof val === "object")
+              return Object.keys(val).join(", ");
+
+            // 🟢 KEYS 的默认占位符
+            return "(键名列表)";
+          }
+
+          // 3. 常规取值
+          let val = window["_"].get(renderContext, path);
+
+          // 🟢 【核心修改】如果变量不存在 (undefined 或 null)，返回默认占位符
+          if (val === undefined || val === null) {
+            // 你可以写死 "(变量值)"，或者想显示具体点也可以用 `(${path})`
+            return "(变量值)";
+          }
+
+          // 4. 正常显示
+          if (typeof val === "object") return JSON.stringify(val);
+          return String(val);
+        },
       );
       renderedHtml = `<div style="white-space: pre-wrap; font-family: inherit; line-height: 1.5;">${renderedHtml}</div>`;
       $textarea.hide();

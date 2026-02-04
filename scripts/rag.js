@@ -439,7 +439,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                                 <i class="fa-solid fa-file-export"></i> 导出
                             </button>
                             <button id="rag_btn_import" class="anima-btn primary small" title="将已存在的数据库关联到当前聊天">
-                                <i class="fa-solid fa-link"></i> 关联
+                                <i class="fa-solid fa-link"></i> 管理
                             </button>
                         </div>
                     </div>

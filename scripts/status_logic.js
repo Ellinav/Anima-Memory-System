@@ -1133,9 +1133,29 @@ export function initStatusMacro() {
       return `<div style="font-size:12px; color:gray;">[Anima: No Data]</div>`;
     const beautify = settings.beautify_settings || {};
     let template = beautify.template || "";
+    template = renderAnimaTemplate(template, renderContext);
     try {
       // 1. 变量替换
       let finalOutput = template.replace(/{{\s*([^\s}]+)\s*}}/g, (m, path) => {
+        if (path.startsWith("key::")) {
+          const targetPath = path.replace("key::", "");
+          let targetObj = undefined;
+
+          // 获取对象
+          if (window["_"] && window["_"].get) {
+            targetObj = window["_"].get(renderContext, targetPath);
+          } else {
+            targetObj = targetPath
+              .split(".")
+              .reduce((o, k) => (o || {})[k], renderContext);
+          }
+
+          if (targetObj && typeof targetObj === "object") {
+            // 返回键名数组，用逗号连接 (你可以改成用空格或其他分隔符)
+            return Object.keys(targetObj).join(", ");
+          }
+          return "None";
+        }
         // A. 特殊硬编码路径处理
         if (path === "messageId") return msgId;
         if (path === "status" || path === "anima_data")
@@ -1669,4 +1689,76 @@ export function checkInitialGreetingStatus() {
   }
 
   return true; // 读到了消息但条件不符，也算“检查完成”
+}
+
+/**
+ * 增强型模板渲染器 (支持 {{#each path}}...{{/each}} 循环)
+ * @param {string} template - 原始模板字符串
+ * @param {object} contextData - 完整的数据上下文 (root)
+ */
+export function renderAnimaTemplate(template, contextData) {
+  if (!template) return "";
+  let output = template;
+
+  // 1. 处理 {{#each path}} ... {{/each}} 循环
+  // 正则捕获: Group 1 = 路径, Group 2 = 循环体内容
+  const eachRegex = /\{\{#each\s+([^\}]+)\}\}([\s\S]*?)\{\{\/each\}\}/g;
+
+  output = output.replace(eachRegex, (match, path, content) => {
+    // 获取目标对象 (例如: 欧阳玥.物品栏)
+    let targetData = undefined;
+    if (window["_"] && window["_"].get) {
+      targetData = window["_"].get(contextData, path.trim());
+    } else {
+      targetData = path
+        .trim()
+        .split(".")
+        .reduce((o, k) => (o || {})[k], contextData);
+    }
+
+    if (!targetData || typeof targetData !== "object") {
+      return ""; // 如果路径不存在或是空的，这就渲染为空
+    }
+
+    // 开始遍历
+    let loopResult = "";
+    const keys = Object.keys(targetData);
+
+    keys.forEach((key) => {
+      const itemData = targetData[key]; // 例如: 手机的具体数据对象
+      let itemHtml = content;
+
+      // A. 替换 {{@key}} -> "手机"
+      itemHtml = itemHtml.replace(/\{\{@key\}\}/g, key);
+
+      // B. 替换 {{this}} -> 如果 itemData 是纯字符串/数字
+      if (typeof itemData !== "object") {
+        itemHtml = itemHtml.replace(/\{\{this\}\}/g, itemData);
+      }
+
+      // C. 替换内部属性 {{描述}} -> itemData["描述"]
+      // 这是一个简单的贪婪替换，只替换当前作用域下的属性
+      itemHtml = itemHtml.replace(/\{\{\s*([^\s}]+)\s*\}\}/g, (m, propPath) => {
+        // 如果是 @key 已经在上面换过了，跳过
+        if (propPath === "@key") return key;
+
+        // 尝试从当前 itemData 里取值
+        // 如果 itemData 是 { 描述: "...", 数量: 1 }
+        let val = undefined;
+        if (typeof itemData === "object" && itemData !== null) {
+          // 简单支持一层属性，如果需要支持 {{属性.子属性}} 可以加 lodash 逻辑
+          val = itemData[propPath];
+        }
+
+        // 如果在当前物品里找到了属性，就替换；没找到则保留原样(留给外层处理)
+        return val !== undefined ? val : m;
+      });
+
+      loopResult += itemHtml;
+    });
+
+    return loopResult;
+  });
+
+  return output;
 }

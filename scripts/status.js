@@ -2516,6 +2516,20 @@ function bindGlobalEvents() {
   $("#btn-preview-status-prompt")
     .off("click")
     .on("click", () => showStatusPreviewModal());
+
+  $(window).on("anima:status_sync_start", function () {
+    const $btn = $("#anima-floating-sync-btn");
+    if ($btn.length > 0) {
+      // 1. 变图标为转圈
+      $btn.find("i").attr("class", "fa-solid fa-spinner fa-spin");
+      // 2. 确保它是显示的 (防止倒计时结束时按钮恰好被隐藏)
+      $btn
+        .css("display", "flex")
+        .removeClass("anima-spin-out")
+        .addClass("anima-fade-in");
+    }
+  });
+
   $(window)
     .off("anima:status_updated")
     .on("anima:status_updated", function (e) {
@@ -2953,11 +2967,11 @@ function createCustomModal(title, contentHtml) {
 // ==========================================
 // 【修改版】悬浮同步按钮模块 (支持拖动)
 // ==========================================
-function initFloatingSyncButton() {
+export function initFloatingSyncButton() {
   // 防止重复创建
   if ($("#anima-floating-sync-btn").length > 0) return;
 
-  // 1. 创建 DOM (初始位置设为 right/bottom，后续通过 js 控制)
+  // 1. 创建 DOM (保持原样)
   const btnHtml = `
         <div id="anima-floating-sync-btn" title="检测到当前状态未同步，点击更新 (可拖动)">
             <i class="fa-solid fa-cloud-arrow-up"></i>
@@ -2967,7 +2981,7 @@ function initFloatingSyncButton() {
 
   const $btn = $("#anima-floating-sync-btn");
 
-  // 2. 拖动逻辑变量
+  // 2. 拖动逻辑变量 (保持原样)
   let isDragging = false;
   let hasMoved = false; // 用于区分是点击还是拖动
   let startX, startY, initialLeft, initialTop;
@@ -3044,6 +3058,7 @@ function initFloatingSyncButton() {
   });
 
   // 4. 点击事件 (核心：如果是拖动结束，则不触发同步)
+  // (保持你原本的逻辑完全不变)
   $btn.on("click", async function (e) {
     if (hasMoved) {
       // 如果刚刚是拖动，则忽略这次点击

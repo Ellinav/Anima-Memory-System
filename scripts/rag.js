@@ -1524,27 +1524,27 @@ function bindRagEvents(settings) {
 
       const showDelete = !title.includes("Export") && !title.includes("导出");
       return `
-            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.05); padding-right:5px;">
-                <label class="anima-checkbox-item" style="flex:1; display:flex; justify-content:space-between; align-items:center; padding:8px; cursor:pointer; border-bottom:none; margin:0;">
-                    <div style="display:flex; align-items:center; overflow:hidden;">
-                        <i class="fa-solid fa-database" style="color:${isCurrentChat ? "var(--anima-primary)" : "#aaa"}; margin-right:8px; flex-shrink:0;"></i>
-                        <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#ddd;" title="${escapeHtml(backendName)}">
-                            ${escapeHtml(backendName)}
-                        </span>
-                        ${badges}
-                    </div>
-                    <input type="checkbox" class="anima-checkbox collection-checkbox" value="${escapeHtml(backendName)}" ${isChecked ? "checked" : ""}>
-                </label>
-                
-                ${
-                  showDelete
-                    ? `
-                <button class="anima-btn danger small btn-delete-db-modal" data-id="${escapeHtml(backendName)}" title="物理删除此数据库" style="margin-left:5px; height:24px; width:24px; padding:0; display:flex; align-items:center; justify-content:center;">
-                    <i class="fa-solid fa-trash" style="font-size:12px;"></i>
-                </button>`
-                    : ""
-                }
-            </div>`;
+    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.05); padding-right:5px; min-width: 100%; width: max-content;">
+        <label class="anima-checkbox-item" style="flex:1 0 auto; display:flex; justify-content:space-between; align-items:center; padding:8px; cursor:pointer; border-bottom:none; margin:0;">
+            <div style="display:flex; align-items:center;">
+                <i class="fa-solid fa-database" style="color:${isCurrentChat ? "var(--anima-primary)" : "#aaa"}; margin-right:8px; flex-shrink:0;"></i>
+                <span style="white-space:nowrap; color:#ddd;" title="${escapeHtml(backendName)}">
+                    ${escapeHtml(backendName)}
+                </span>
+                ${badges}
+            </div>
+            <input type="checkbox" class="anima-checkbox collection-checkbox" value="${escapeHtml(backendName)}" ${isChecked ? "checked" : ""} style="margin-left: 10px;">
+        </label>
+        
+        ${
+          showDelete
+            ? `
+        <button class="anima-btn danger small btn-delete-db-modal" data-id="${escapeHtml(backendName)}" title="物理删除此数据库" style="margin-left:5px; height:24px; width:24px; padding:0; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+            <i class="fa-solid fa-trash" style="font-size:12px;"></i>
+        </button>`
+            : ""
+        }
+    </div>`;
     });
 
     // 4. 处理“孤儿” (仅在不过滤孤儿时显示，例如“关联”模式需要显示出来以便用户解绑)
@@ -1576,7 +1576,7 @@ function bindRagEvents(settings) {
         <div style="margin-bottom:10px; font-size:12px; color:#aaa;">
             请选择目标数据库：
         </div>
-        <div style="background:rgba(0,0,0,0.2); border:1px solid #444; border-radius:4px;">
+        <div style="background:rgba(0,0,0,0.2); border:1px solid #444; border-radius:4px; overflow-x: auto;">
             ${finalListHtml || '<div style="padding:10px; text-align:center;">暂无数据</div>'}
         </div>
         <div style="margin-top:15px; display:flex; justify-content:flex-end; gap:10px;">

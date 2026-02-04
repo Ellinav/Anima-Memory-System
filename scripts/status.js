@@ -1200,54 +1200,92 @@ function initBeautifyModule() {
   // 预览切换逻辑
   function togglePreview(show) {
     isPreviewMode = show;
+
     if (show) {
       let rawHtml = $textarea.val();
-      const realData = getRealtimeStatusVariables();
-      let renderContext = realData.anima_data || realData || {};
-      // 2. 先执行循环渲染
+
+      // === 🔥 核心修正开始：数据源替换 ===
+
+      // 旧代码 (只看最新层，容易为空):
+      // const realData = getRealtimeStatusVariables();
+      // let renderContext = realData.anima_data || realData || {};
+
+      // 🟢 新代码 (智能回溯，找到最近的有效状态):
+      let renderContext = {};
+      try {
+        const context = SillyTavern.getContext();
+        const chat = context.chat || [];
+
+        if (chat.length > 0) {
+          // 1. 锁定当前对话的末尾楼层
+          const lastMsg = chat[chat.length - 1];
+          const lastId = lastMsg.message_id;
+
+          // 2. 调用 status_logic.js 里的回溯函数
+          // 它会从 lastId 开始往上找，直到找到包含 anima_data 的楼层
+          const base = findBaseStatus(lastId);
+
+          // 3. 获取找到的数据 (如果没有找到，base.data 会是 {})
+          if (base && base.data) {
+            renderContext = base.data;
+          }
+
+          console.log("[Anima Preview] Loaded state from floor:", base.id);
+        }
+      } catch (e) {
+        console.error("[Anima Preview] Failed to load history state:", e);
+      }
+      // === 🔥 核心修正结束 ===
+
+      // 下面是之前写好的渲染逻辑 (保持你最新的版本，包含 key:: 和循环)
       let processedHtml = renderAnimaTemplate(rawHtml, renderContext);
-      // 3. 再执行原来的简单变量替换 (针对处理后的字符串)
+
       let renderedHtml = processedHtml.replace(
         /{{\s*([^\s}]+)\s*}}/g,
         (match, path) => {
           // 1. 特殊处理 {{status}}
           if (path === "status") {
-            // 如果也没有数据，给个默认样板
             return Object.keys(renderContext).length > 0
               ? objectToYaml(renderContext)
-              : "Status: Normal\nHP: 100";
+              : "Status: Normal";
           }
 
-          // 2. 处理 KEYS:: 前缀
+          // 2. 处理 key:: 前缀 (你最新的逻辑)
           if (path.startsWith("key::")) {
-            const targetPath = path.replace("key::", "");
-            let val = window["_"].get(renderContext, targetPath);
-            if (val && typeof val === "object")
+            const targetPath = path.replace("key::", "").trim();
+            let val = undefined;
+            if (window["_"] && window["_"].get)
+              val = window["_"].get(renderContext, targetPath);
+            else
+              val = targetPath
+                .split(".")
+                .reduce((o, k) => (o || {})[k], renderContext);
+
+            // 如果是对象，返回键名列表
+            if (val && typeof val === "object" && !Array.isArray(val))
               return Object.keys(val).join(", ");
 
-            // 🟢 KEYS 的默认占位符
-            return "(键名列表)";
+            // 如果是值，返回路径最后一段
+            const segments = targetPath.split(".");
+            return segments[segments.length - 1];
           }
 
-          // 3. 常规取值
+          // 3. 常规取值 & 默认值 (你最新的逻辑)
           let val = window["_"].get(renderContext, path);
-
-          // 🟢 【核心修改】如果变量不存在 (undefined 或 null)，返回默认占位符
-          if (val === undefined || val === null) {
-            // 你可以写死 "(变量值)"，或者想显示具体点也可以用 `(${path})`
-            return "(变量值)";
-          }
-
-          // 4. 正常显示
+          if (val === undefined || val === null) return "(变量值)"; // 这里可以显示为默认占位符
           if (typeof val === "object") return JSON.stringify(val);
           return String(val);
         },
       );
+
+      // 压缩 HTML (保持不变)
       renderedHtml = renderedHtml
-        .replace(/[\r\n]+/g, "") // 1. 彻底移除所有换行符 (\r 和 \n)
-        .replace(/>\s+</g, "><") // 2. 移除标签之间的空白 (例如 </div>  <div>)
-        .replace(/[\t ]+</g, "<") // 3. 移除标签前的多余缩进
+        .replace(/[\r\n]+/g, "")
+        .replace(/>\s+</g, "><")
+        .replace(/[\t ]+</g, "<")
         .replace(/>[\t ]+/g, ">");
+
+      // 渲染 (保持不变)
       $textarea.hide();
       $previewBox
         .html(
@@ -1255,7 +1293,6 @@ function initBeautifyModule() {
         )
         .fadeIn(200);
 
-      // 按钮样式切换
       $btnPreview.removeClass("primary").addClass("success");
       $btnPreview.html('<i class="fa-solid fa-eye-slash"></i> 退出');
     } else {

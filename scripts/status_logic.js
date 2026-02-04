@@ -1431,7 +1431,7 @@ export async function saveRealtimeStatusVariables(statusObj) {
     if (!window.TavernHelper) throw new Error("TavernHelper not ready");
 
     // 1. 获取目标楼层 (最新一条)
-    const msgs = window.TavernHelper.getChatMessages("latest");
+    const msgs = window.TavernHelper.getChatMessages(-1);
 
     if (!msgs || msgs.length === 0) {
       throw new Error("当前无聊天记录，无法写入");

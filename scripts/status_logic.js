@@ -681,6 +681,10 @@ export async function saveStatusToMessage(
   fullStatusData,
   updateType = "auto",
 ) {
+  if (msgId === undefined || msgId === null) {
+    console.error("[Anima Debug] ❌ 写入失败：楼层 ID 无效 (undefined/null)");
+    return;
+  }
   /*console.group(`[Anima Trace] 正在尝试写入楼层 #${msgId}`);
   console.log("写入源 (updateType):", updateType);
   console.log("调用堆栈:", new Error().stack); // 🔥 这行代码会告诉你到底是谁调用的
@@ -1427,15 +1431,14 @@ export async function saveRealtimeStatusVariables(statusObj) {
     if (!window.TavernHelper) throw new Error("TavernHelper not ready");
 
     // 1. 获取目标楼层 (最新一条)
-    const context = SillyTavern.getContext();
-    const chat = context.chat || [];
+    const msgs = window.TavernHelper.getChatMessages("latest");
 
-    if (chat.length === 0) {
+    if (!msgs || msgs.length === 0) {
       throw new Error("当前无聊天记录，无法写入");
     }
 
-    const lastMsg = chat[chat.length - 1];
-    const targetId = lastMsg.message_id;
+    // TavernHelper 返回的数组即便是一条，也是 Array
+    const targetId = msgs[0].message_id;
 
     // ============================================================
     // 🔥 恢复步骤 A: 获取旧数据 (Old Data)

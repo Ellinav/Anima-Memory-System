@@ -624,6 +624,7 @@ function sanitizeId(id) {
   // 这一步很关键：把空格和特殊符号都变成下划线，和后端逻辑保持一致
   return id.replace(/[^a-zA-Z0-9@\-\._\u4e00-\u9fa5]/g, "_");
 }
+
 // 2. 查询向量 (双轨并发版：Chat + KB)
 export async function queryDual({
   searchText,
@@ -646,51 +647,49 @@ export async function queryDual({
   // 辅助：清洗函数 (确保空格被转为下划线)
   const clean = (id) => {
     if (!id) return "";
-    // 这一步把空格、括号等所有怪字符都变成下划线
     return id.replace(/[^a-zA-Z0-9@\-\._\u4e00-\u9fa5]/g, "_");
   };
 
-  // 1. 获取原始 ID
-  // getSmartCollectionId 有时可能没拿到角色名，所以这里我们做双重保险
+  // 1. 获取当前聊天的原始 ID (作为兜底)
   let rawMainId = getSmartCollectionId() || currentChatId || "";
   let cleanMainId = clean(rawMainId);
 
-  // 2. 清洗附加库列表
-  let cleanExtras = (extraChatFiles || []).map((id) => clean(id));
+  let finalChatIds = [];
 
-  // 3. 🧠 智能晋升逻辑：
-  // 如果主库ID比较短 (例如 "2025-01-01")，而附加库里有个包含它的长ID (例如 "角色名_2025-01-01")
-  // 那么说明那个长ID才是真正的物理文件夹名。我们把主库ID“升级”为那个长ID。
-  const betterMainId = cleanExtras.find(
-    (extraId) =>
-      extraId.includes(cleanMainId) && extraId.length > cleanMainId.length,
-  );
+  // 🔥 核心修改：判断优先级 🔥
+  // 情况 A: 用户在 UI 上有明确配置 (extraChatFiles 是数组，哪怕是空数组)
+  // 此时完全遵从 UI，不再强行添加当前聊天 ID
+  if (Array.isArray(extraChatFiles)) {
+    console.log(
+      `[Anima RAG] 🛡️ 采用 UI 绑定列表 (${extraChatFiles.length} 个)`,
+    );
 
-  if (betterMainId) {
-    // console.log(`[Anima ID] 发现更完整的主库名称，自动替换: ${cleanMainId} -> ${betterMainId}`);
-    cleanMainId = betterMainId;
+    // 清洗列表
+    let cleanExtras = extraChatFiles.map((id) => clean(id));
+
+    // 去重并过滤空值
+    finalChatIds = [...new Set(cleanExtras)].filter(Boolean);
+  }
+  // 情况 B: 没有任何配置 (undefined)，通常是刚创建聊天且未打开过设置
+  // 此时保持原有逻辑：默认检索当前聊天
+  else {
+    console.log(
+      `[Anima RAG] ⚠️ 无 UI 配置，回退至默认当前聊天: ${cleanMainId}`,
+    );
+
+    // 原有的智能晋升逻辑 (保留以防万一)
+    // 如果没有配置列表，其实也就没有 extra 可以查了，所以直接用 mainId
+    finalChatIds = [cleanMainId].filter(Boolean);
   }
 
-  // 4. 最终去重：从附加库中剔除掉 MainId (无论是原本的还是升级后的)
-  let finalExtraIds = cleanExtras.filter(
-    (id) => id !== cleanMainId && id !== "",
-  );
+  // 打印最终决定检索的列表
+  console.log(`[Anima] 🟢 最终检索列表: [${finalChatIds.join(", ")}]`);
 
-  // 5. 打印清爽的日志
-  console.log(
-    `[Anima] 🟢 当前主库: ${cleanMainId}, 附加库: [${finalExtraIds.join(", ")}]`,
-  );
-
-  // 6. 合并列表
-  const finalChatIds = [...new Set([cleanMainId, ...finalExtraIds])].filter(
-    Boolean,
-  );
-
-  // KB 清洗
+  // KB 清洗 (保持不变)
   const finalKbFiles = (kbFiles || []).map((id) => clean(id));
 
   if (finalChatIds.length === 0 && finalKbFiles.length === 0) {
-    console.warn("[Anima RAG] 未指定任何数据库 ID，跳过检索");
+    console.warn("[Anima RAG] 未指定任何数据库 ID (UI列表为空)，跳过检索");
     return { chat_results: [], kb_results: [] };
   }
 

@@ -1580,13 +1580,103 @@ function bindRagEvents(settings) {
         <div style="background:rgba(0,0,0,0.2); border:1px solid #444; border-radius:4px; overflow-x: auto;">
             ${finalListHtml || '<div style="padding:10px; text-align:center;">暂无数据</div>'}
         </div>
-        <div style="margin-top:15px; display:flex; justify-content:flex-end; gap:10px;">
-             <button class="anima-close-rag-modal anima-btn secondary">取消</button>
-            <button id="btn_generic_confirm" class="anima-btn primary">${confirmText}</button>
+        
+        <div style="margin-top:15px; display:flex; justify-content:space-between; align-items:center;">
+            <button id="btn_generic_merge" class="anima-btn secondary" title="将选中的数据库合并为一个新库">
+                <i class="fa-solid fa-object-group"></i> 合并选中
+            </button>
+            
+            <div style="display:flex; gap:10px;">
+                <button class="anima-close-rag-modal anima-btn secondary">取消</button>
+                <button id="btn_generic_confirm" class="anima-btn primary">${confirmText}</button>
+            </div>
         </div>
         `;
 
     showRagModal(title, modalContent);
+
+    $("#anima-rag-modal-body")
+      .off("click", "#btn_generic_merge")
+      .on("click", "#btn_generic_merge", async () => {
+        // 1. 获取选中的 ID
+        const selectedIds = [];
+        $(".collection-checkbox:checked").each(function () {
+          selectedIds.push($(this).val());
+        });
+
+        if (selectedIds.length < 2) {
+          return toastr.warning("请至少选择 2 个数据库进行合并");
+        }
+
+        // 2. 弹出新名称输入框 (简单 prompt 或者自定义小弹窗)
+        // 这里为了简单直接用 prompt，你也可以写个更漂亮的 showRagModal 嵌套
+        const defaultName = `merged_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}_${Date.now().toString().slice(-4)}`;
+        const targetName = prompt(
+          "请输入合并后的新数据库名称 (仅限英文/数字/下划线):",
+          defaultName,
+        );
+
+        if (!targetName || !targetName.trim()) return; // 用户取消
+
+        const safeTargetName = targetName
+          .trim()
+          .replace(/[^a-zA-Z0-9@\-\._\u4e00-\u9fa5]/g, "_");
+
+        // 3. UI 反馈：锁定按钮
+        const $btn = $("#btn_generic_merge");
+        const originHtml = $btn.html();
+        $btn
+          .prop("disabled", true)
+          .html('<i class="fa-solid fa-spinner fa-spin"></i> 合并中...');
+
+        const safeToastr = /** @type {any} */ (toastr);
+        safeToastr.info("正在后端合并数据库，请稍候...", "", { timeOut: 0 });
+
+        try {
+          // 4. 发送请求给后端
+          // 注意：这里直接用 $.ajax 调用我们在 index.js 里写的 /merge 接口
+          const response = await new Promise((resolve, reject) => {
+            $.ajax({
+              type: "POST",
+              url: "/api/plugins/anima-rag/merge",
+              data: JSON.stringify({
+                sourceIds: selectedIds,
+                targetId: safeTargetName,
+              }),
+              contentType: "application/json",
+              success: (res) => resolve(res),
+              error: (xhr) =>
+                reject(new Error(xhr.responseText || xhr.statusText)),
+            });
+          });
+
+          safeToastr.clear();
+
+          if (response.success) {
+            toastr.success(
+              `合并成功！<br>成功搬运: ${response.stats.success} 条<br>失败: ${response.stats.failed} 条`,
+            );
+
+            // 5. 自动关闭当前弹窗，并刷新列表
+            // 关闭弹窗
+            $("#anima-rag-modal").addClass("hidden");
+
+            // 刷新主界面的文件列表 (如果是在管理界面)
+            // 注意：由于 openDatabaseSelector 是通用的，我们这里简单粗暴地刷新一下主界面列表
+            // 如果需要更完美的体验，可以重新打开这个 selector 弹窗，但这比较复杂。
+            // 简单的做法是：告诉用户去刷新列表，或者自动刷新主界面。
+            renderUnifiedFileList();
+          } else {
+            toastr.error("合并未完全成功，请检查控制台日志");
+          }
+        } catch (err) {
+          safeToastr.clear();
+          toastr.error("合并失败: " + err.message);
+        } finally {
+          // 恢复按钮状态
+          $btn.prop("disabled", false).html(originHtml);
+        }
+      });
 
     $("#anima-rag-modal-body")
       .off("click", ".btn-delete-db-modal")

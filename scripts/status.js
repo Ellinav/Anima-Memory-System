@@ -2022,8 +2022,10 @@ function initHistoryModule() {
       return;
     }
 
-    floors.reverse().forEach((floor) => {
-      const $item = $(`
+    floors
+      .sort((a, b) => b.id - a.id)
+      .forEach((floor) => {
+        const $item = $(`
                 <div class="anima-history-item" style="padding: 10px; background: rgba(255,255,255,0.05); border-radius: 4px; cursor: pointer; margin-bottom: 5px; border: 1px solid transparent; transition: all 0.2s;">
                     <div style="display:flex; justify-content: space-between; align-items: center;">
                         <span style="font-weight: bold; color: var(--anima-primary);">Floor #${floor.id}</span>
@@ -2035,23 +2037,23 @@ function initHistoryModule() {
                 </div>
             `);
 
-      $item.hover(
-        function () {
-          $(this).css("background", "rgba(255,255,255,0.1)");
-        },
-        function () {
-          $(this).css("background", "rgba(255,255,255,0.05)");
-        },
-      );
+        $item.hover(
+          function () {
+            $(this).css("background", "rgba(255,255,255,0.1)");
+          },
+          function () {
+            $(this).css("background", "rgba(255,255,255,0.05)");
+          },
+        );
 
-      $item.on("click", async (e) => {
-        e.preventDefault();
-        await loadFloorStatus(floor.id);
-        $modal.addClass("hidden");
+        $item.on("click", async (e) => {
+          e.preventDefault();
+          await loadFloorStatus(floor.id);
+          $modal.addClass("hidden");
+        });
+
+        $listContainer.append($item);
       });
-
-      $listContainer.append($item);
-    });
   }
 
   // 4. 加载特定楼层数据到主界面

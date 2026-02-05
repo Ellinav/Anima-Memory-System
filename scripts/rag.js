@@ -413,13 +413,14 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
         <div id="rag_main_content_wrapper" class="${contentVisibilityClass}">
             
             <div class="anima-setting-group">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 5px;">
-                    <h2 class="anima-title" style="margin:0;"><i class="fa-solid fa-database"></i> 数据库管理</h2>
-                    <div style="display:flex; gap:5px;">
-                         <button id="rag_btn_status" class="anima-btn secondary small" title="当前聊天向量状态">
+                <div style="display:flex; flex-wrap:wrap; gap: 8px; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                    <h2 class="anima-title" style="margin:0; white-space:nowrap;"><i class="fa-solid fa-database"></i> 数据库管理</h2>
+    
+                    <div style="display:flex; gap:5px; flex-wrap: wrap;">
+                         <button id="rag_btn_status" class="anima-btn secondary small" title="当前聊天向量状态" style="white-space:nowrap;">
                              <i class="fa-solid fa-list-check"></i> 当前聊天向量
                          </button>
-                         <button id="rag_btn_last_result" class="anima-btn secondary small" title="查看最近一次生成的检索详情">
+                         <button id="rag_btn_last_result" class="anima-btn secondary small" title="查看最近一次生成的检索详情" style="white-space:nowrap;">
                              <i class="fa-solid fa-magnifying-glass"></i> 查看最近检索
                          </button>
                     </div>
@@ -493,7 +494,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                             <div class="anima-label-small">切片依据 (自定义标签)</div>
                             <input type="text" id="rag_kb_delimiter" class="anima-input" 
                                    value="${escapeHtml(settings.knowledge_base?.delimiter || "")}" 
-                                   placeholder="例如: ### (为空则按字数)">
+                                   placeholder="为空则按字数">
                         </div>
                         <div class="anima-compact-input">
                             <div class="anima-label-small">切片字符数</div>

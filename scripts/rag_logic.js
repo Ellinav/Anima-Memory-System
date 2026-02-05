@@ -500,6 +500,9 @@ export async function uploadKnowledgeBase(file, settings) {
             chunk_size: settings.knowledge_base?.chunk_size,
           },
         });
+        if (window.toastr) {
+          toastr.success(`文件 ${file.name} 导入成功！`, "Anima RAG");
+        }
         resolve(response);
       } catch (err) {
         reject(err);
@@ -561,6 +564,9 @@ export async function insertMemory(
 
     if (response && response.vectorId) {
       console.log(`[Anima] ✅ 向量更新成功. ID: ${response.vectorId}`);
+      if (window.toastr) {
+        toastr.success("向量化完成，已成功存入知识库！", "Anima RAG");
+      }
       try {
         if (context.chatId && context.chatMetadata) {
           // 读取当前关联列表 (如果没有则初始化为空数组)
@@ -606,6 +612,10 @@ export async function insertMemory(
   } catch (e) {
     // 捕获所有错误并打印
     console.error("[Anima Debug] 💥 向量存入过程发生异常:", e);
+    if (window.toastr) {
+      // e.message 通常包含了后端返回的详细错误信息（例如 "后端错误 (500): Invalid API Key"）
+      toastr.error("向量化失败: " + e.message, "Anima RAG Error");
+    }
     return null;
   }
 }

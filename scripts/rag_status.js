@@ -90,7 +90,7 @@ export async function showVectorStatusModal() {
             <button id="anima-rag-btn-sync-dirty" class="anima-btn small primary" style="white-space:nowrap;">
                 <i class="fa-solid fa-cloud-arrow-up"></i> 一键同步
             </button>
-            <button id="anima-rag-btn-rebuild-all" class="anima-btn small danger" style="white-space:nowrap;">
+            <button id="anima-rag-btn-rebuild-all" class="anima-btn small" style="background-color: #dc2626; color: white; border: 1px solid #b91c1c; white-space:nowrap;">
                 <i class="fa-solid fa-dumpster-fire"></i> 一键重建
             </button>
             <button id="anima-rag-btn-refresh-list" class="anima-btn small secondary" style="white-space:nowrap;">

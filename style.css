@@ -879,11 +879,13 @@ input:checked + .slider:before {
 
 /* 2. 输出校验 -【测试规则】 (紫色) */
 /* 修正：直接用 ID 选择，不要加父级 ID */
+#btn_generic_merge,
 #btn-test-zod-rules {
   background-color: #982ac4 !important; /* 鲜艳紫 */
   color: #ffffff !important;
   border: none !important;
 }
+#btn_generic_merge:hover,
 #btn-test-zod-rules:hover {
   background-color: #6f218e !important; /* 悬停变深 */
 }

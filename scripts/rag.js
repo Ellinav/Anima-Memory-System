@@ -1,3 +1,4 @@
+import { getAnimaConfig } from "./api.js";
 import {
   toggleAllSummariesState,
   syncRagSettingsToWorldbook,
@@ -429,7 +430,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                 <div class="anima-card">
                     <div class="anima-flex-row">
                         <div class="anima-label-group">
-                            <span class="anima-label-text">数据库</span>
+                            <span class="anima-label-text">已关联数据库</span>
                         </div>
                         <div style="display:flex; gap:5px;">
                             <input type="file" id="rag_input_import_zip" accept=".zip" style="display:none;" />
@@ -1582,9 +1583,14 @@ function bindRagEvents(settings) {
         </div>
         
         <div style="margin-top:15px; display:flex; justify-content:space-between; align-items:center;">
-            <button id="btn_generic_merge" class="anima-btn secondary" title="将选中的数据库合并为一个新库">
-                <i class="fa-solid fa-object-group"></i> 合并选中
-            </button>
+            <div style="display:flex; gap:5px;">
+                <button id="btn_generic_rebuild" class="anima-btn" style="background-color: #dc2626; color: white; border: 1px solid #b91c1c;" title="使用当前 API 设置重新向量化选中的数据库">
+                    <i class="fa-solid fa-dumpster-fire"></i> 批量重建
+                </button>
+                <button id="btn_generic_merge" class="anima-btn secondary" title="将选中的数据库合并为一个新库">
+                    <i class="fa-solid fa-object-group"></i> 合并选中
+                </button>
+            </div>
             
             <div style="display:flex; gap:10px;">
                 <button class="anima-close-rag-modal anima-btn secondary">取消</button>
@@ -1679,6 +1685,148 @@ function bindRagEvents(settings) {
       });
 
     $("#anima-rag-modal-body")
+      .off("click", "#btn_generic_rebuild")
+      .on("click", "#btn_generic_rebuild", async () => {
+        const selectedIds = [];
+        $(".collection-checkbox:checked").each(function () {
+          selectedIds.push($(this).val());
+        });
+
+        if (selectedIds.length === 0) {
+          return toastr.warning("请至少选择 1 个数据库");
+        }
+
+        // 1. 高危警告
+        if (
+          !confirm(
+            `⚠️ 高危操作警告 ⚠️\n\n即将对 ${selectedIds.length} 个数据库进行【全量重新向量化】。\n\n` +
+              `1. 这将消耗巨大的 Token (需要调用 Embedding API)。\n` +
+              `2. 过程不可逆，旧向量将被删除。\n` +
+              `3. 请确保 API Key 余额充足。\n\n` +
+              `确定要继续吗？`,
+          )
+        )
+          return;
+
+        // 2. UI 锁定
+        const $btn = $("#btn_generic_rebuild");
+        const originHtml = $btn.html();
+        const $closeBtn = $(".anima-close-rag-modal");
+
+        $btn
+          .prop("disabled", true)
+          .html('<i class="fa-solid fa-spinner fa-spin"></i> 处理中...');
+        $closeBtn.prop("disabled", true); // 禁止关闭弹窗
+
+        const safeToastr = /** @type {any} */ (toastr);
+
+        // 获取当前 API 配置 (复用 callBackend 的逻辑)
+        // 这里的 getRagSettings() 必须在作用域内可用
+        // 🟢 修复：获取 API Key 的正确姿势
+        // 1. 获取全局 Context
+        const context = SillyTavern.getContext();
+
+        // 2. 读取插件总配置 (anima_memory_system)
+        // 注意：这里我们不读 getRagSettings() 返回的局部对象，而是读总对象
+        const parentSettings =
+          context.extensionSettings?.["anima_memory_system"] || {};
+
+        // 3. 尝试从新旧两个位置寻找 API 配置
+        // 优先: settings.api.rag (新版标准位置)
+        // 备选: settings.rag (旧版位置，可能直接混在 rag 设置里)
+        let apiCredentials = parentSettings.api?.rag;
+
+        if (!apiCredentials || !apiCredentials.key) {
+          // 回退尝试：看看是不是混在 rag 设置对象里了
+          apiCredentials = parentSettings.rag;
+        }
+
+        // 4. 最终校验
+        if (!apiCredentials || !apiCredentials.key) {
+          toastr.error(
+            "未找到有效的 Embedding API Key。\n请检查：插件设置 -> API 设置 -> RAG 模型配置。",
+          );
+          $btn.prop("disabled", false).html(originHtml);
+          $closeBtn.prop("disabled", false);
+          return;
+        }
+
+        // 调试日志 (发布时可删除)
+        console.log("[Anima Debug] Rebuild uses API Config:", apiCredentials);
+
+        if (!apiCredentials.key) {
+          toastr.error("未找到有效的 Embedding API Key，请先在设置中配置。");
+          $btn.prop("disabled", false).html(originHtml);
+          $closeBtn.prop("disabled", false);
+          return;
+        }
+
+        // 3. 循环执行 (串行)
+        let successDb = 0;
+        let failDb = 0;
+
+        for (let i = 0; i < selectedIds.length; i++) {
+          const dbId = selectedIds[i];
+
+          // 更新 Toast 提示进度
+          safeToastr.info(
+            `正在重建 (${i + 1}/${selectedIds.length}): ${dbId}\n请勿关闭窗口...`,
+            "",
+            { timeOut: 0 }, // 不自动消失
+          );
+
+          try {
+            // 调用后端单库重建接口
+            // 我们手动构建 fetch/ajax，模拟 callBackend 的 payload 结构
+            const result = await new Promise((resolve, reject) => {
+              $.ajax({
+                type: "POST",
+                url: "/api/plugins/anima-rag/rebuild_collection",
+                data: JSON.stringify({
+                  collectionId: dbId,
+                  apiConfig: {
+                    source: apiCredentials.source,
+                    url: apiCredentials.url,
+                    key: apiCredentials.key,
+                    model: apiCredentials.model,
+                  },
+                }),
+                contentType: "application/json",
+                success: (res) => resolve(res),
+                error: (xhr) =>
+                  reject(new Error(xhr.responseText || xhr.statusText)),
+              });
+            });
+
+            if (result.success) {
+              successDb++;
+              console.log(`[Anima Client] ${dbId} 重建成功:`, result.stats);
+            } else {
+              failDb++;
+            }
+          } catch (err) {
+            console.error(`[Anima Client] ${dbId} 重建失败:`, err);
+            toastr.error(`数据库 ${dbId} 失败: ${err.message}`);
+            failDb++;
+          }
+        }
+
+        // 4. 完成结算
+        safeToastr.clear(); // 清除进度提示
+        if (failDb === 0) {
+          toastr.success(`批量重建完成！\n共处理 ${successDb} 个数据库。`);
+        } else {
+          toastr.warning(
+            `批量重建结束。\n成功: ${successDb}\n失败: ${failDb}\n请查看控制台日志。`,
+          );
+        }
+
+        // 5. 恢复 UI
+        $btn.prop("disabled", false).html(originHtml);
+        $closeBtn.prop("disabled", false);
+      });
+
+    $("#anima-rag-modal-body")
       .off("click", ".btn-delete-db-modal")
       .on("click", ".btn-delete-db-modal", async function (e) {
         e.stopPropagation(); // 防止冒泡触发 checkbox 勾选
@@ -1745,8 +1893,8 @@ function bindRagEvents(settings) {
     .off("click")
     .on("click", () => {
       openDatabaseSelector({
-        title: "管理数据库关联",
-        confirmText: "确认关联",
+        title: "管理数据库",
+        confirmText: "关联",
         filterOrphans: false, // 显示孤儿以便解绑
         onConfirm: async (selectedIds) => {
           // 🟢 核心修改：分流保存逻辑

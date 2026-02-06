@@ -1182,6 +1182,10 @@ export async function toggleAllSummariesState(isRagEnabled) {
  * 这将更新 [ANIMA_RAG_Container] 和 [ANIMA_RAG_Knowledge_Container] 的策略与位置，而不改变内容
  */
 export async function syncRagSettingsToWorldbook() {
+  if (typeof window.TavernHelper.getChatWorldbookName !== "function") {
+    console.warn("[Anima RAG] 请更新酒馆助手！");
+    return;
+  }
   if (!window.TavernHelper) return;
 
   const context = SillyTavern.getContext();

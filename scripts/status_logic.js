@@ -730,7 +730,7 @@ export async function saveStatusToMessage(
               );
               const clean = { ...dirtyVars };
               delete clean.anima_data;
-              window.TavernHelper.replaceVariables(clean, {
+              window.TavernHelper.deleteVariable("anima_data", {
                 type: "message",
                 message_id: msgId,
               });
@@ -771,7 +771,7 @@ export async function saveStatusToMessage(
   try {
     // 1. 保存变量 (使用 variables.d.ts 中的 replaceVariables)
     // 注意：replaceVariables 在接口定义中返回 void (同步)，不需要 await，但加了也没事
-    window.TavernHelper.replaceVariables(fullStatusData, {
+    window.TavernHelper.insertOrAssignVariables(fullStatusData, {
       type: "message",
       message_id: msgId,
     });

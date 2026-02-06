@@ -172,8 +172,9 @@ export async function showVectorStatusModal() {
         const text = await getSummaryTextFromEntry(item.uid, item.uniqueId);
 
         if (text) {
-          // B. 直接调用插入 (强制执行，绕过 worldbook_api 的开关拦截)
-          const resultId = await insertMemory(
+          // B. 直接调用插入
+          // 🔥 修复：变量名改为 result，并明确检查 success 属性
+          const result = await insertMemory(
             text,
             item.tags,
             item.narrative_time,
@@ -183,13 +184,12 @@ export async function showVectorStatusModal() {
             item.batchId,
           );
 
-          if (resultId) {
+          // 🔥 核心修改：必须检查 result.success === true
+          if (result && result.success === true) {
             successCount++;
-            // 更新缓存状态，这样不用刷新页面也能看到变绿
-            item.isVectorized = true;
+            item.isVectorized = true; // 更新缓存
 
-            // 🔥 关键：更新世界书中的状态 (持久化)
-            // 因为我们绕过了 triggerVectorUpdate，所以必须手动更新 WB 状态
+            // 更新世界书状态 (持久化)
             await window.TavernHelper.updateWorldbookWith(wbName, (entries) => {
               const e = entries.find((x) => x.uid === item.uid);
               if (e && e.extra && Array.isArray(e.extra.history)) {
@@ -202,7 +202,9 @@ export async function showVectorStatusModal() {
               return entries;
             });
           } else {
+            // 失败分支
             failCount++;
+            console.warn(`[Sync] Failed #${item.uniqueId}:`, result?.error);
           }
         } else {
           failCount++;
@@ -277,14 +279,11 @@ export async function showVectorStatusModal() {
       $progressPercent.text(`${percent}%`);
 
       try {
-        // A. 获取文本 (如果缓存里没有，去 fetch)
-        // 注意：cachedRagData 里只有元数据，没有全文，必须 fetch
         const text = await getSummaryTextFromEntry(item.uid, item.uniqueId);
 
         if (text) {
-          // B. 调用插入 (后端会自动处理覆盖)
-          // item.tags 可能是数组，直接传
-          await insertMemory(
+          // 🔥 修复：获取返回值并检查
+          const result = await insertMemory(
             text,
             item.tags,
             item.narrative_time,
@@ -293,10 +292,18 @@ export async function showVectorStatusModal() {
             item.uniqueId,
             item.batchId,
           );
-          successCount++;
 
-          // 可选：更新缓存里的状态
-          item.isVectorized = true;
+          // 🔥 核心修改：明确检查 success
+          if (result && result.success === true) {
+            successCount++;
+            item.isVectorized = true;
+          } else {
+            failCount++;
+            console.warn(
+              `[Rebuild] API Error #${item.uniqueId}:`,
+              result?.error,
+            );
+          }
         } else {
           failCount++;
           console.warn(`[Rebuild] Skipped empty text for #${item.uniqueId}`);
@@ -460,41 +467,86 @@ function bindRagListEvents(wbName) {
     const $entry = $btn.closest(".anima-history-entry");
     const $badge = $entry.find(".status-badge");
 
-    // 只需要拿到 Index 即可！不再需要从 data 属性里抠 tags 和 text 了
+    // 1. 收集数据
     const uniqueId = $entry.attr("data-unique-id");
+    const uid = $entry.attr("data-uid"); // 条目UID
+    const batchId = $entry.attr("data-batch-id");
 
-    // UI 锁定
+    // 解析 Tags (防止 JSON 解析报错)
+    let tags = [];
+    try {
+      tags = JSON.parse(decodeURIComponent($entry.attr("data-tags") || "[]"));
+    } catch (err) {
+      tags = [];
+    }
+
+    const timestamp = $entry.attr("data-timestamp");
+
+    // 2. UI 锁定 (显示 Loading)
     const originalHtml = $btn.html();
     $btn
       .prop("disabled", true)
       .html('<i class="fa-solid fa-spinner fa-spin"></i>');
-    $badge.html('<i class="fa-solid fa-spinner fa-spin"></i> 处理中...').css({
-      /* 样式省略 */
-    });
+    $badge.html('<i class="fa-solid fa-spinner fa-spin"></i> 处理中...');
 
     try {
-      // 🔥 [核心修改] 直接调用 API 层的逻辑
-      // 它会自动读取最新的 Text, Tags, BatchID，并处理 status 更新
-      await triggerVectorUpdate(uniqueId);
+      // 3. 获取最新文本 (确保是根据最新的总结内容生成)
+      const text = await getSummaryTextFromEntry(uid, uniqueId);
+      if (!text) throw new Error("无法读取切片文本 (可能已被删除)");
 
-      // 成功后的 UI 变绿逻辑已经在 triggerVectorUpdate 里做了 (更新了 WB)，
-      // 但为了让当前界面立刻反应，我们可以手动变绿，或者重新 renderRagHistoryPage()
+      // 4. 🔥 核心操作：调用底层接口
+      // 此时后端会先请求 API，成功后才会覆盖旧文件
+      const result = await insertMemory(
+        text,
+        tags,
+        timestamp,
+        wbName,
+        null, // oldUuid (不需要)
+        uniqueId, // index (用于覆盖)
+        batchId,
+      );
 
-      toastr.success(`切片 #${uniqueId} 更新请求已发送`);
+      // 5. 🔥 只有后端明确返回成功，才执行后续操作
+      if (result && result.success === true) {
+        // A. 更新世界书 (持久化变绿)
+        await window.TavernHelper.updateWorldbookWith(wbName, (entries) => {
+          const e = entries.find((x) => x.uid === uid);
+          if (e && e.extra && Array.isArray(e.extra.history)) {
+            const h = e.extra.history.find(
+              (x) => String(x.unique_id || x.index) === String(uniqueId),
+            );
+            if (h) h.vectorized = true;
+          }
+          return entries;
+        });
 
-      // 简单更新 UI 状态 (视觉反馈)
-      $badge.html('<i class="fa-solid fa-check"></i> 已向量化').css({
-        color: "#4ade80",
-        borderColor: "#22c55e",
-        background: "rgba(74, 222, 128, 0.2)",
-      });
+        toastr.success(`切片 #${uniqueId} 更新成功`);
+
+        // B. 前端 UI 变绿 (视觉反馈)
+        $badge.html('<i class="fa-solid fa-check"></i> 已向量化').css({
+          color: "#4ade80",
+          borderColor: "#22c55e",
+          background: "rgba(74, 222, 128, 0.2)",
+        });
+      } else {
+        // 6. 失败分支：抛出错误，进入 catch
+        // result.error 已经在后端被我们清洗过了，是干净的文本
+        throw new Error(result?.error || "后端未返回成功标识");
+      }
     } catch (err) {
       console.error(err);
+
+      // 显示具体错误原因
       toastr.error("更新失败: " + err.message);
+
+      // UI 变红 (恢复原状或显示失败)
       $badge.html('<i class="fa-solid fa-xmark"></i> 失败').css({
-        /* 红色样式 */
+        color: "#f87171",
+        borderColor: "#ef4444",
+        background: "rgba(248, 113, 113, 0.2)",
       });
     } finally {
+      // 解锁按钮
       $btn.prop("disabled", false).html(originalHtml);
     }
   });

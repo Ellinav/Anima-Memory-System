@@ -279,25 +279,26 @@ export async function saveSummaryBatchToWorldbook(
   for (const item of newHistoryItems) {
     try {
       // 注意：这里也需要补上 batchId 参数
-      const resultId = await insertMemory(
+      const result = await insertMemory(
         summaryList[item.slice_id - 1].content,
         item.tags,
         item.narrative_time,
         targetChatId,
         null,
         item.unique_id,
-        batchId, // 🔥 别忘了这里也要补上 batchId
+        batchId,
       );
 
       // 如果返回了 ID，说明成功
-      if (resultId) {
+      if (result && result.success === true) {
         console.log(`[Anima] 向量已存入: ${item.unique_id}`);
         successIds.push(item.unique_id);
       } else {
-        console.warn(`[Anima] 向量存入被拦截/失败: ${item.unique_id}`);
+        // 如果失败，result.error 里现在是干净的文本了
+        console.warn(`[Anima] 向量存入失败: ${item.unique_id}`, result?.error);
       }
     } catch (err) {
-      console.error(`[Anima] 向量存入错误: ${item.unique_id}`, err);
+      console.error(`[Anima] 向量存入过程崩溃:`, err);
     }
   }
 
@@ -828,17 +829,17 @@ export async function triggerVectorUpdate(index) {
   console.log(`[Anima] 正在推送到向量库: ${collectionId} (Index: ${index})`);
 
   // 调用 API
-  const resultVectorId = await insertMemory(
+  const result = await insertMemory(
     summaryText,
     tags,
     timestamp,
     collectionId,
     null,
-    index, // 传递 index 用于后端覆盖旧向量
+    index,
     batchId,
   );
 
-  if (resultVectorId) {
+  if (result && result.success === true) {
     console.log(`[Anima] ✅ 向量更新成功: Index ${index}`);
 
     // 更新世界书状态为 true
@@ -856,13 +857,15 @@ export async function triggerVectorUpdate(index) {
     });
 
     if (window.toastr) toastr.success(`向量已自动更新`, `Index #${index}`);
-
-    // 🔥 可选：派发一个事件通知 UI 刷新（如果你的列表页面需要变绿）
-    // document.dispatchEvent(new CustomEvent('anima_vector_updated', { detail: { index } }));
   } else {
-    console.warn(`[Anima] ⛔ 向量更新失败: Index ${index}`);
+    // 失败处理
+    console.warn(`[Anima] ⛔ 向量更新失败: Index ${index}`, result?.error);
+    // 此时 Toastr 显示干净的报错信息
     if (window.toastr)
-      toastr.warning(`自动向量化失败，请检查后端日志`, `Index #${index}`);
+      toastr.warning(
+        `更新失败: ${result?.error || "未知错误"}`,
+        `Index #${index}`,
+      );
   }
 }
 /**

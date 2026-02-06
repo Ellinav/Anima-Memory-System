@@ -476,9 +476,21 @@ async function callBackend(endpoint, payload, method = "POST") {
         resolve(data);
       },
       error: (jqXHR) => {
-        const errMsg = jqXHR.responseText || jqXHR.statusText;
-        console.error(`[Anima Debug] ❌ Backend Error [${endpoint}]:`, errMsg);
-        reject(new Error(`后端错误 (${jqXHR.status}): ${errMsg}`));
+        let errMsg = "未知错误";
+        try {
+          // 尝试解析后端返回的标准 JSON: { success: false, message: "..." }
+          const errData = JSON.parse(jqXHR.responseText);
+          errMsg = errData.message || errData.error || errMsg;
+        } catch (e) {
+          // 如果后端挂了返回 502 Bad Gateway 的 HTML
+          const rawText = jqXHR.responseText || jqXHR.statusText;
+          // 再次清洗 HTML 标签
+          errMsg = rawText.replace(/<[^>]*>?/gm, "").trim();
+          // 压缩多余空格并截断
+          errMsg = errMsg.replace(/\s+/g, " ").substring(0, 150);
+        }
+        console.error(`[Anima Debug] ❌ Backend Error:`, errMsg);
+        reject(new Error(errMsg));
       },
     });
   });
@@ -604,19 +616,16 @@ export async function insertMemory(
           bindErr,
         );
       }
-      return response.vectorId;
+      return { success: true, vectorId: response.vectorId };
     } else {
-      console.warn("[Anima Debug] ⚠️ 后端返回成功但不包含 vectorId:", response);
-      return null;
+      return { success: false, error: "后端未返回有效 ID" };
     }
   } catch (e) {
-    // 捕获所有错误并打印
     console.error("[Anima Debug] 💥 向量存入过程发生异常:", e);
     if (window.toastr) {
-      // e.message 通常包含了后端返回的详细错误信息（例如 "后端错误 (500): Invalid API Key"）
       toastr.error("向量化失败: " + e.message, "Anima RAG Error");
     }
-    return null;
+    return { success: false, error: e.message };
   }
 }
 function sanitizeId(id) {

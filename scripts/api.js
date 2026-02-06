@@ -332,6 +332,9 @@ function getApiCardHtml(type, title) {
         ${extraSettingsHtml}
 
         <div class="anima-card-actions">
+             <button class="anima-btn" id="btn-test-${type}" style="margin-right: auto;">
+                <i class="fa-solid fa-vial"></i> 测试
+             </button>
              <button class="anima-btn" id="btn-connect-${type}">
                 <i class="fa-solid fa-plug"></i> 获取模型
             </button>
@@ -477,6 +480,9 @@ function bindLogic(type) {
   );
   const btnSave = document.getElementById(`btn-save-${type}`);
   const btnEdit = document.getElementById(`btn-edit-${type}`);
+  const btnTest = /** @type {HTMLButtonElement} */ (
+    document.getElementById(`btn-test-${type}`)
+  );
 
   const selectModel = /** @type {HTMLSelectElement} */ (
     document.getElementById(`anima-${type}-model`)
@@ -515,6 +521,106 @@ function bindLogic(type) {
   if (btnSave) {
     btnSave.addEventListener("click", () => {
       saveSettingsFromUI();
+    });
+  }
+
+  if (btnTest) {
+    btnTest.addEventListener("click", async () => {
+      const currentSource = selectSource.value;
+      const currentUrl = inputUrl.value;
+      const currentKey = inputKey.value;
+      const currentModel = selectModel.value;
+
+      if (!currentKey) {
+        if (window.toastr) window.toastr.warning("请填写 API Key");
+        return;
+      }
+
+      const originalHtml = btnTest.innerHTML;
+      btnTest.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 请求中...`;
+      btnTest.disabled = true; // 🟢 VS Code 现在不会报错了
+
+      try {
+        // ============================
+        // 🟢 分支 A: RAG 模型 (走后端测试)
+        // ============================
+        if (type === "rag") {
+          const configPayload = {
+            source: currentSource,
+            url: currentUrl,
+            key: currentKey,
+            model: currentModel || "text-embedding-3-small",
+          };
+
+          // ✨ 使用 ST 全局的 jQuery 发送请求，它会自动带上 CSRF Token
+          const data = await new Promise((resolve, reject) => {
+            // @ts-ignore
+            $.ajax({
+              type: "POST",
+              url: "/api/plugins/anima-rag/test_connection",
+              data: JSON.stringify({ apiConfig: configPayload }),
+              contentType: "application/json",
+              success: function (response) {
+                resolve(response);
+              },
+              error: function (jqXHR, textStatus, errorThrown) {
+                // 尝试获取后端返回的具体错误信息
+                const errMsg =
+                  jqXHR.responseText || errorThrown || "连接请求被拒绝";
+                reject(new Error(errMsg));
+              },
+            });
+          });
+
+          // 成功后的处理逻辑保持不变
+          if (window.toastr)
+            window.toastr.success(data.message, "RAG 连接成功");
+          console.log("[Anima] RAG Test Result:", data);
+        }
+
+        // ============================
+        // 🟢 分支 B: LLM / Status 模型 (走 generateText)
+        // ============================
+        else {
+          const tempConfig = {
+            source: currentSource,
+            url: currentUrl,
+            key: currentKey,
+            model: currentModel,
+            stream: false,
+            temperature: 0.5,
+            max_output: 50, // 测试只需要很少的字
+          };
+
+          const testPrompt = [{ role: "user", content: "Hi. Reply 'OK'." }];
+
+          // 调用 generateText
+          const reply = await generateText(testPrompt, type, tempConfig);
+
+          if (window.toastr) {
+            const shortReply =
+              reply.length > 30 ? reply.substring(0, 30) + "..." : reply;
+            window.toastr.success(
+              `连接成功！回复: ${shortReply}`,
+              "Anima System",
+            );
+          }
+        }
+      } catch (e) {
+        console.error(`[Anima] Test Failed:`, e);
+        let errorMsg = e.message || "未知错误";
+        // 简单美化一下常见错误
+        if (errorMsg.includes("401")) errorMsg = "401 鉴权失败 (请检查 Key)";
+        if (errorMsg.includes("404")) errorMsg = "404 路径错误 (请检查 URL)";
+        if (errorMsg.includes("400"))
+          errorMsg = "400 请求参数错误 (请检查模型名)";
+
+        if (window.toastr)
+          window.toastr.error(`连接失败: ${errorMsg}`, "Anima System");
+      } finally {
+        btnTest.innerHTML = originalHtml;
+        btnTest.disabled = false;
+      }
     });
   }
 
@@ -717,8 +823,12 @@ function openModelModal(type) {
  * 1. 外部直连 (Google) -> 使用 fetch，支持反代，兼容多种返回格式
  * 2. 内部转发 (OpenAI/ST) -> 使用 $.ajax，自动处理 CSRF，手动处理流式数据防止 502
  */
-export async function generateText(promptOrMessages, purpose = "llm") {
-  const config = getAnimaConfig().api[purpose];
+export async function generateText(
+  promptOrMessages,
+  purpose = "llm",
+  overrideConfig = null,
+) {
+  const config = overrideConfig || getAnimaConfig().api[purpose];
   if (!config || !config.key) {
     if (config.source !== "openai" && config.source !== "google") {
       // 允许无 key

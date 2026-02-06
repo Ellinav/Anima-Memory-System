@@ -245,18 +245,22 @@ export async function saveSummaryBatchToWorldbook(
   // ============================================================
   // ⚡ 触发向量更新 (Trigger Vectorization)
   // ============================================================
-  const ragGlobalSettings = context.extensionSettings?.anima_rag || {};
+  const settingsOld = context.extensionSettings?.anima_rag || {};
+  const settingsNew =
+    context.extensionSettings?.["anima_memory_system"]?.rag || {};
+  // 合并配置，以新版为准
+  const ragGlobalSettings = { ...settingsOld, ...settingsNew };
 
-  // 默认值为 true (如果没有设置，假设开启，或者你可以设为 false)
-  // 这里的逻辑是: 只要有一个是 false，就拦截
-  const isRagEnabled = ragGlobalSettings.rag_enabled !== false; // 默认为 true
-  const isAutoVectorize = ragGlobalSettings.auto_vectorize !== false; // 默认为 true
+  // 默认值为 true
+  const isRagEnabled = ragGlobalSettings.rag_enabled !== false;
+  const isAutoVectorize = ragGlobalSettings.auto_vectorize !== false;
 
   // 执行拦截：如果 总开关关闭 或 自动向量化关闭
   if (!isRagEnabled || !isAutoVectorize) {
     console.log(
       `[Anima] 自动向量化已跳过 (总开关: ${isRagEnabled}, 自动: ${isAutoVectorize})`,
     );
+    if (window.toastr) toastr.info("总结已保存 (未向量化)");
     // 这里不需要做任何额外操作，UI 默认就是红色的 (vectorized: false)
     return;
   }

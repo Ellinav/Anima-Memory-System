@@ -17,44 +17,53 @@ export async function saveSummaryBatchToWorldbook(
   startId,
   endId,
   settings,
-  fixedChatId = null, // <--- 新增参数，默认为 null 兼容旧代码
+  fixedChatId = null,
+  fixedWorldbookName = null, // ✨ 新增：从调用端传入准确的世界书名
 ) {
   if (!window.TavernHelper) throw new Error("TavernHelper missing");
 
-  // 🟢 1. 优先使用传入的 ID，如果没有传才用当前的 (UI 交互操作时可能没传)
   const context = SillyTavern.getContext();
   const targetChatId = fixedChatId || context.chatId;
 
   if (!targetChatId) throw new Error("未检测到有效 Chat ID");
 
-  let wbName;
+  // 1. 确定世界书名称
+  let wbName = fixedWorldbookName;
 
-  // 🟢 2. 健壮性优化：如果是当前前台聊天，直接问 ST 要名字
+  // 如果没有传固定名，且是当前聊天，向 ST 查询绑定关系
   if (
+    !wbName &&
     targetChatId === context.chatId &&
     window.TavernHelper.getChatWorldbookName
   ) {
     wbName = window.TavernHelper.getChatWorldbookName("current");
   }
 
-  // 降级策略：如果是后台聊天，或者 API 返回空（未绑定），则通过文件名推导
+  // 降级：如果实在不知道名字，假定为文件名
   if (!wbName) {
     wbName = targetChatId.replace(/\.(json|jsonl)$/i, "");
   }
-  // 确保世界书存在 (如果不存在则创建，但不绑定为"current"，只是为了写入)
-  // 注意：我们直接操作该名称的世界书，不需要 getChatWorldbookName("current")
-  // 这里做个保险：尝试获取一下，如果获取不到（比如完全没创建过），则初始化一下
+
+  // 2. 确保世界书存在且绑定 (仅限当前聊天)
   try {
-    // 尝试只获取名字，不改变当前绑定
-    const existing = await window.TavernHelper.getWorldbook(wbName);
-    if (!existing) {
-      // 如果不存在，可能需要通过 getOrCreateChatWorldbook 初始化
-      // 但为了安全，这里我们暂时信任 wbName 就是文件名
-      console.log(`[Anima] 目标世界书 ${wbName} 可能未加载，尝试自动创建/读取`);
-      await window.TavernHelper.createWorldbook(wbName);
+    if (targetChatId === context.chatId) {
+      // ✨ 优化：使用 getOrCreate 确保如果不存在会自动创建并绑定到当前聊天
+      // 如果 wbName 已经存在，它只会返回名字；如果不存在，它创建并绑定
+      wbName = await window.TavernHelper.getOrCreateChatWorldbook(
+        "current",
+        wbName,
+      );
+    } else {
+      // 后台写入：只能确保存在，无法修正绑定关系
+      const existing = await window.TavernHelper.getWorldbook(wbName);
+      if (!existing) {
+        console.log(`[Anima] 目标世界书 ${wbName} 不存在，正在创建...`);
+        await window.TavernHelper.createWorldbook(wbName);
+      }
     }
   } catch (e) {
-    // 忽略错误，继续尝试写入
+    console.error("世界书初始化失败", e);
+    // 可以选择 throw 或继续尝试
   }
 
   // 根据 batchId 决定放在哪个 Chapter (Group Size)

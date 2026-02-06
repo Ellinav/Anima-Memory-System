@@ -981,7 +981,7 @@ export async function generateText(promptOrMessages, purpose = "llm") {
             JSON.stringify(data, null, 2),
           );
           throw new Error(
-            "模型返回内容为空 (请按F12在控制台查看 [Anima] Raw Data)",
+            "模型返回内容为空 (一般是破限问题，请尝试更换总结/状态提示词中的破限)",
           );
         }
         return content;

@@ -565,7 +565,7 @@ export async function insertMemory(
     if (response && response.vectorId) {
       console.log(`[Anima] ✅ 向量更新成功. ID: ${response.vectorId}`);
       if (window.toastr) {
-        toastr.success("向量化完成，已成功存入知识库！", "Anima RAG");
+        toastr.success("向量化完成，已成功存入数据库！", "Anima RAG");
       }
       try {
         if (context.chatId && context.chatMetadata) {

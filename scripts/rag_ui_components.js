@@ -511,11 +511,15 @@ export function renderFileList(ignoredFiles, ignoredChatId) {
 // 6. 节日配置逻辑 (修复版)
 // ==========================================
 export function renderHolidayModal(settings) {
+  if (!settings.holidays || !Array.isArray(settings.holidays)) {
+    settings.holidays = [];
+  }
+  let tempHolidays = JSON.parse(JSON.stringify(settings.holidays));
   const renderList = (optionalEditIdx = -1) => {
     const tbody = $("#anima_holiday_tbody");
     tbody.empty();
 
-    settings.holidays.forEach((h, idx) => {
+    tempHolidays.forEach((h, idx) => {
       const isEditing = idx === optionalEditIdx;
 
       // 构建行 HTML
@@ -570,14 +574,13 @@ export function renderHolidayModal(settings) {
           const name = $tr.find(".h-name").val().trim();
           if (!date || !name) return toastr.warning("日期和名称不能为空");
 
-          settings.holidays[idx] = {
+          tempHolidays[idx] = {
             date: date,
             name: name,
             range_before: parseInt($tr.find(".h-before").val()) || 0,
             range_after: parseInt($tr.find(".h-after").val()) || 0,
           };
           renderList();
-          renderStrategyTable(settings); // 刷新主界面表格
         });
         $tr.find(".btn-cancel").click(() => renderList());
       } else {
@@ -586,11 +589,9 @@ export function renderHolidayModal(settings) {
           if (confirm(`删除节日 ${h.name}?`)) {
             settings.holidays.splice(idx, 1);
             renderList();
-            renderStrategyTable(settings);
           }
         });
       }
-
       tbody.append($tr);
     });
   };
@@ -617,19 +618,44 @@ export function renderHolidayModal(settings) {
                 <tbody id="anima_holiday_tbody"></tbody>
             </table>
         </div>
+        <div style="margin-top: 20px; display:flex; justify-content:flex-end; align-items:center; gap: 10px;">
+            <button id="btn_holiday_cancel_all" class="anima-btn secondary">取消</button>
+            <button id="btn_holiday_save_all" class="anima-btn primary">确认修改</button>
+        </div>
     `;
 
   showRagModal("节日配置", modalHtml);
   renderList();
 
   $("#btn_holiday_add").on("click", () => {
-    settings.holidays.push({
+    tempHolidays.push({
       date: "",
       name: "",
       range_before: 0,
       range_after: 0,
     });
-    renderList(settings.holidays.length - 1); // 自动进入编辑
+    renderList(tempHolidays.length - 1); // 自动进入编辑模式
+  });
+
+  // 2. 🔥 [新增] 取消按钮
+  $("#btn_holiday_cancel_all").on("click", () => {
+    $("#anima-rag-modal").addClass("hidden"); // 直接关闭，丢弃修改
+  });
+
+  // 3. 🔥 [新增] 确认修改按钮 (核心逻辑)
+  $("#btn_holiday_save_all").on("click", () => {
+    // (1) 将临时副本应用到 settings
+    settings.holidays = tempHolidays;
+
+    // (2) 持久化保存
+    saveRagSettings(settings);
+
+    // (3) 刷新主界面表格 (让新标签显示出来)
+    renderStrategyTable(settings);
+
+    // (4) 关闭弹窗
+    $("#anima-rag-modal").addClass("hidden");
+    toastr.success("节日配置已保存");
   });
 }
 
@@ -831,7 +857,7 @@ function renderPeriodModal(settings) {
         
         <div style="margin-top: 20px; display:flex; justify-content:flex-end; align-items:center; gap: 10px;">
             <button id="btn_period_cancel_all" class="anima-btn secondary">取消</button>
-            <button id="btn_period_save_all" class="anima-btn primary">保存修改</button>
+            <button id="btn_period_save_all" class="anima-btn primary">确认修改</button>
         </div>
     </div>
     `;
@@ -998,7 +1024,7 @@ function renderStatusRulesModal(settings) {
             <div style="font-size:12px; color:#666;">Path 示例: <code>Player.HP</code> 或 <code>Player.Status</code></div>
             <div>
                 <button class="anima-close-rag-modal anima-btn secondary">取消</button>
-                <button id="rag_btn_save_rules" class="anima-btn primary">保存并应用</button>
+                <button id="rag_btn_save_rules" class="anima-btn primary">确认修改</button>
             </div>
         </div>
     `;

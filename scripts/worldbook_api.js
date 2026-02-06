@@ -23,15 +23,24 @@ export async function saveSummaryBatchToWorldbook(
 
   // 🟢 1. 优先使用传入的 ID，如果没有传才用当前的 (UI 交互操作时可能没传)
   const context = SillyTavern.getContext();
-  const chatId = fixedChatId || context.chatId;
+  const targetChatId = fixedChatId || context.chatId;
 
-  if (!chatId) throw new Error("未检测到打开的聊天文件");
+  if (!targetChatId) throw new Error("未检测到有效 Chat ID");
 
-  // 🟢 2. 核心修改：不再通过 "current" 获取世界书名，而是通过 chatId 反推
-  // "current" 永远指向前台，会导致写入错误。
-  // ST 的默认规则是：世界书名 = 聊天文件名(不含扩展名)
-  let wbName = chatId.replace(/\.(json|jsonl)$/i, "");
+  let wbName;
 
+  // 🟢 2. 健壮性优化：如果是当前前台聊天，直接问 ST 要名字
+  if (
+    targetChatId === context.chatId &&
+    window.TavernHelper.getChatWorldbookName
+  ) {
+    wbName = window.TavernHelper.getChatWorldbookName("current");
+  }
+
+  // 降级策略：如果是后台聊天，或者 API 返回空（未绑定），则通过文件名推导
+  if (!wbName) {
+    wbName = targetChatId.replace(/\.(json|jsonl)$/i, "");
+  }
   // 确保世界书存在 (如果不存在则创建，但不绑定为"current"，只是为了写入)
   // 注意：我们直接操作该名称的世界书，不需要 getChatWorldbookName("current")
   // 这里做个保险：尝试获取一下，如果获取不到（比如完全没创建过），则初始化一下
@@ -42,7 +51,7 @@ export async function saveSummaryBatchToWorldbook(
       // 如果不存在，可能需要通过 getOrCreateChatWorldbook 初始化
       // 但为了安全，这里我们暂时信任 wbName 就是文件名
       console.log(`[Anima] 目标世界书 ${wbName} 可能未加载，尝试自动创建/读取`);
-      await window.TavernHelper.getOrCreateChatWorldbook(null, wbName);
+      await window.TavernHelper.createWorldbook(wbName);
     }
   } catch (e) {
     // 忽略错误，继续尝试写入
@@ -148,7 +157,7 @@ export async function saveSummaryBatchToWorldbook(
       narrative_time: narrativeTime,
       last_modified: timestamp,
       tags: item.tags || [],
-      source_file: chatId,
+      source_file: targetChatId,
       vectorized: false,
     });
   });
@@ -200,7 +209,7 @@ export async function saveSummaryBatchToWorldbook(
       });
 
       // 更新根属性
-      e.extra.source_file = chatId;
+      e.extra.source_file = targetChatId;
       e.extra.narrative_time = narrativeTime;
 
       return entries;
@@ -234,7 +243,7 @@ export async function saveSummaryBatchToWorldbook(
 
       extra: {
         createdBy: "anima_summary",
-        source_file: chatId,
+        source_file: targetChatId,
         narrative_time: narrativeTime,
         history: newHistoryItems,
       },
@@ -274,7 +283,7 @@ export async function saveSummaryBatchToWorldbook(
         summaryList[item.slice_id - 1].content,
         item.tags,
         item.narrative_time,
-        chatId,
+        targetChatId,
         null,
         item.unique_id,
         batchId, // 🔥 别忘了这里也要补上 batchId

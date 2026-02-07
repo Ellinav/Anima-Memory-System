@@ -420,6 +420,10 @@ const PLUGIN_API_URL = "/api/plugins/anima-rag";
 
 // 🟢 新增：获取后端可用向量库列表
 export async function getAvailableCollections() {
+  const settings = getEffectiveSettings();
+  if (settings && settings.rag_enabled === false) {
+    return []; // 直接返回空数组
+  }
   try {
     return await callBackend("/list", {}, "GET");
     // 注意：如果你之前的 callBackend 只支持 POST，
@@ -498,6 +502,11 @@ async function callBackend(endpoint, payload, method = "POST") {
 
 // 🟢 [新增] 上传知识库文件
 export async function uploadKnowledgeBase(file, settings) {
+  if (settings && settings.rag_enabled === false) {
+    console.warn("[Anima RAG] 总开关已关闭，拦截知识库上传。");
+    // 这里 reject 一个错误，或者 resolve 一个提示，取决于你希望 UI 怎么反应
+    return Promise.reject(new Error("RAG 总开关已关闭，无法上传文件。"));
+  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -944,6 +953,11 @@ export async function deleteBatchMemory(collectionId, batchId) {
 
 // 🟢 新增：物理删除整个 Collection 文件夹
 export async function deleteCollection(collectionId) {
+  const settings = getEffectiveSettings(); // 获取当前配置
+  if (settings && settings.rag_enabled === false) {
+    console.warn("[Anima RAG] 总开关已关闭，拦截数据库删除。");
+    return { success: false, message: "RAG Disabled" };
+  }
   if (!collectionId) return;
 
   try {

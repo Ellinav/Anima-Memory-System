@@ -589,10 +589,10 @@ function bindLogic(type) {
             model: currentModel,
             stream: false,
             temperature: 0.5,
-            max_output: 50, // 测试只需要很少的字
+            max_output: 2000, // 测试只需要很少的字
           };
 
-          const testPrompt = [{ role: "user", content: "Hi. Reply 'OK'." }];
+          const testPrompt = [{ role: "user", content: "Hi" }];
 
           // 调用 generateText
           const reply = await generateText(testPrompt, type, tempConfig);
@@ -1080,8 +1080,12 @@ export async function generateText(
           throw new Error(`API 业务错误: ${errorMsg}`);
         }
 
+        const choice = data.choices?.[0];
+        const message = choice?.message;
+
+        // 优先取 content；如果为空，尝试取 reasoning_content（防止因 max_tokens 截断导致报错）；最后尝试 text
         const content =
-          data.choices?.[0]?.message?.content || data.choices?.[0]?.text;
+          message?.content || message?.reasoning_content || choice?.text;
 
         // 🔥 2. HTTP 200 但内容为空的处理
         if (!content) {

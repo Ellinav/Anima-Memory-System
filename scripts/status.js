@@ -133,12 +133,23 @@ export function initStatusSettings() {
             <div class="anima-flex-row" style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px; height: 34px;">
                 <span class="anima-label-text" style="margin: 0; line-height: 34px; white-space: nowrap;">配置模式</span>
                 
-                <div style="margin-left: auto; display: flex; align-items: center; gap: 10px;">
-                    <button id="btn-test-zod-rules" class="anima-btn secondary small" title="打开测试沙箱，验证当前规则对 JSON 的校验结果">
+                <div style="margin-left: auto; display: flex; align-items: center; gap: 5px;">
+                    <input type="file" id="zod_import_file" accept=".json" style="display: none;" />
+
+                    <button id="btn-import-zod" class="anima-btn secondary small" title="导入配置 (JSON)">
+                        <i class="fa-solid fa-file-import"></i> 导入
+                    </button>
+                    <button id="btn-export-zod" class="anima-btn secondary small" title="导出配置 (JSON)">
+                        <i class="fa-solid fa-file-export"></i> 导出
+                    </button>
+
+                    <div style="width: 1px; height: 20px; background: var(--anima-border); margin: 0 5px;"></div>
+
+                    <button id="btn-test-zod-rules" class="anima-btn secondary small" title="打开测试沙箱">
                         <i class="fa-solid fa-vial"></i> 测试
                     </button>
 
-                    <select id="zod-mode-select" class="anima-select" style="width: 150px; margin: 0; height: 32px; padding: 0 5px; cursor: pointer;">
+                    <select id="zod-mode-select" class="anima-select" style="width: 140px; margin: 0; height: 32px; padding: 0 5px; cursor: pointer;">
                         <option value="ui" ${zodSettings.mode === "ui" ? "selected" : ""}>🛠️ 可视化配置</option>
                         <option value="script" ${zodSettings.mode === "script" ? "selected" : ""}>📜 自定义脚本</option>
                     </select>
@@ -255,6 +266,12 @@ export function initStatusSettings() {
                     <input type="checkbox" id="status_panel_enabled" ${updateSettings.panel_enabled ? "checked" : ""}>
                     <span class="slider round"></span>
                 </label>
+            </div>
+
+            <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid var(--anima-border);">
+                <button id="btn-save-update-config" class="anima-btn primary" style="width:100%">
+                    <i class="fa-solid fa-floppy-disk"></i> 保存到全局
+                </button>
             </div>
         </div>
     `;
@@ -473,7 +490,19 @@ export function initStatusSettings() {
                             <button id="btn-beautify-confirm" class="anima-btn primary small" title="保存"><i class="fa-solid fa-check"></i> 确认</button>
                             <button id="btn-beautify-cancel" class="anima-btn danger small" title="取消"><i class="fa-solid fa-xmark"></i> 取消</button>
                         </div>
-                        <div id="beautify-actions-view" style="display:flex; gap:5px;">
+                        
+                        <div id="beautify-actions-view" style="display:flex; gap:5px; align-items: center;">
+                            <input type="file" id="beautify_import_file" accept=".json" style="display: none;" />
+                            
+                            <button id="btn-import-beautify" class="anima-btn secondary small" title="导入模板 (JSON)">
+                                <i class="fa-solid fa-file-import"></i> 导入
+                            </button>
+                            <button id="btn-export-beautify" class="anima-btn secondary small" title="导出模板 (JSON)">
+                                <i class="fa-solid fa-file-export"></i> 导出
+                            </button>
+
+                            <div style="width: 1px; height: 16px; background: var(--anima-border); margin: 0 4px;"></div>
+
                             <button id="btn-beautify-edit" class="anima-btn secondary small"><i class="fa-solid fa-pen-to-square"></i> 编辑</button>
                             <button id="btn-beautify-preview" class="anima-btn primary small"><i class="fa-solid fa-eye"></i> 预览</button>
                         </div>
@@ -724,8 +753,15 @@ function bindMasterSwitch() {
     // 核心修改：状态改变立即保存到 extensionSettings
     saveStatusSettings(currentSettings);
 
-    if (isEnabled) $("#status-main-content").slideDown(200);
-    else $("#status-main-content").slideUp(200);
+    if (isEnabled) {
+      $("#status-main-content").slideDown(200);
+    } else {
+      $("#status-main-content").slideUp(200);
+    }
+
+    // 🔥【核心修复】总开关关闭时，也必须强制刷新一下面板
+    // 这样 refreshStatusPanel 里的逻辑（见下一步）就能把悬浮按钮干掉
+    refreshStatusPanel();
   });
 }
 
@@ -813,7 +849,16 @@ export function refreshStatusPanel() {
         // 只有当是 AI 回复，且确实没数据时，才提示同步
         // 【额外过滤】如果当前是 Layer 0 且没有配置预设，通常也不建议弹同步按钮（太干扰），除非你希望 Layer 0 也可以跑 LLM 生成状态
         // 这里我们保持原样，但你可以根据喜好决定是否加 && currentId !== 0
-        if (isAi) {
+        const updateConfig = currentSettings.update_management || {
+          panel_enabled: false,
+        };
+
+        // 2. 增加开关判断 (修改: 只有当 isAi 为真 且 开关开启时，才显示)
+        if (
+          isAi &&
+          updateConfig.panel_enabled &&
+          currentSettings.status_enabled
+        ) {
           shouldShowSyncBtn = true;
         }
       }
@@ -1185,6 +1230,114 @@ function initBeautifyModule() {
     }
   });
 
+  // 1. 导出 (Export)
+  $("#btn-export-beautify").on("click", (e) => {
+    e.preventDefault();
+    try {
+      // 获取当前内容：如果在编辑模式，取输入框的值；如果在查看模式，取 Settings 或 输入框的值
+      // 为了所见即所得，直接取 input 的值（它在 view 模式下也是有值的，只是 disabled）
+      const currentTemplate = $textarea.val();
+
+      const exportData = {
+        template: currentTemplate,
+      };
+
+      const dataStr = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([dataStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      // 时间戳文件名
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[-:.]/g, "")
+        .slice(0, 14);
+      a.download = `anima_beautify_template_${timestamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      if (window.toastr) toastr.success("美化模板导出成功");
+    } catch (err) {
+      console.error(err);
+      if (window.toastr) toastr.error("导出失败: " + err.message);
+    }
+  });
+
+  // 2. 导入 (Import) - 触发
+  $("#btn-import-beautify").on("click", (e) => {
+    e.preventDefault();
+    $("#beautify_import_file").click();
+  });
+
+  // ===========================
+  // 3. 导入逻辑 (Import) - 修复版
+  // ===========================
+  $("#beautify_import_file")
+    .off("change")
+    .on("change", function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+
+      reader.onload = (ev) => {
+        try {
+          const json = JSON.parse(ev.target.result);
+
+          // 格式校验
+          if (!json || typeof json.template !== "string") {
+            throw new Error("文件格式错误：未找到 template 字段");
+          }
+
+          if (confirm("确定要导入该模板吗？这将覆盖当前编辑框中的内容。")) {
+            // 🔥 1. 自动格式化代码 (Auto Wrap / Beautify)
+            let newTemplate = json.template;
+            try {
+              // 尝试格式化，如果失败则保留原样
+              newTemplate = simpleFormatHTML(newTemplate);
+            } catch (fmtErr) {
+              console.warn("Auto-format failed, using raw string:", fmtErr);
+            }
+
+            // 🔥 2. 强制重新获取 DOM 元素并赋值 (解决 UI 不显示的问题)
+            const $targetBox = $("#beautify-template-input");
+            $targetBox.val(newTemplate);
+
+            // 🔥 3. 更新内存中的缓存 (防止点“取消”后回滚到旧版)
+            // 这一步非常重要，它让“导入”操作等同于一次“已确认的编辑”
+            tempContent = newTemplate;
+
+            // 4. 更新全局设置内存
+            if (!currentSettings.beautify_settings)
+              currentSettings.beautify_settings = {};
+            currentSettings.beautify_settings.template = newTemplate;
+
+            // 5. 触发保存 (Debounced)
+            saveStatusSettings(currentSettings);
+
+            // 6. 刷新预览
+            if (isPreviewMode) {
+              togglePreview(false);
+              setTimeout(() => togglePreview(true), 50);
+            }
+
+            if (window.toastr) toastr.success("模板导入成功 (已自动格式化)");
+          }
+        } catch (err) {
+          console.error(err);
+          if (window.toastr) toastr.error("导入失败: " + err.message);
+        }
+
+        // 清空 input 允许重复导入同一个文件
+        $(this).val("");
+      };
+
+      reader.readAsText(file);
+    });
+
   $btnEdit.on("click", function () {
     // 如果正在预览，先关闭预览
     if (isPreviewMode) togglePreview(false);
@@ -1450,6 +1603,118 @@ function initZodModule() {
     }
     // 内存保存 (暂存)
     saveStatusSettings(currentSettings);
+  });
+
+  // 1. 导出 (Export)
+  $("#btn-export-zod").on("click", (e) => {
+    e.preventDefault();
+    try {
+      // 构造导出的数据结构
+      // 我们直接导出整个 zod_settings 对象，这样包含了模式、UI规则和脚本内容
+      const exportData = {
+        mode: settings.mode,
+        rules: settings.rules || [],
+        script_content: settings.script_content || "",
+      };
+
+      // 为了确保数据最新，如果是 script 模式且处于编辑状态，尝试获取输入框的值
+      if (
+        settings.mode === "script" &&
+        !$("#zod-script-input").prop("disabled")
+      ) {
+        exportData.script_content = $("#zod-script-input").val();
+      }
+
+      const dataStr = JSON.stringify(exportData, null, 2); // 美化格式
+      const blob = new Blob([dataStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement("a");
+      a.href = url;
+      // 生成带时间戳的文件名
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[-:.]/g, "")
+        .slice(0, 14);
+      a.download = `anima_zod_config_${timestamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      if (window.toastr) toastr.success("Zod 配置导出成功");
+    } catch (err) {
+      console.error(err);
+      if (window.toastr) toastr.error("导出失败: " + err.message);
+    }
+  });
+
+  // 2. 导入 (Import) - 触发文件选择
+  $("#btn-import-zod").on("click", (e) => {
+    e.preventDefault();
+    $("#zod_import_file").click(); // 触发隐藏的 input
+  });
+
+  // 3. 导入 - 处理文件读取
+  $("#zod_import_file").on("change", function (e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const json = JSON.parse(ev.target.result);
+
+        // 简单的格式校验
+        if (typeof json !== "object" || json === null) {
+          throw new Error("文件格式错误：必须是 JSON 对象");
+        }
+
+        if (confirm("确定要导入该配置吗？这将覆盖当前的 Zod 设置。")) {
+          // A. 更新内存数据
+          // 兼容性处理：如果导入的是旧格式（只有 rules 数组），默认切到 UI 模式
+          if (Array.isArray(json)) {
+            settings.mode = "ui";
+            settings.rules = json;
+          } else {
+            // 标准格式
+            settings.mode = json.mode || "ui"; // 默认 ui
+            settings.rules = Array.isArray(json.rules) ? json.rules : [];
+            settings.script_content = json.script_content || "";
+          }
+
+          // B. 保存到全局设置
+          saveStatusSettings(currentSettings);
+
+          // C. 【关键】自动切换 UI 状态
+          // 更新下拉框的值
+          const $select = $("#zod-mode-select");
+          $select.val(settings.mode);
+
+          // 触发 change 事件，让 initZodModule 里的逻辑自动切换显示容器 (ui/script)
+          $select.trigger("change");
+
+          // 如果是 UI 模式，还需要强制重绘列表 (因为 trigger change 只是切换容器显隐，没重绘列表)
+          if (settings.mode === "ui") {
+            renderRules();
+          } else {
+            // 如果是脚本模式，更新文本框内容
+            $("#zod-script-input").val(settings.script_content);
+          }
+
+          if (window.toastr)
+            toastr.success(
+              `配置已导入，自动切换至: ${settings.mode === "ui" ? "可视化模式" : "脚本模式"}`,
+            );
+        }
+      } catch (err) {
+        console.error(err);
+        if (window.toastr) toastr.error("导入失败: " + err.message);
+      }
+      // 清空 value 允许重复导入
+      $(this).val("");
+    };
+    reader.readAsText(file);
   });
 
   // ===========================
@@ -2521,6 +2786,14 @@ function bindGlobalEvents() {
     .on("click", () => showStatusPreviewModal());
 
   $(window).on("anima:status_sync_start", function () {
+    // === 新增：检查开关状态 ===
+    const updateConfig = currentSettings.update_management || {
+      panel_enabled: false,
+    };
+    // 如果面板未启用，直接不处理 UI，保持隐藏
+    if (!updateConfig.panel_enabled) return;
+    // ========================
+
     const $btn = $("#anima-floating-sync-btn");
     if ($btn.length > 0) {
       // 1. 变图标为转圈
@@ -2594,16 +2867,40 @@ function initUpdateManagementModule() {
   }
   const settings = currentSettings.update_management;
 
-  // 绑定文本框
+  // 1. 文本框逻辑优化：只更新内存，不立即写盘
   $("#status_stop_sequence").on("input", function () {
     settings.stop_sequence = $(this).val();
-    saveStatusSettings(currentSettings);
+    // 注意：这里去掉了 saveStatusSettings，改为由下方按钮统一保存
   });
 
-  // 绑定开关
+  // 2. 开关逻辑：保持即时生效（因为涉及到 UI 刷新）
   $("#status_panel_enabled").on("change", function () {
     settings.panel_enabled = $(this).prop("checked");
+
+    // 开关还是建议即时保存，防止用户点了开关没点保存按钮导致 UI 和数据不一致
     saveStatusSettings(currentSettings);
+
+    // 立即刷新面板 UI (隐藏/显示悬浮按钮)
+    refreshStatusPanel();
+
+    if (window.toastr) {
+      const statusText = settings.panel_enabled ? "启用" : "禁用";
+      toastr.info(`状态更新面板已${statusText}`);
+    }
+  });
+
+  // 3. 【新增】绑定保存按钮
+  $("#btn-save-update-config").on("click", function () {
+    // 强制保存当前内存中的所有设置到全局 settings.json
+    saveStatusSettings(currentSettings);
+
+    // 视觉反馈
+    if (window.toastr) {
+      toastr.success("状态管理配置已保存 (Global)");
+    }
+
+    // 顺便刷新一下面板，确保状态同步
+    refreshStatusPanel();
   });
 }
 
@@ -3111,14 +3408,61 @@ function updateSyncButtonVisibility() {
   const hasData =
     vars && vars.anima_data && Object.keys(vars.anima_data).length > 0;
 
-  if (isAi && !hasData) {
+  const updateConfig = currentSettings.update_management || {
+    panel_enabled: false,
+  };
+
+  // 🔥 核心修正：增加对 panel_enabled 的检查
+  if (isAi && !hasData && updateConfig.panel_enabled) {
     // AI 回复了但没状态 -> 显示警告按钮
     $btn
       .css("display", "flex")
       .removeClass("anima-spin-out")
       .addClass("anima-fade-in");
   } else {
-    // 有状态，或者是用户发的 -> 隐藏
+    // 有状态，或者用户发的，或者面板被禁用了 -> 隐藏
     $btn.fadeOut(200);
   }
+}
+
+/**
+ * 简易 HTML 格式化工具 (Beautifier)
+ * 用于导入时将压缩的一行代码展开为多行，方便阅读
+ */
+function simpleFormatHTML(html) {
+  if (!html) return "";
+
+  // 1. 预处理：移除多余的空白，标准化标签
+  let formatted = "";
+  const reg = /(>)(<)(\/*)/g;
+  html = html.replace(reg, "$1\r\n$2$3");
+
+  let pad = 0;
+  const lines = html.split("\r\n");
+
+  // 2. 逐行处理缩进
+  lines.forEach((node) => {
+    let indent = 0;
+    if (node.match(/.+<\/\w[^>]*>$/)) {
+      indent = 0;
+    } else if (node.match(/^<\/\w/)) {
+      if (pad !== 0) {
+        pad -= 1;
+      }
+    } else if (node.match(/^<\w[^>]*[^\/]>.*$/)) {
+      indent = 1;
+    } else {
+      indent = 0;
+    }
+
+    let padding = "";
+    for (let i = 0; i < pad; i++) {
+      padding += "  "; // 2空格缩进
+    }
+
+    formatted += padding + node + "\r\n";
+    pad += indent;
+  });
+
+  return formatted.trim();
 }

@@ -94,6 +94,7 @@ import { objectToYaml } from "./scripts/utils.js";
 
   // 3. 全局事件绑定
   function bindGlobalEvents() {
+    let isGreetingSyncPending = false;
     $("#anima-close-btn").on("click", () => {
       $("#anima-overlay").addClass("anima-hidden");
     });
@@ -160,7 +161,7 @@ import { objectToYaml } from "./scripts/utils.js";
       // --- 聊天切换事件 ---
       context.eventSource.on("chat_id_changed", async (chatId) => {
         console.log("[Anima] Chat Changed to:", chatId || "None (Closed)");
-
+        isGreetingSyncPending = true;
         // 1. 既然聊天变了（无论是换人还是关闭），RAG 缓存和配置必须“全量刷新”
         // 由于我们在 rag.js 中重构了读取逻辑，这里的 initRagSettings() 会执行以下操作：
         // - 调用 getRagSettings()：自动合并 [全局设置] + [当前角色卡扩展设置]
@@ -228,6 +229,67 @@ import { objectToYaml } from "./scripts/utils.js";
         }
       });
 
+      context.eventSource.on("chat_deleted", async (chatName) => {
+        if (!chatName) return;
+        console.log(`[Anima] 监听到聊天删除: ${chatName}`);
+
+        try {
+          // 1. 获取当前所有世界书名称
+          // 根据 d.ts，这是一个同步函数，返回 string[]
+          const allWorldbooks = window.TavernHelper.getWorldbookNames();
+
+          // 2. 检查是否存在同名世界书
+          // 你的逻辑是：默认情况下插件生成的世界书名称 = 聊天文件名称
+          if (allWorldbooks.includes(chatName)) {
+            // 3. 弹出确认框 (使用原生 confirm 简单直接，或者你可以封装更好看的 UI)
+            const shouldDelete = confirm(
+              `[Anima] 检测到聊天文件 "${chatName}" 已被删除。\n\n检测到存在同名的世界书/记忆数据库，是否一并删除？\n(此操作不可恢复)`,
+            );
+
+            if (shouldDelete) {
+              // 4. 调用接口删除世界书
+              // 根据 d.ts，这是一个 Promise，返回 boolean
+              const success =
+                await window.TavernHelper.deleteWorldbook(chatName);
+
+              if (success) {
+                toastr.success(`已自动删除关联世界书: ${chatName}`);
+                console.log(`[Anima] 关联世界书已删除: ${chatName}`);
+              } else {
+                toastr.warning(
+                  `删除世界书失败，可能文件已被占用或不存在: ${chatName}`,
+                );
+              }
+            } else {
+              console.log("[Anima] 用户取消删除关联世界书。");
+            }
+          } else {
+            console.log(
+              `[Anima] 未找到名为 "${chatName}" 的同名世界书，跳过删除流程。`,
+            );
+          }
+        } catch (e) {
+          console.error("[Anima] 处理聊天删除事件时出错:", e);
+        }
+        setTimeout(() => {
+          // 1. 获取当前屏幕上的消息
+          const msgs = window.TavernHelper.getChatMessages(0); // 只看第0层
+
+          // 2. 检查是否为“刚创建的聊天”状态 (只有1条消息，且是AI发的，且是第0层)
+          if (msgs && msgs.length === 1 && !msgs[0].is_user) {
+            console.log(
+              "[Anima] ♻️ 检测到聊天删除后的新窗口，强制执行开场白同步...",
+            );
+
+            // 3. 既然是强制触发，我们手动管理一下锁 (虽然 handleGreetingSwipe 内部有去重，但为了保险)
+            isGreetingSyncPending = false; // 关锁，防止触发 render 监听器的死循环
+
+            // 4. 直接执行同步
+            handleGreetingSwipe(true);
+          }
+        }, 800); // 稍微延时一点，确保 ST 的 UI 切换动作完全结束
+      });
+
       // --- 用户消息上屏 ---
       context.eventSource.on("user_message_rendered", async (messageId) => {
         // 🔥【新增】: 零容忍清洗。User 楼层绝对不允许持有 anima_data。
@@ -273,7 +335,50 @@ import { objectToYaml } from "./scripts/utils.js";
       // --- AI 消息上屏 ---
       context.eventSource.on("character_message_rendered", (messageId) => {
         triggerAutomationCheck("character_message_rendered", 1000);
+        if (Number(messageId) === 0 && isGreetingSyncPending) {
+          console.log("[Anima] 🟢 捕获到开场白渲染，且处于待同步状态...");
+
+          let attempt = 0;
+          const maxAttempts = 20;
+
+          const trySyncGreeting = () => {
+            // 如果在重试过程中，锁被外部关闭了（比如用户切走了），则停止
+            if (!isGreetingSyncPending) return;
+
+            attempt++;
+
+            const charData = window.TavernHelper.getCharData("current");
+            const layer0 = window.TavernHelper.getChatMessages(0);
+
+            if (
+              charData &&
+              charData.name &&
+              layer0 &&
+              layer0.length > 0 &&
+              layer0[0].message
+            ) {
+              console.log(`[Anima] ✅ 核心数据就绪，执行初始同步！`);
+
+              // 🛑【关键】: 立即关锁！防止后续的 UI 刷新再次触发此逻辑
+              isGreetingSyncPending = false;
+
+              // 执行同步
+              handleGreetingSwipe(true);
+            } else {
+              if (attempt < maxAttempts) {
+                setTimeout(trySyncGreeting, 250);
+              } else {
+                console.warn("[Anima] ❌ 初始化同步超时，放弃。");
+                // 超时也关锁，避免无意义的资源消耗
+                isGreetingSyncPending = false;
+              }
+            }
+          };
+
+          setTimeout(trySyncGreeting, 200);
+        }
       });
+
       let wasGenerationStopped = false;
 
       context.eventSource.on("generation_started", async (type, arg1, arg2) => {

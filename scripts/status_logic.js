@@ -865,13 +865,16 @@ export async function saveStatusToMessage(
     }
 
     // 3. 同步世界书
-    await syncStatusToWorldBook();
+    await syncStatusToWorldBook(null, true);
   } catch (e) {
     console.error("[Anima Debug] 💥 写入过程发生异常:", e);
   }
 }
 
-export async function syncStatusToWorldBook(explicitSettings = null) {
+export async function syncStatusToWorldBook(
+  explicitSettings = null,
+  forceCreate = false,
+) {
   const settings = explicitSettings || getStatusSettings();
   const injectConfig = settings.injection_settings || {};
   // 这里使用 generic macro，指向 latest
@@ -883,6 +886,14 @@ export async function syncStatusToWorldBook(explicitSettings = null) {
 
   let wbName = await window.TavernHelper.getChatWorldbookName("current");
   if (!wbName) {
+    // 【核心修改点】
+    // 如果没有绑定世界书，且 forceCreate 为 false，则直接“懒惰退出”
+    if (!forceCreate) {
+      console.log("[Anima] 世界书尚未建立，且非强制写入模式，跳过状态注入。");
+      return;
+    }
+
+    // 只有 forceCreate 为 true 时，才执行创建
     wbName = await window.TavernHelper.getOrCreateChatWorldbook(
       "current",
       context.chatId.replace(/\.(json|jsonl)$/i, ""),

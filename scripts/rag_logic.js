@@ -896,6 +896,10 @@ export async function queryDual({
     };
   } catch (e) {
     console.error("[Anima RAG] 双轨检索失败:", e);
+    if (window.toastr) {
+      // 为了防止频繁报错刷屏，可以加个简单的防抖，或者只报关键错误
+      toastr.error("检索失败: " + e.message, "Anima RAG");
+    }
     return { chat_results: [], kb_results: [] };
   }
 }

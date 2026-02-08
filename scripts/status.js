@@ -131,25 +131,39 @@ export function initStatusSettings() {
             </div>
 
             <div class="anima-flex-row" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px;">
-                <span class="anima-label-text" style="margin: 0; white-space: nowrap;">配置模式</span>
+                <span class="anima-label-text" style="margin: 0; white-space: nowrap; line-height: 30px;">配置模式</span>
                 
-                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; margin-left: auto;">
+                <div style="display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; margin-left: auto;">
                     <input type="file" id="zod_import_file" accept=".json" style="display: none;" />
 
-                    <button id="btn-import-zod" class="anima-btn secondary small" title="导入配置" style="width: 30px; padding: 0; display: flex; justify-content: center; align-items: center;">
+                    <button id="btn-import-zod" class="anima-btn secondary small" title="导入配置" 
+                        style="height: 30px; width: 30px; padding: 0; display: flex; justify-content: center; align-items: center; box-sizing: border-box;">
                         <i class="fa-solid fa-file-import"></i>
                     </button>
-                    <button id="btn-export-zod" class="anima-btn secondary small" title="导出配置" style="width: 30px; padding: 0; display: flex; justify-content: center; align-items: center;">
+                    <button id="btn-export-zod" class="anima-btn secondary small" title="导出配置" 
+                        style="height: 30px; width: 30px; padding: 0; display: flex; justify-content: center; align-items: center; box-sizing: border-box;">
                         <i class="fa-solid fa-file-export"></i>
                     </button>
 
-                    <div style="width: 1px; height: 18px; background: var(--anima-border); margin: 0 2px;"></div>
+                    <div style="width: 1px; height: 18px; background: var(--anima-border); margin: 0 3px;"></div>
 
-                    <button id="btn-test-zod-rules" class="anima-btn secondary small" title="打开测试沙箱" style="width: 30px; padding: 0; display: flex; justify-content: center; align-items: center;">
+                    <button id="btn-test-zod-rules" class="anima-btn secondary small" title="打开测试沙箱" 
+                        style="height: 30px; width: 30px; padding: 0; display: flex; justify-content: center; align-items: center; box-sizing: border-box;">
                         <i class="fa-solid fa-vial"></i>
                     </button>
 
-                    <select id="zod-mode-select" class="anima-select" style="width: auto; min-width: 100px; height: 32px; padding: 0 5px; cursor: pointer;">
+                    <select id="zod-mode-select" class="anima-select" 
+                        style="
+                            height: 30px; 
+                            line-height: 28px; /* 比高度略小，留出边框空间 */
+                            width: auto; 
+                            min-width: 90px; 
+                            padding: 0 5px; 
+                            margin: 0; 
+                            box-sizing: border-box; 
+                            cursor: pointer;
+                            vertical-align: middle;
+                        ">
                         <option value="ui" ${zodSettings.mode === "ui" ? "selected" : ""}>🛠️ 可视化</option>
                         <option value="script" ${zodSettings.mode === "script" ? "selected" : ""}>📜 脚本</option>
                     </select>
@@ -1800,9 +1814,9 @@ function initZodModule() {
                         
                         <div style="flex: 1; display: flex; flex-direction: column;">
                             <select class="anima-select rule-type" style="${inputStyle} width: 100%; cursor: pointer;">
-                                <option value="number" ${rule.type === "number" ? "selected" : ""}>Number (数值)</option>
-                                <option value="string" ${rule.type === "string" ? "selected" : ""}>String (文本)</option>
-                                <option value="boolean" ${rule.type === "boolean" ? "selected" : ""}>Boolean (布尔)</option>
+                                <option value="number" ${rule.type === "number" ? "selected" : ""}>Number</option>
+                                <option value="string" ${rule.type === "string" ? "selected" : ""}>String</option>
+                                <option value="boolean" ${rule.type === "boolean" ? "selected" : ""}>Boolean</option>
                             </select>
                         </div>
 

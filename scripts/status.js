@@ -1021,7 +1021,7 @@ function initYamlEditor() {
       // 🟢 修复后：包裹一层 anima_data (保持结构一致)
       await saveRealtimeStatusVariables({ anima_data: statusObj });
 
-      if (window.toastr) window.toastr.success("变量已更新 (Wrapped)");
+      if (window.toastr) window.toastr.success("变量已更新");
 
       // 退出编辑模式
       exitEditMode();

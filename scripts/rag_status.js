@@ -6,6 +6,7 @@ import {
 import {
   insertMemory, // 🟢 必须引入：用于刷新/重新向量化
   deleteMemory, // 🟢 必须引入：用于删除向量
+  getSmartCollectionId,
 } from "./rag_logic.js";
 // ==========================================
 // 7. 向量状态管理 (完美复刻 Summary 历史管理)
@@ -172,13 +173,14 @@ export async function showVectorStatusModal() {
         const text = await getSummaryTextFromEntry(item.uid, item.uniqueId);
 
         if (text) {
-          // B. 直接调用插入
-          // 🔥 修复：变量名改为 result，并明确检查 success 属性
+          // 1. 获取统一的数据库 ID
+          const targetCollectionId = getSmartCollectionId();
+
           const result = await insertMemory(
             text,
             item.tags,
             item.narrative_time,
-            wbName,
+            targetCollectionId, // 🟢 替换 wbName
             null,
             item.uniqueId,
             item.batchId,
@@ -283,11 +285,13 @@ export async function showVectorStatusModal() {
 
         if (text) {
           // 🔥 修复：获取返回值并检查
+          const targetCollectionId = getSmartCollectionId(); // 🟢 获取 ID
+
           const result = await insertMemory(
             text,
             item.tags,
             item.narrative_time,
-            wbName,
+            targetCollectionId, // 🟢 替换 wbName
             null,
             item.uniqueId,
             item.batchId,
@@ -496,13 +500,15 @@ function bindRagListEvents(wbName) {
 
       // 4. 🔥 核心操作：调用底层接口
       // 此时后端会先请求 API，成功后才会覆盖旧文件
+      const targetCollectionId = getSmartCollectionId(); // 🟢 获取 ID
+
       const result = await insertMemory(
         text,
         tags,
         timestamp,
-        wbName,
-        null, // oldUuid (不需要)
-        uniqueId, // index (用于覆盖)
+        targetCollectionId, // 🟢 替换 wbName
+        null,
+        uniqueId,
         batchId,
       );
 
@@ -565,9 +571,9 @@ function bindRagListEvents(wbName) {
       !confirm(`确定要物理删除 #${uniqueId} 的向量文件吗？\n(世界书文本将保留)`)
     )
       return;
-
+    const targetCollectionId = getSmartCollectionId();
     try {
-      await deleteMemory(wbName, uniqueId); // 调用 rag_logic.js 的删除
+      await deleteMemory(targetCollectionId, uniqueId);
 
       toastr.success(`向量 #${uniqueId} 已删除`);
 

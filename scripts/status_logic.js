@@ -1567,7 +1567,7 @@ function showStatusChangeToast(updates) {
             <div style="margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 4px; font-weight: bold; color:var(--anima-primary);">
                 <i class="fa-solid fa-bolt-lightning"></i> 状态数值变更
             </div>
-            <div style="max-height: 200px; overflow-y: auto;">
+            <div style="max-height: 150px; overflow-y: auto;">
                 ${changes.join("<br>")}
             </div>
         </div>

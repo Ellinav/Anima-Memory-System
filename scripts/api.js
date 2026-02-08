@@ -1094,14 +1094,24 @@ export async function generateText(
             JSON.stringify(data, null, 2),
           );
 
-          // [新增指引]：细化错误提示
+          // [细化错误提示]
           let extraHint = "";
+          // 检测是不是 Gemini 模型
           if (model.toLowerCase().includes("gemini")) {
             extraHint =
               " 检测到 Gemini 模型且内容为空，这通常是因为 OpenAI 格式没有 Safety Settings 导致破限失败。如API支持，请尝试切换为 'Google Gemini' 格式。";
           }
 
-          throw new Error("模型返回内容为空。" + extraHint);
+          const finalErrorMsg = "模型返回内容为空。" + extraHint;
+
+          // ✅【新增】强制弹窗：不管调用方怎么处理，先弹个窗告诉用户
+          if (window.toastr) {
+            // timeOut: 0 表示不自动消失（或者是设置长一点时间），让用户看清楚
+            window.toastr.error(finalErrorMsg, "Anima Critical Error");
+          }
+
+          // 继续抛出错误，中断后续逻辑
+          throw new Error(finalErrorMsg);
         }
         return content;
       }

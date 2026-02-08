@@ -45,7 +45,7 @@ export const DEFAULT_STATUS_SETTINGS = {
   injection_settings: {
     position: "at_depth",
     role: "system",
-    depth: 4,
+    depth: 1,
     order: 100,
     template: "【当前状态信息】\n{{ANIMA_BASE_STATUS}}",
   },
@@ -918,7 +918,7 @@ export async function syncStatusToWorldBook(
     strategy: { type: "constant" },
     position: {
       type: injectConfig.position || "at_depth",
-      depth: injectConfig.depth ?? 4,
+      depth: injectConfig.depth ?? 1,
       order: injectConfig.order ?? 100,
     },
     role:

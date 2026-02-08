@@ -307,7 +307,7 @@ function getApiCardHtml(type, title) {
         
         <label>API 类型</label>
         <select class="anima-select" id="anima-${type}-source">
-            <option value="openai">OpenAI Compatible (硅基流动/DeepSeek等)</option>
+            <option value="openai">自定义OpenAI</option>
             <option value="google">Google Gemini</option>
         </select>
         
@@ -1089,14 +1089,19 @@ export async function generateText(
 
         // 🔥 2. HTTP 200 但内容为空的处理
         if (!content) {
-          // 将原始数据完整打印出来，方便调试
           console.warn(
-            "[Anima] API returned 200 OK but no content. Raw Data:",
+            "[Anima] Empty Content. Full Response:",
             JSON.stringify(data, null, 2),
           );
-          throw new Error(
-            "模型返回内容为空 (一般是破限问题，请尝试更换总结/状态提示词中的破限)",
-          );
+
+          // [新增指引]：细化错误提示
+          let extraHint = "";
+          if (model.toLowerCase().includes("gemini")) {
+            extraHint =
+              " 检测到 Gemini 模型且内容为空，这通常是因为 OpenAI 格式没有 Safety Settings 导致破限失败。如API支持，请尝试切换为 'Google Gemini' 格式。";
+          }
+
+          throw new Error("模型返回内容为空。" + extraHint);
         }
         return content;
       }

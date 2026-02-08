@@ -438,7 +438,7 @@ export function initStatusSettings() {
                     
                     <div style="min-width: 150px;">
                         <div class="anima-label-text"><i class="fa-solid fa-list-ol"></i> 状态提示词预设</div>
-                        <div class="anima-desc-inline">组装发送给副 API 的最终 Payload。</div>
+                        <div class="anima-desc-inline">组装发送给 状态模型 的最终提示词。</div>
                     </div>
                     
                     <div style="display: flex; gap: 5px; flex-wrap: wrap;">
@@ -3199,53 +3199,42 @@ async function showStatusPreviewModal() {
 }
 
 /**
- * 通用自定义模态框构建器 (手搓版)
- * 模仿 ST 风格，直接 append 到 body
+ * 通用自定义模态框构建器 (标准版)
+ * 修复：移除内联布局样式，使用 ST 标准 CSS 类实现完美居中
  */
 function createCustomModal(title, contentHtml) {
   const modalId = "anima-custom-preview-modal";
 
-  // 如果已存在，先移除
+  // 1. 清理旧实例 (防止重复)
   $(`#${modalId}`).remove();
 
+  // 2. 构建符合“最佳实践”的 HTML 结构
+  // 关键修复：外层使用 class="anima-modal hidden"，去掉 style="position: fixed..."
   const modalHtml = `
-        <div id="${modalId}" style="
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-            background: rgba(0,0,0,0.7); z-index: 20000; 
-            display: flex; align-items: center; justify-content: center;
-            backdrop-filter: blur(2px);
-        ">
-            <div style="
-                background: var(--anima-bg-dark, #1f2937); 
-                width: 800px; max-width: 90%; height: 85vh;
-                border: 1px solid var(--anima-border); 
-                border-radius: 8px; 
-                display: flex; flex-direction: column;
-                box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        <div id="${modalId}" class="anima-modal hidden">
+            <div class="anima-modal-content" style="
+                width: 800px; 
+                max-width: 95%; 
+                height: 85vh; 
+                display: flex; 
+                flex-direction: column;
+                background: var(--anima-bg-dark, #1f2937); /* 保留原有深色背景 */
+                border: 1px solid var(--anima-border);
             ">
                 
-                <div style="
-                    padding: 15px 20px; border-bottom: 1px solid var(--anima-border);
-                    display: flex; justify-content: space-between; align-items: center;
-                    background: rgba(0,0,0,0.2);
-                ">
-                    <h3 style="margin:0; font-size:1.1em; color:var(--anima-text-main); display:flex; align-items:center; gap:10px;">
+                <div class="anima-modal-header" style="background: rgba(0,0,0,0.2); border-bottom: 1px solid var(--anima-border);">
+                    <h3 style="margin:0; font-size:1.1em; display:flex; align-items:center; gap:10px;">
                         <i class="fa-solid fa-eye"></i> ${title}
                     </h3>
-                    <div class="anima-close-btn" style="cursor: pointer; padding:5px 10px; font-size:1.2em; opacity:0.7;">
-                        <i class="fa-solid fa-xmark"></i>
-                    </div>
+                    <span class="anima-close-modal" style="cursor: pointer; opacity:0.7; font-size: 1.5em;">&times;</span>
                 </div>
 
-                <div style="flex: 1; overflow-y: auto; padding: 20px;">
+                <div class="anima-modal-body" style="flex: 1; overflow-y: auto; padding: 20px;">
                     ${contentHtml}
                 </div>
 
-                <div style="
-                    padding: 10px 20px; border-top: 1px solid var(--anima-border);
-                    text-align: right; background: rgba(0,0,0,0.2);
-                ">
-                    <button class="anima-btn primary anima-close-btn">关闭</button>
+                <div class="anima-modal-footer" style="background: rgba(0,0,0,0.2); border-top: 1px solid var(--anima-border);">
+                    <button class="anima-btn secondary anima-close-modal">关闭</button>
                 </div>
 
             </div>
@@ -3254,19 +3243,30 @@ function createCustomModal(title, contentHtml) {
 
   $("body").append(modalHtml);
 
-  // 绑定关闭事件
-  $(`#${modalId} .anima-close-btn`).on("click", () => {
-    $(`#${modalId}`).fadeOut(200, function () {
-      $(this).remove();
-    });
-  });
+  // 3. 激活弹窗 (移除 hidden 类)
+  // 使用 setTimeout 0 确保 DOM 插入后再切换类，触发 CSS 动画 (Fade In)
+  setTimeout(() => {
+    $(`#${modalId}`).removeClass("hidden");
+  }, 10);
+
+  // 4. 定义关闭逻辑
+  const closeModal = () => {
+    // 先加 hidden 触发淡出动画
+    $(`#${modalId}`).addClass("hidden");
+
+    // 等待动画结束(通常0.2-0.3s)后，从 DOM 中移除元素
+    setTimeout(() => {
+      $(`#${modalId}`).remove();
+    }, 300);
+  };
+
+  // 绑定关闭事件 (X 号 和 底部关闭按钮)
+  $(`#${modalId} .anima-close-modal`).on("click", closeModal);
 
   // 点击背景关闭
   $(`#${modalId}`).on("click", function (e) {
     if (e.target === this) {
-      $(this).fadeOut(200, function () {
-        $(this).remove();
-      });
+      closeModal();
     }
   });
 }

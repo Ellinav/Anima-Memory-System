@@ -771,10 +771,20 @@ export async function saveStatusToMessage(
   try {
     // 1. 保存变量 (使用 variables.d.ts 中的 replaceVariables)
     // 注意：replaceVariables 在接口定义中返回 void (同步)，不需要 await，但加了也没事
-    window.TavernHelper.insertOrAssignVariables(fullStatusData, {
-      type: "message",
-      message_id: msgId,
-    });
+    await window.TavernHelper.updateVariablesWith(
+      (variables) => {
+        // 确保我们将 fullStatusData 里的内容直接赋值给 variables
+        // 这样如果 fullStatusData.anima_data 里少了某个 Key，variables 里也会对应消失
+        if (fullStatusData && typeof fullStatusData === "object") {
+          Object.assign(variables, fullStatusData);
+        }
+        return variables;
+      },
+      {
+        type: "message",
+        message_id: msgId,
+      },
+    );
     console.log(`[Anima Debug] ✅ 变量已保存到 Variable Manager`);
     // ============================================================
     // 🔥 新增步骤 B: 写入成功后，广播事件

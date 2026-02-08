@@ -130,28 +130,28 @@ export function initStatusSettings() {
                 配置 Zod 校验规则以防止幻觉。校验将在合并增量前执行。
             </div>
 
-            <div class="anima-flex-row" style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px; height: 34px;">
-                <span class="anima-label-text" style="margin: 0; line-height: 34px; white-space: nowrap;">配置模式</span>
+            <div class="anima-flex-row" style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px;">
+                <span class="anima-label-text" style="margin: 0; white-space: nowrap;">配置模式</span>
                 
-                <div style="margin-left: auto; display: flex; align-items: center; gap: 5px;">
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; margin-left: auto;">
                     <input type="file" id="zod_import_file" accept=".json" style="display: none;" />
 
-                    <button id="btn-import-zod" class="anima-btn secondary small" title="导入配置 (JSON)">
-                        <i class="fa-solid fa-file-import"></i> 导入
+                    <button id="btn-import-zod" class="anima-btn secondary small" title="导入配置" style="width: 30px; padding: 0; display: flex; justify-content: center; align-items: center;">
+                        <i class="fa-solid fa-file-import"></i>
                     </button>
-                    <button id="btn-export-zod" class="anima-btn secondary small" title="导出配置 (JSON)">
-                        <i class="fa-solid fa-file-export"></i> 导出
-                    </button>
-
-                    <div style="width: 1px; height: 20px; background: var(--anima-border); margin: 0 5px;"></div>
-
-                    <button id="btn-test-zod-rules" class="anima-btn secondary small" title="打开测试沙箱">
-                        <i class="fa-solid fa-vial"></i> 测试
+                    <button id="btn-export-zod" class="anima-btn secondary small" title="导出配置" style="width: 30px; padding: 0; display: flex; justify-content: center; align-items: center;">
+                        <i class="fa-solid fa-file-export"></i>
                     </button>
 
-                    <select id="zod-mode-select" class="anima-select" style="width: 140px; margin: 0; height: 32px; padding: 0 5px; cursor: pointer;">
-                        <option value="ui" ${zodSettings.mode === "ui" ? "selected" : ""}>🛠️ 可视化配置</option>
-                        <option value="script" ${zodSettings.mode === "script" ? "selected" : ""}>📜 自定义脚本</option>
+                    <div style="width: 1px; height: 18px; background: var(--anima-border); margin: 0 2px;"></div>
+
+                    <button id="btn-test-zod-rules" class="anima-btn secondary small" title="打开测试沙箱" style="width: 30px; padding: 0; display: flex; justify-content: center; align-items: center;">
+                        <i class="fa-solid fa-vial"></i>
+                    </button>
+
+                    <select id="zod-mode-select" class="anima-select" style="width: auto; min-width: 100px; height: 32px; padding: 0 5px; cursor: pointer;">
+                        <option value="ui" ${zodSettings.mode === "ui" ? "selected" : ""}>🛠️ 可视化</option>
+                        <option value="script" ${zodSettings.mode === "script" ? "selected" : ""}>📜 脚本</option>
                     </select>
                 </div>
             </div>
@@ -435,21 +435,24 @@ export function initStatusSettings() {
                 <div class="anima-flex-row" style="justify-content: space-between; margin-bottom: 15px; align-items: center;">
                     <div>
                         <div class="anima-label-text"><i class="fa-solid fa-list-ol"></i>状态提示词预设</div>
-                        <div class="anima-desc-inline">组装发送给副 API 的最终 Payload。</div>
                     </div>
-                    <div style="display: flex; gap: 8px;">
-                        <button id="btn-export-status-prompt" class="anima-btn small secondary" title="导出">
+                    <div style="display: flex; gap: 5px; align-items: center; margin-left: auto;">
+                        <input type="file" id="status_import_prompt_file" accept=".json" style="display: none;" />
+                        
+                        <button id="btn-export-status-prompt" class="anima-btn small secondary" title="导出预设" style="width: 30px; padding: 0; display: flex; justify-content: center; align-items: center;">
                             <i class="fa-solid fa-file-export"></i>
                         </button>
-                        <button id="btn-import-status-prompt" class="anima-btn small secondary" title="导入">
+                        <button id="btn-import-status-prompt" class="anima-btn small secondary" title="导入预设" style="width: 30px; padding: 0; display: flex; justify-content: center; align-items: center;">
                             <i class="fa-solid fa-file-import"></i>
                         </button>
-                        <input type="file" id="status_import_prompt_file" accept=".json" style="display: none;" />
-                        <button id="btn-preview-status-prompt" class="anima-btn small secondary">
-                            <i class="fa-solid fa-eye"></i> 预览
+                        
+                        <div style="width: 1px; height: 18px; background: var(--anima-border); margin: 0 2px;"></div>
+
+                        <button id="btn-preview-status-prompt" class="anima-btn small secondary" title="预览当前 Prompt" style="width: 30px; padding: 0; display: flex; justify-content: center; align-items: center;">
+                            <i class="fa-solid fa-eye"></i>
                         </button>
-                        <button id="btn-add-status-prompt" class="anima-btn small primary">
-                            <i class="fa-solid fa-plus"></i> 添加
+                        <button id="btn-add-status-prompt" class="anima-btn small primary" title="添加新预设" style="width: 30px; padding: 0; display: flex; justify-content: center; align-items: center;">
+                            <i class="fa-solid fa-plus"></i>
                         </button>
                     </div>
                 </div>

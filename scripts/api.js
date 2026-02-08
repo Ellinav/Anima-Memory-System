@@ -339,7 +339,7 @@ function getApiCardHtml(type, title) {
                 <i class="fa-solid fa-plug"></i> 获取模型
             </button>
             <button class="anima-btn primary" id="btn-save-${type}">
-                <i class="fa-solid fa-save"></i> 保存配置
+                <i class="fa-solid fa-save"></i> 保存
             </button>
         </div>
     </div>

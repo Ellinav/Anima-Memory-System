@@ -130,29 +130,31 @@ export function initStatusSettings() {
                 配置 Zod 校验规则以防止幻觉。校验将在合并增量前执行。
             </div>
 
-            <div class="anima-flex-row" style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px; height: 34px;">
-                <span class="anima-label-text" style="margin: 0; line-height: 34px; white-space: nowrap;">配置模式</span>
+            <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px;">
                 
-                <div style="margin-left: auto; display: flex; align-items: center; gap: 5px;">
-                    <input type="file" id="zod_import_file" accept=".json" style="display: none;" />
-
-                    <button id="btn-import-zod" class="anima-btn secondary small" title="导入配置 (JSON)">
-                        <i class="fa-solid fa-file-import"></i> 导入
-                    </button>
-                    <button id="btn-export-zod" class="anima-btn secondary small" title="导出配置 (JSON)">
-                        <i class="fa-solid fa-file-export"></i> 导出
-                    </button>
-
-                    <div style="width: 1px; height: 20px; background: var(--anima-border); margin: 0 5px;"></div>
-
-                    <button id="btn-test-zod-rules" class="anima-btn secondary small" title="打开测试沙箱">
-                        <i class="fa-solid fa-vial"></i> 测试
-                    </button>
-
-                    <select id="zod-mode-select" class="anima-select" style="width: 140px; margin: 0; height: 32px; padding: 0 5px; cursor: pointer;">
+                <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 180px;">
+                    <span class="anima-label-text" style="margin: 0; white-space: nowrap;">配置模式</span>
+                    <select id="zod-mode-select" class="anima-select" style="flex: 1; margin: 0; height: 32px; padding: 0 5px; cursor: pointer; box-sizing: border-box;">
                         <option value="ui" ${zodSettings.mode === "ui" ? "selected" : ""}>🛠️ 可视化配置</option>
                         <option value="script" ${zodSettings.mode === "script" ? "selected" : ""}>📜 自定义脚本</option>
                     </select>
+                </div>
+                
+                <div style="display: flex; align-items: center; gap: 5px; flex-wrap: wrap;">
+                    <input type="file" id="zod_import_file" accept=".json" style="display: none;" />
+
+                    <button id="btn-import-zod" class="anima-btn secondary small" title="导入配置 (JSON)" style="height: 32px;">
+                        <i class="fa-solid fa-file-import"></i>
+                    </button>
+                    <button id="btn-export-zod" class="anima-btn secondary small" title="导出配置 (JSON)" style="height: 32px;">
+                        <i class="fa-solid fa-file-export"></i>
+                    </button>
+
+                    <div style="width: 1px; height: 20px; background: var(--anima-border); margin: 0 2px;"></div>
+
+                    <button id="btn-test-zod-rules" class="anima-btn secondary small" title="打开测试沙箱" style="height: 32px; padding: 0 10px;">
+                        <i class="fa-solid fa-vial"></i> 测试
+                    </button>
                 </div>
             </div>
 
@@ -432,23 +434,28 @@ export function initStatusSettings() {
             <hr style="border: 0; border-top: 1px solid var(--anima-border); margin: 20px 0;">
 
             <div>
-                <div class="anima-flex-row" style="justify-content: space-between; margin-bottom: 15px; align-items: center;">
-                    <div>
-                        <div class="anima-label-text"><i class="fa-solid fa-list-ol"></i>状态提示词预设</div>
+                <div class="anima-flex-row" style="justify-content: space-between; margin-bottom: 15px; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    
+                    <div style="min-width: 150px;">
+                        <div class="anima-label-text"><i class="fa-solid fa-list-ol"></i> 状态提示词预设</div>
                         <div class="anima-desc-inline">组装发送给副 API 的最终 Payload。</div>
                     </div>
-                    <div style="display: flex; gap: 8px;">
-                        <button id="btn-export-status-prompt" class="anima-btn small secondary" title="导出">
+                    
+                    <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                        <button id="btn-export-status-prompt" class="anima-btn small secondary" title="导出" style="height: 32px;">
                             <i class="fa-solid fa-file-export"></i>
                         </button>
-                        <button id="btn-import-status-prompt" class="anima-btn small secondary" title="导入">
+                        <button id="btn-import-status-prompt" class="anima-btn small secondary" title="导入" style="height: 32px;">
                             <i class="fa-solid fa-file-import"></i>
                         </button>
                         <input type="file" id="status_import_prompt_file" accept=".json" style="display: none;" />
-                        <button id="btn-preview-status-prompt" class="anima-btn small secondary">
+                        
+                        <div style="width: 1px; height: 20px; background: var(--anima-border); margin: 0 2px; align-self: center;"></div>
+
+                        <button id="btn-preview-status-prompt" class="anima-btn small secondary" style="height: 32px;">
                             <i class="fa-solid fa-eye"></i> 预览
                         </button>
-                        <button id="btn-add-status-prompt" class="anima-btn small primary">
+                        <button id="btn-add-status-prompt" class="anima-btn small primary" style="height: 32px;">
                             <i class="fa-solid fa-plus"></i> 添加
                         </button>
                     </div>

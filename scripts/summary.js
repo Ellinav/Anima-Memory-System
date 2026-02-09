@@ -645,9 +645,9 @@ function bindSummaryEvents() {
       handle: ".anima-drag-handle",
       placeholder: "ui-state-highlight",
       opacity: 0.8,
+      tolerance: "pointer", // [可选建议] 让鼠标指针碰到占位符就算有效，体验更好
       stop: function (event, ui) {
         // 🟢 修复：使用 setTimeout 0 将逻辑推迟到当前调用栈清空后执行
-        // 这样可以避免与 jQuery UI 的 DOM 操作冲突，防止“幻影”条目或位置回弹
         setTimeout(() => {
           const newMessages = [];
 
@@ -670,19 +670,15 @@ function bindSummaryEvents() {
               type === "context" ||
               type === "prev_summaries"
             ) {
-              // 特殊条目：直接复用原对象（因为它们没有输入框供读取）
               newMessages.push(originalMsg);
             } else {
-              // 普通文本条目：
-              // 必须从 DOM 中读取最新的输入值，因为用户可能在拖拽前修改了文本但没点保存
-              // 注意：这里要用 safe navigation 防止 undefined
+              // 普通文本条目：读取最新输入值
               const role = $el.find(".role-select").val() || originalMsg.role;
-              const content = $el.find(".content-input").val(); //这里允许空字符串，但不应为undefined
+              const content = $el.find(".content-input").val();
               const title = $el.find(".title-input").val() || originalMsg.title;
 
               newMessages.push({
                 role: role,
-                // 确保 content 至少是字符串，防止后续 includes 报错
                 content:
                   content !== undefined ? content : originalMsg.content || "",
                 title: title,
@@ -693,11 +689,12 @@ function bindSummaryEvents() {
           // 更新内存中的设置
           settings.summary_messages = newMessages;
 
+          // 🟢 重要提示：如果 getSummarySettings 返回的是对象副本而不是引用，
+          // 你必须在这里取消注释 saveSummarySettings，否则重绘后列表会弹回原样！
+          saveSummarySettings(settings);
+
           // 重新渲染列表以更新 data-idx
           renderPromptList();
-
-          // 🟢 可选：在这里自动保存一下，防止刷新丢失顺序
-          // saveSummarySettings(settings);
         }, 0);
       },
     });

@@ -587,7 +587,8 @@ export function renderHolidayModal(settings) {
         $tr.find(".btn-edit").click(() => renderList(idx));
         $tr.find(".btn-del").click(() => {
           if (confirm(`删除节日 ${h.name}?`)) {
-            settings.holidays.splice(idx, 1);
+            // 应该操作临时数组 tempHolidays
+            tempHolidays.splice(idx, 1);
             renderList();
           }
         });

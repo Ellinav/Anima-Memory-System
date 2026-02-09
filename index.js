@@ -292,10 +292,24 @@ import { objectToYaml } from "./scripts/utils.js";
 
       // --- 用户消息上屏 ---
       context.eventSource.on("user_message_rendered", async (messageId) => {
+        if (getIsSummarizing()) return;
         // 🔥【新增】: 零容忍清洗。User 楼层绝对不允许持有 anima_data。
         // 哪怕是 ST 核心或其他插件写进去的，只要是 User，一律删。
         try {
           const targetId = messageId || -1;
+          let latestId = targetId;
+          const msgs = window.TavernHelper.getChatMessages(-1);
+          if (msgs && msgs.length) {
+            latestId = msgs[0].message_id;
+          }
+
+          // 如果该消息距离最新消息超过 5 层，直接视为历史消息，跳过繁重的变量检查
+          if (latestId - targetId > 5) {
+            // 仅触发自动化检查（带防抖），跳过清洗逻辑
+            triggerAutomationCheck("user_message_rendered (history)", 2500);
+            return;
+          }
+
           const vars = window.TavernHelper.getVariables({
             type: "message",
             message_id: targetId,
@@ -334,6 +348,7 @@ import { objectToYaml } from "./scripts/utils.js";
 
       // --- AI 消息上屏 ---
       context.eventSource.on("character_message_rendered", (messageId) => {
+        if (getIsSummarizing()) return;
         triggerAutomationCheck("character_message_rendered", 1000);
         if (Number(messageId) === 0 && isGreetingSyncPending) {
           console.log("[Anima] 🟢 捕获到开场白渲染，且处于待同步状态...");

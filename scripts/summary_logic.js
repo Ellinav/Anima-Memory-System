@@ -420,33 +420,52 @@ export async function handlePostSummary(
   const currentContextId = SillyTavern.getContext().chatId;
   if (lockedChatId && currentContextId !== lockedChatId) {
     console.log(
-      `[Anima] 窗口已切换 (Target: ${lockedChatId}, Current: ${currentContextId})。跳过 Metadata 更新与隐藏楼层。`,
+      `[Anima] 窗口已切换 (Target: ${lockedChatId}, Current: ${currentContextId})。跳过 UI 更新。`,
     );
-    // 直接返回，什么都不做。等用户下次切回来时，由自动同步逻辑处理。
     return;
   }
-  // 1. 修改隐藏逻辑：强制从 0 开始隐藏
+
+  // 1. 计算隐藏截止点
   const keepCount = settings.hide_skip_count;
-  // 计算需要隐藏到的截止 ID
   const hideEndId = endId - keepCount;
 
-  // 只要截止 ID >= 0，就执行隐藏 (不管 startId 是多少)
+  // 2. ✅ 核心修复：更安全的增量隐藏逻辑
+  // 不再使用索引遍历，而是向 ST 请求该范围内的“有效消息”
   if (hideEndId >= 0) {
-    // ✨ 修改点： range 从 "0" 开始，而不是 startId
-    // 使用 ST 的字符串范围语法 "0-15" 比循环 push 性能更好，但也可用你原有的 setChatMessages 数组方式
-    // 这里为了兼容你原有的 setChatMessages 逻辑，我们构造从 0 到 hideEndId 的数组
     const updates = [];
-    for (let i = 0; i <= hideEndId; i++) {
-      updates.push({ message_id: i, is_hidden: true });
+
+    try {
+      // 请求 0 到 hideEndId 的所有消息
+      // ST 会自动处理越界问题：如果 hideEndId 是 1000 但只有 50 条消息，它只返回 50 条
+      const msgsToCheck = window.TavernHelper.getChatMessages(`0-${hideEndId}`);
+
+      if (msgsToCheck && Array.isArray(msgsToCheck)) {
+        for (const msg of msgsToCheck) {
+          // 双重检查：确保对象存在且当前未隐藏
+          if (msg && !msg.is_hidden) {
+            updates.push({
+              message_id: msg.message_id,
+              is_hidden: true,
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[Anima] 获取消息范围失败，跳过隐藏步骤:", e);
     }
-    await window.TavernHelper.setChatMessages(updates, {
-      refresh: "affected",
-    });
+
+    // 只有当列表不为空时才提交
+    if (updates.length > 0) {
+      console.log(`[Anima] 正在执行增量隐藏: ${updates.length} 条消息`);
+      await window.TavernHelper.setChatMessages(updates, {
+        refresh: "affected",
+      });
+    } else {
+      // console.log("[Anima] 无需更新隐藏状态");
+    }
   }
 
-  // 2. ✅ 修改逻辑：棘轮机制 (Ratchet Mechanism)
-  // 只有当新的 endId 大于当前记录的进度时，才更新指针。
-  // 这允许用户手动补全旧内容的总结（0-50楼），而不打乱当前的最新进度（200楼）。
+  // 3. 棘轮机制 (保持不变)
   const currentLastId = getLastSummarizedId();
   if (endId > currentLastId) {
     await saveSummaryProgress(endId, index);
@@ -795,8 +814,27 @@ export async function runSummarizationTask({
       summaryBatch = summaryBatch.filter(
         (s) => s.content && s.content.trim() !== "",
       );
-      if (summaryBatch.length === 0)
-        throw new Error("Parsed Summary Batch is Empty");
+      if (summaryBatch.length === 0) {
+        console.warn("[Anima Error Debug] Raw Result:", rawResult); // 依然在控制台留底
+
+        // 截取前 500 个字符，防止内容过长导致弹窗溢出
+        let debugSnippet = "";
+        if (typeof rawResult === "string") {
+          debugSnippet = rawResult.slice(0, 500);
+        } else {
+          // 如果是对象，转字符串
+          try {
+            debugSnippet = JSON.stringify(rawResult).slice(0, 500);
+          } catch (e) {
+            debugSnippet = "无法序列化的对象";
+          }
+        }
+
+        // 抛出带内容的错误，这样 catch 块就能捕获到了
+        throw new Error(
+          `解析失败(空内容)。API返回片段:\n\n${debugSnippet}\n\n(请检查格式是否为合法JSON)`,
+        );
+      }
 
       // =======================================================
       // 🟢 修改点 1: 存入世界书，传入 currentChatId
@@ -834,10 +872,16 @@ export async function runSummarizationTask({
     }
   } catch (err) {
     console.error("[Anima Error]", err);
-    if (window.toastr) toastr.error("自动化总结出错，已停止: " + err.message);
+    if (err.message.includes("API返回片段")) {
+      alert("Anima 错误: " + err.message);
+    } else if (window.toastr) {
+      toastr.error("自动化总结出错: " + err.message);
+    }
   } finally {
-    isSummarizing = false;
-    console.log("[Anima] Task cycle finished. Lock released.");
+    setTimeout(() => {
+      isSummarizing = false;
+      console.log("[Anima] Task cycle finished. Lock released (Delayed).");
+    }, 1500);
   }
 }
 /**

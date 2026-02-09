@@ -370,7 +370,7 @@ async function constructStatusPrompt(statusConfig, contextData, targetMsgId) {
 
   // 5. 遍历规则
   for (const rule of rules) {
-    let finalContent = rule.content;
+    let finalContent = rule.content || "";
 
     // A. 特殊占位符处理
     if (finalContent === "{{chat_context}}") {

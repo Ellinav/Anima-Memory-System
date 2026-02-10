@@ -60,7 +60,7 @@ export const DEFAULT_RAG_SETTINGS = {
   },
 
   // === 1. 基础区域 (通用) ===
-  min_score: 0.5,
+  min_score: 0.2,
   base_count: 2, // 既是未开启时的总数，也是开启后的“基础切片”数量
   // 虚拟时间模式 (新增)
   virtual_time_mode: false,
@@ -646,7 +646,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                         <div class="anima-input-wrapper">
                              <input type="number" id="rag_min_score" class="anima-input" 
                                     style="width:80px; text-align:center;"
-                                    value="${settings.min_score || 0.5}" step="0.05" min="0" max="1">
+                                    value="${settings.min_score || 0.2}" step="0.05" min="0" max="1">
                         </div>
                     </div>
 
@@ -1030,7 +1030,7 @@ function bindRagEvents(settings) {
         ...currentSettings,
         // 全局项
         base_count: parseInt($("#rag_base_count").val()) || 2,
-        min_score: parseFloat($("#rag_min_score").val()) || 0.5,
+        min_score: parseFloat($("#rag_min_score").val()) || 0.2,
         auto_vectorize: $("#rag_auto_vectorize").prop("checked"),
         skip_layer_zero: $("#rag_skip_layer_zero").prop("checked"), // 跳过开场白
         regex_skip_user: $("#rag_regex_skip_user").prop("checked"),
@@ -2377,7 +2377,7 @@ function bindRagEvents(settings) {
 
           // 2. 刷新表格外的“静态”输入框 (这些不在 renderStrategyTable 渲染范围内)
           $("#rag_base_count").val(settings.base_count || 2);
-          $("#rag_min_score").val(settings.min_score || 0.5);
+          $("#rag_min_score").val(settings.min_score || 0.2);
           $("#rag_multiplier").val(
             settings.strategy_settings?.candidate_multiplier || 2,
           );

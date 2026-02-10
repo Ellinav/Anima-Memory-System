@@ -733,7 +733,7 @@ export async function queryDual({
   // 获取配置
   const userStrat = settings?.strategy_settings || {};
   const baseCount = settings?.base_count || 2;
-  const minScore = settings?.min_score || 0.5;
+  const minScore = settings?.min_score || 0.2;
   const isDistributed = settings?.distributed_retrieval ?? true;
 
   // 深度合并配置

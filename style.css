@@ -978,3 +978,58 @@ input:checked + .slider:before {
     z-index: 20002;
   }
 }
+
+/* 辅助工具页面 */
+#anima_btn_upload_json {
+  background-color: #982ac4 !important; /* 鲜艳紫 */
+  color: #ffffff !important;
+  border: none;
+  transition: background-color 0.2s;
+}
+#anima_btn_upload_json:hover {
+  background-color: #6f218e !important;
+}
+
+/* 转换按钮：绿色 (默认禁用状态在JS里控制透明度，这里写基础色) */
+#anima_btn_convert_json {
+  background-color: #10b981 !important;
+  color: #ffffff !important;
+  border: none;
+  transition: background-color 0.2s;
+}
+#anima_btn_convert_json:hover {
+  background-color: #059669 !important;
+}
+/* 禁用时的样式覆盖 */
+#anima_btn_convert_json:disabled {
+  background-color: #3f3f46 !important; /* 深灰色 */
+  color: #a1a1aa !important;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* 文件列表容器 */
+.anima-file-list-box {
+  margin-top: 15px;
+  max-height: 200px;
+  overflow-y: auto;
+  background-color: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--anima-border, #444); /* 使用你的全局变量，没有就回退#444 */
+  border-radius: 6px;
+  padding: 5px;
+  display: none; /* 默认隐藏 */
+}
+
+/* 单个文件行 */
+.anima-file-item {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9em;
+  color: var(--smart-text-color, #ccc);
+}
+.anima-file-item:last-child {
+  border-bottom: none;
+}

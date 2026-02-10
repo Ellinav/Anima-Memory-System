@@ -31,6 +31,7 @@ import {
   syncStatusToWorldBook,
 } from "./scripts/status_logic.js";
 import { objectToYaml } from "./scripts/utils.js";
+import { initToolsSettings } from "./scripts/tools.js";
 
 (function () {
   // 1. 定义基础外壳
@@ -57,6 +58,9 @@ import { objectToYaml } from "./scripts/utils.js";
                 <div class="anima-nav-item" data-tab="tab-status">
                     <i class="fa-solid fa-table-list fa-fw"></i> <span>状态变量</span>
                 </div>
+                <div class="anima-nav-item" data-tab="tab-tools">
+                    <i class="fa-solid fa-toolbox fa-fw"></i> <span>实验性功能</span>
+                </div>
             </div>
             <div class="anima-content-area">
                 <div id="tab-api" class="anima-tab-content active"></div>
@@ -64,6 +68,7 @@ import { objectToYaml } from "./scripts/utils.js";
                 <div id="tab-core" class="anima-tab-content"></div>
                 <div id="tab-summary" class="anima-tab-content"></div>
                 <div id="tab-rag" class="anima-tab-content"></div>
+                <div id="tab-tools" class="anima-tab-content"></div>
             </div>
         </div>
     </div>
@@ -83,6 +88,7 @@ import { objectToYaml } from "./scripts/utils.js";
     initRagSettings();
     initInterceptor();
     initStatusMacro();
+    initToolsSettings();
 
     window["animaTest"] = {
       insert: insertMemory,

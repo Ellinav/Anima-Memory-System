@@ -42,6 +42,48 @@ export function getContextData() {
 }
 
 /**
+ * 创建标准化渲染上下文 (核心函数)
+ * 将原始数据包装，并注入 _user, _char 等别名
+ * * @param {Object} rawData - 原始 anima_data (例如: { "Player": {HP:10}, "Alice": {HP:20} })
+ * @returns {Object} - 注入了别名的新对象
+ */
+export function createRenderContext(rawData) {
+  // 1. 浅拷贝原始数据，避免污染源数据
+  // 注意：这里用浅拷贝是为了让 _user 和 源数据 指向同一个内存地址
+  // 修改 _user.HP 会同步修改 Player.HP (如果在 JS 逻辑中操作的话)
+  const context = { ...rawData };
+
+  // 2. 获取当前的 User 和 Char 名字
+  const { userName, charName } = getContextData();
+
+  // 3. 注入 _user 别名
+  if (userName && rawData[userName]) {
+    // 这里做的是引用赋值，不增加内存开销
+    Object.defineProperty(context, "_user", {
+      value: rawData[userName],
+      enumerable: true, // 允许遍历
+      writable: false, // 防止用户不小心把整个 _user 覆盖了
+    });
+  } else {
+    // 防御性编程：如果数据里没找到用户数据，给个空对象防止报错
+    context["_user"] = {};
+  }
+
+  // 4. 注入 _char 别名
+  if (charName && rawData[charName]) {
+    Object.defineProperty(context, "_char", {
+      value: rawData[charName],
+      enumerable: true,
+      writable: false,
+    });
+  } else {
+    context["_char"] = {};
+  }
+
+  return context;
+}
+
+/**
  * 宏替换核心函数 - 修复版 (支持 YAML/JSON 区分)
  * @param {string} text - 原始文本
  * @returns {string} - 替换后的文本

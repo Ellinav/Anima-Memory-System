@@ -7,6 +7,7 @@ import {
   objectToYaml,
   yamlToObject,
   applyRegexRules,
+  createRenderContext,
 } from "./utils.js";
 import { generateText } from "./api.js";
 
@@ -461,6 +462,20 @@ export async function triggerStatusUpdate(targetMsgId) {
   try {
     // 1. 请求 API
     const responseText = await generateText(messages, "status");
+    /* 测试样本
+    console.log("正在模拟 LLM 返回脏数据...");
+    const responseText = JSON.stringify({
+      updates: {
+        沈皎: {
+          身体: {
+            体力: 9999, // 故意写大，测试 autoNum max:100
+            生理期: "false", // 故意写字符串，测试 boolean 修复
+          },
+        },
+      },
+    });
+    await new Promise((r) => setTimeout(r, 1000)); // 模拟网络延迟
+    */
 
     // 2. 基础检查：API 是否返回了空内容
     if (
@@ -1179,17 +1194,33 @@ export function initStatusMacro() {
   window.TavernHelper.registerMacroLike(REGEX, (context, match, capturedId) => {
     const msgId = Number(capturedId);
     const settings = getStatusSettings();
+    // 1. 基础检查
     if (!settings.beautify_settings?.enabled) return "";
+    // 2. 获取原始变量
     const variables = window.TavernHelper.getVariables({
       type: "message",
       message_id: msgId,
     });
-    let renderContext = variables || {};
-    if (renderContext.anima_data) renderContext = renderContext.anima_data;
-    if (!renderContext || Object.keys(renderContext).length === 0)
+    // 3. 提取核心数据 (anima_data)
+    // 这里做一个防御性处理，确保拿到的是对象
+    let rawAnimaData = {};
+    if (variables && variables.anima_data) {
+      rawAnimaData = variables.anima_data;
+    } else if (variables && Object.keys(variables).length > 0) {
+      // 兼容某些极端情况，虽然通常变量都存在 anima_data 下
+      rawAnimaData = variables;
+    }
+    // 4. 【关键修改】先检查数据是否为空 (判空逻辑前提)
+    // 必须在 createRenderContext 之前判断！因为 createRenderContext 会注入 _user 导致对象永远非空
+    if (!rawAnimaData || Object.keys(rawAnimaData).length === 0) {
       return `<div style="font-size:12px; color:gray;">[Anima: No Data]</div>`;
+    }
+    // 5. 【核心修改】创建标准化渲染上下文 (注入 _user, _char)
+    const renderContext = createRenderContext(rawAnimaData);
+    // 6. 渲染模板
     const beautify = settings.beautify_settings || {};
     let template = beautify.template || "";
+    // 此时传入的 renderContext 已经包含了 { "_user": ..., "Player": ... }
     template = renderAnimaTemplate(template, renderContext);
     try {
       // 1. 变量替换

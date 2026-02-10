@@ -21,6 +21,7 @@ import {
   objectToYaml,
   processMacros,
   applyRegexRules,
+  createRenderContext,
 } from "./utils.js";
 import { RegexListComponent, getRegexModalHTML } from "./regex_ui.js";
 // 全局变量缓存
@@ -1404,12 +1405,20 @@ function initBeautifyModule() {
 
           // 3. 获取找到的数据
           if (base && base.data) {
-            renderContext = base.data;
+            // 🔴 删除旧代码: renderContext = base.data;
+
+            // 🟢 新增代码: 使用 createRenderContext 注入 _user / _char
+            renderContext = createRenderContext(base.data);
           }
           console.log("[Anima Preview] Loaded state from floor:", base.id);
+        } else {
+          // 🟢 即使没聊天记录，也要初始化一个空壳，防止 {{_user}} 报错
+          renderContext = createRenderContext({});
         }
       } catch (e) {
         console.error("[Anima Preview] Failed to load history state:", e);
+        // 出错兜底
+        renderContext = createRenderContext({});
       }
 
       // ============================================================
@@ -2031,7 +2040,6 @@ function initZodModule() {
             type: "message",
             message_id: "latest",
           });
-          // 兼容逻辑：优先取 anima_data，如果没有则取顶层（防止结构混乱）
           realOldData = vars.anima_data || vars || {};
 
           // 为了避免日志刷屏，只显示部分
@@ -2043,6 +2051,7 @@ function initZodModule() {
       } catch (e) {
         log(`获取 oldData 失败: ${e.message}`, "warn");
       }
+      const wrappedOldData = createRenderContext(realOldData);
       // -------------------------------------------
 
       let dataObj = null;
@@ -2054,7 +2063,7 @@ function initZodModule() {
         log(`JSON 解析失败: ${err.message}`, "error");
         return;
       }
-
+      const wrappedNewData = createRenderContext(dataObj);
       try {
         if (mode === "ui") {
           log(`正在执行 UI 模式校验 (${rules.length} 条规则)...`, "info");
@@ -2064,27 +2073,30 @@ function initZodModule() {
             return;
           }
 
+          // 🔥 1. 准备工作：完全模拟 validateWithUI 的行为
+          // 先深拷贝原始数据，确保不污染外部环境
+          const uiResultData = window._.cloneDeep(dataObj);
+          // 再给拷贝的数据套上 _user/_char 别名壳
+          const uiContext = createRenderContext(uiResultData);
+
           let passCount = 0;
           let failCount = 0;
-          let correctedCount = 0; // 新增：统计修补数量
+          let correctedCount = 0;
 
           rules.forEach((rule, idx) => {
             const path = rule.path;
             if (!path) return;
 
-            // 获取目标值
+            // 🔥 2. 从我们的临时 Context 中取值
             let value = undefined;
             if (window._ && window._.get) {
-              value = window._.get(dataObj, path);
+              value = window._.get(uiContext, path);
             } else {
-              value = path.split(".").reduce((o, k) => (o || {})[k], dataObj);
+              value = path.split(".").reduce((o, k) => (o || {})[k], uiContext);
             }
 
             if (value === undefined) {
-              log(
-                `[规则 #${idx + 1}] 路径 "${path}": 未在 JSON 中找到对应值 (跳过)`,
-                "warn",
-              );
+              log(`[规则 #${idx + 1}] 路径 "${path}": 未找到值 (跳过)`, "warn");
               return;
             }
 
@@ -2092,8 +2104,7 @@ function initZodModule() {
 
             try {
               if (rule.type === "number") {
-                // 🔴 核心修改：使用 createAutoNumberSchema 替代原生 z.number()
-                // 这样测试台就能具备“自动修补”的能力了！
+                // 数值类型：使用 autoNum (支持自动修补)
                 schema = createAutoNumberSchema(
                   path,
                   {
@@ -2109,43 +2120,53 @@ function initZodModule() {
                       rule.delta !== "" && rule.delta !== undefined
                         ? Number(rule.delta)
                         : undefined,
-                    priority: "delta", // UI模式默认逻辑
+                    priority: "delta",
                   },
-                  realOldData,
+                  wrappedOldData, // 使用外部准备好的旧数据
                   window._,
                 );
               } else if (rule.type === "string") {
-                schema = z.coerce.string(); // 使用 coerce 允许数字转文本
+                // 字符串类型
+                schema = z.coerce.string();
                 if (rule.enum) {
                   const enumList = rule.enum
                     .split(/[,，]/)
                     .map((s) => s.trim())
                     .filter((s) => s);
                   if (enumList.length > 0) {
-                    // 枚举通常还是严格校验比较好，或者你可以写 transform 自动回退
                     schema = schema.refine((val) => enumList.includes(val), {
-                      message: `必须是以下值之一: ${enumList.join(", ")}`,
+                      message: `必须是: ${enumList.join(", ")}`,
                     });
                   }
                 }
               } else if (rule.type === "boolean") {
-                schema = z.coerce.boolean(); // 允许 "true" 字符串
+                // 🔥 3. 布尔类型：同步 status_zod.js 的修复逻辑
+                // 不再简单使用 z.coerce.boolean()，而是手动处理 "false" 字符串
+                schema = z.any().transform((val) => {
+                  if (typeof val === "string") {
+                    return val.toLowerCase() !== "false" && val !== "";
+                  }
+                  return Boolean(val);
+                });
               }
 
-              // 执行校验 (Safe Parse)
+              // 执行校验
               const result = schema.safeParse(value);
 
               if (result.success) {
-                // 🟢 检查是否发生了修补
+                // 🔥 4. 关键修改：如果有变化，真正写回 uiContext
+                // 因为 uiContext._user 指向 uiResultData.ShenJiao
+                // 所以这里修改了，uiResultData 也就变了
                 if (result.data !== value) {
                   log(
                     `[规则 #${idx + 1}] ${path}: 自动修补 🛠️\n    原始值: ${JSON.stringify(value)}\n    修补后: ${JSON.stringify(result.data)}`,
-                    "warn", // 用黄色显示修补信息
+                    "warn",
                   );
+                  window._.set(uiContext, path, result.data); // <--- 写回！
                   correctedCount++;
                 } else {
                   log(
-                    `[规则 #${idx + 1}] ${path}: ${JSON.stringify(value)} (校验通过) ✅`,
+                    `[规则 #${idx + 1}] ${path}: ${JSON.stringify(value)} (通过) ✅`,
                     "success",
                   );
                 }
@@ -2155,13 +2176,13 @@ function initZodModule() {
                   .map((i) => i.message)
                   .join("; ");
                 log(
-                  `[规则 #${idx + 1}] ${path}: 值 "${value}" 校验失败 ❌ - ${errorMsg}`,
+                  `[规则 #${idx + 1}] ${path}: 失败 ❌ - ${errorMsg}`,
                   "error",
                 );
                 failCount++;
               }
             } catch (e) {
-              log(`[规则 #${idx + 1}] 构建校验器出错: ${e.message}`, "error");
+              log(`[规则 #${idx + 1}] 错误: ${e.message}`, "error");
               failCount++;
             }
           });
@@ -2169,6 +2190,13 @@ function initZodModule() {
           log(
             `--- 测试结束: 通过 ${passCount}, 修补 ${correctedCount}, 失败 ${failCount} ---`,
             failCount === 0 ? "success" : "warn",
+          );
+
+          // 🔥 5. 打印最终结果
+          // uiResultData 此时已经是修补过的干净 JSON（不含 _user）
+          log(
+            "最终数据(模拟回写): " + JSON.stringify(uiResultData, null, 2),
+            "info",
           );
         } else if (mode === "script") {
           log("正在执行 脚本模式 校验...", "info");
@@ -2183,7 +2211,7 @@ function initZodModule() {
             // 🔴 关键修复 1: 在测试环境中构建 utils 工具箱
             // 这样测试台才能看懂 utils.autoNum
             const utils = {
-              val: (path, def) => window._.get(realOldData, path, def),
+              val: (path, def) => window._.get(wrappedOldData, path, def),
               getVar: (name) => {
                 if (window.TavernHelper && window.TavernHelper.getVariable) {
                   return window.TavernHelper.getVariable(name);
@@ -2192,7 +2220,7 @@ function initZodModule() {
               },
               // 调用刚刚 import 进来的辅助函数
               autoNum: (path, opts) =>
-                createAutoNumberSchema(path, opts, realOldData, window._),
+                createAutoNumberSchema(path, opts, wrappedOldData, window._), // 🟢 改这里
             };
 
             // 🔴 关键修复 2: 注入 utils 参数
@@ -2210,7 +2238,7 @@ function initZodModule() {
             );
 
             // 执行函数，传入真实的 z, lodash, realOldData 和 utils
-            userSchema = createSchema(z, window._, realOldData, utils);
+            userSchema = createSchema(z, window._, wrappedOldData, utils);
 
             if (!userSchema || typeof userSchema.safeParse !== "function") {
               throw new Error(
@@ -2223,17 +2251,79 @@ function initZodModule() {
             return;
           }
 
-          const result = userSchema.safeParse(dataObj);
+          const result = userSchema.safeParse(wrappedNewData); // 这里传 wrappedNewData
 
           if (result.success) {
-            log("脚本校验全部通过！✅", "success");
-            log("最终数据: " + JSON.stringify(result.data, null, 2), "info");
-          } else {
-            log("校验失败 ❌ 详细原因:", "error");
-            result.error.issues.forEach((issue) => {
-              const pathStr = issue.path.join(".");
-              log(` > 路径 "${pathStr}": ${issue.message}`, "error");
-            });
+            // =========================================================
+            // 🔥 核心新增：深度比对函数 (Diff Walker)
+            // =========================================================
+            let changeCount = 0;
+
+            // 递归比对两个对象，打印差异
+            const findAndLogDiff = (original, modified, path = "") => {
+              // 获取所有涉及的键 (并集)
+              const allKeys = new Set([
+                ...Object.keys(original || {}),
+                ...Object.keys(modified || {}),
+              ]);
+
+              allKeys.forEach((key) => {
+                // 忽略 _char (通常不用于校验)
+                if (key === "_char") return;
+
+                const val1 = original ? original[key] : undefined;
+                const val2 = modified ? modified[key] : undefined;
+                const currentPath = path ? `${path}.${key}` : key;
+
+                // 使用 Lodash 判断相等性
+                if (!window._.isEqual(val1, val2)) {
+                  // 如果都是纯对象，则递归深入 (继续找具体是哪个子字段变了)
+                  if (
+                    window._.isPlainObject(val1) &&
+                    window._.isPlainObject(val2)
+                  ) {
+                    findAndLogDiff(val1, val2, currentPath);
+                  } else {
+                    // 如果不是对象（是值），或者其中一个是 undefined/null，说明这里发生了实质性修改
+                    log(
+                      `[脚本修正] ${currentPath}: 自动修补 🛠️\n    原始值: ${JSON.stringify(val1)}\n    修补后: ${JSON.stringify(val2)}`,
+                      "warn",
+                    );
+                    changeCount++;
+                  }
+                }
+              });
+            };
+
+            // 执行比对：对比“输入数据(wrappedNewData)”和“输出数据(result.data)”
+            // 这样能直接检测到 _user 下的变化
+            findAndLogDiff(wrappedNewData, result.data);
+
+            if (changeCount === 0) {
+              log("脚本校验完美通过 (无修改) ✅", "success");
+            } else {
+              log(
+                `--- 校验完成: 触发了 ${changeCount} 处自动修正 (见上方) ---`,
+                "warn",
+              );
+            }
+
+            // =========================================================
+            // 下面是之前的回写与最终展示逻辑 (保持不变)
+            // =========================================================
+            const finalDisplay = { ...result.data };
+            const keys = Object.keys(finalDisplay);
+            const userKey = keys.find((k) => k !== "_user" && k !== "_char");
+            if (userKey && finalDisplay._user) {
+              finalDisplay[userKey] = finalDisplay._user;
+            }
+            delete finalDisplay._user;
+            delete finalDisplay._char;
+
+            log(
+              "最终数据(模拟回写): " + JSON.stringify(finalDisplay, null, 2),
+              "info",
+            );
           }
         }
       } catch (globalErr) {

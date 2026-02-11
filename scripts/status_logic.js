@@ -1307,7 +1307,7 @@ export function initStatusMacro() {
       // 1. 获取上下文中的聊天数组
       const ctx = SillyTavern.getContext();
       const chat = ctx.chat || [];
-      if (chat.length === 0) return keyPath ? "" : "{}"; // 如果没聊天，取值返回空，取全量返回空对象
+      if (chat.length === 0) return keyPath ? "" : "{}";
 
       // 2. 确定基准查找起点
       const lastMsg = chat[chat.length - 1];
@@ -1320,24 +1320,37 @@ export function initStatusMacro() {
 
       // 4. 【核心逻辑】判断是取全量还是取特定值
       if (keyPath && keyPath.trim()) {
-        // A. 精准取值模式
+        // =========================================================
+        // A. 精准取值模式 (分支修改)
+        // =========================================================
+
+        // 🔥 1. 关键修改：使用 createRenderContext 包装数据
+        // 这样 baseData 就变成了 { "沈皎": {...}, "_user": {...} }
+        const contextData = createRenderContext(baseData);
+
         const cleanPath = keyPath.trim();
         let val = undefined;
         const lodash = /** @type {any} */ (window)["_"];
-        // 优先使用 Lodash 的强力路径解析 (支持 a[0].b.c)
+
+        // 🔥 2. 从 contextData 取值，而不是 baseData
         if (lodash && lodash.get) {
-          val = lodash.get(baseData, cleanPath);
+          val = lodash.get(contextData, cleanPath);
         } else {
-          // 降级方案：简单的点号分割
-          val = cleanPath.split(".").reduce((o, k) => (o || {})[k], baseData);
+          val = cleanPath
+            .split(".")
+            .reduce((o, k) => (o || {})[k], contextData);
         }
 
         // 处理返回值类型
-        if (val === undefined) return ""; // 没找到返回空字符串
-        if (typeof val === "object") return JSON.stringify(val); // 对象转字符串
-        return String(val); // 基础类型转字符串
+        if (val === undefined) return "";
+        if (typeof val === "object") {
+          return objectToYaml(val).trim();
+        }
+        return String(val);
       } else {
-        // B. 全量模式 (保持原有逻辑)
+        // B. 全量模式 (保持不变)
+        // 注意：这里继续用原始的 baseData，不要用 contextData
+        // 否则输出的 YAML 会包含 "_user": ... 这种冗余数据
         return Object.keys(baseData).length > 0 ? objectToYaml(baseData) : "{}";
       }
     },

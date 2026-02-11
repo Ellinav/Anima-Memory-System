@@ -186,6 +186,34 @@ const toolsTemplate = `
             <i class="fa-solid fa-circle-check"></i> 转换完成后将自动清理列表
         </div>
     </div>
+    <h2 class="anima-title" style="margin-top: 25px;">
+        <i class="fa-solid fa-terminal"></i> 神经连接日志
+    </h2>
+    <div class="anima-card">
+        <div class="anima-flex-row" style="align-items: center; justify-content: space-between; margin-bottom: 10px;">
+            <div class="anima-desc-inline">
+                <i class="fa-solid fa-bug"></i> 仅包含 "Anima" 的控制台日志
+            </div>
+            <div>
+                <button id="anima_btn_clear_log" class="anima-btn" style="padding: 5px 10px; font-size: 0.8em;">
+                    <i class="fa-solid fa-trash"></i> 清空
+                </button>
+                <button id="anima_btn_toggle_log" class="anima-btn" style="padding: 5px 10px; font-size: 0.8em;">
+                    <i class="fa-solid fa-chevron-down"></i> 展开/收起
+                </button>
+            </div>
+        </div>
+
+        <div id="anima-console-container" style="display: none; background: #1e1e1e; color: #36d19dbc; font-family: 'Consolas', monospace; font-size: 12px; padding: 10px; border-radius: 5px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;">
+            <div id="anima-log-output">等待日志流接入...</div>
+        </div>
+        
+        <div style="margin-top: 5px; font-size: 0.8em; opacity: 0.5; display: flex; align-items: center;">
+             <label class="checkbox_label" style="margin:0;">
+                <input type="checkbox" id="anima_log_autoscroll" checked> 自动滚动到底部
+            </label>
+        </div>
+    </div>
 `;
 
 export function initToolsSettings() {
@@ -277,4 +305,114 @@ export function initToolsSettings() {
     convertBtn.prop("disabled", true);
     uploadBtn.html(`<i class="fa-solid fa-upload"></i> 上传文件`);
   }
+
+  // === 新增：日志工具逻辑 ===
+
+  // 1. 启动拦截器 (单例模式，只会运行一次)
+  setupLogInterceptor();
+
+  // 2. 展开/收起 按钮逻辑
+  const logContainer = $("#anima-console-container");
+  const toggleBtn = $("#anima_btn_toggle_log");
+
+  toggleBtn.on("click", () => {
+    logContainer.slideToggle(200, function () {
+      // 切换图标
+      const isVisible = $(this).is(":visible");
+      toggleBtn.html(
+        isVisible
+          ? `<i class="fa-solid fa-chevron-up"></i> 收起`
+          : `<i class="fa-solid fa-chevron-down"></i> 展开/收起`,
+      );
+    });
+  });
+
+  // 3. 清空按钮逻辑
+  $("#anima_btn_clear_log").on("click", () => {
+    $("#anima-log-output").empty();
+  });
+}
+
+// 这里的 Set 用于防止重复拦截
+let isConsoleProxied = false;
+// 缓存日志，防止切换 Tab 时丢失（可选，视需求而定，这里为了简单直接写 DOM）
+const MAX_LOG_LINES = 500;
+
+function setupLogInterceptor() {
+  if (isConsoleProxied) return;
+
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  const originalError = console.error;
+  const originalInfo = console.info;
+
+  // 通用处理函数
+  function processLog(type, args) {
+    // 1. 将参数转换为字符串以便检查
+    const msgStr = args
+      .map((arg) => {
+        if (typeof arg === "object") {
+          try {
+            return JSON.stringify(arg);
+          } catch (e) {
+            return "[Circular/Object]";
+          }
+        }
+        return String(arg);
+      })
+      .join(" ");
+
+    // 2. 筛选关键词 (大小写不敏感)
+    if (msgStr.toLowerCase().includes("anima")) {
+      const outputDiv = $("#anima-log-output");
+      if (outputDiv.length > 0) {
+        // 构造 HTML
+        const time = new Date().toLocaleTimeString();
+        let color = "#a3e635"; // 默认绿色
+        if (type === "warn") color = "#facc15";
+        if (type === "error") color = "#f87171";
+
+        const logHtml =
+          `<div style="border-bottom: 1px solid #333; padding: 2px 0;">` +
+          `<span style="opacity:0.5; font-size:0.9em;">[${time}]</span> ` +
+          `<span style="color:${color};">[${type.toUpperCase()}]</span> ` +
+          `${msgStr}` +
+          `</div>`;
+
+        outputDiv.append(logHtml);
+
+        // 限制行数防止卡顿
+        if (outputDiv.children().length > MAX_LOG_LINES) {
+          outputDiv.children().first().remove();
+        }
+
+        // 自动滚动
+        if ($("#anima_log_autoscroll").is(":checked")) {
+          const container = $("#anima-console-container");
+          container.scrollTop(container[0].scrollHeight);
+        }
+      }
+    }
+  }
+
+  // 代理 console 方法
+  console.log = function (...args) {
+    originalLog.apply(console, args);
+    processLog("log", args);
+  };
+  console.warn = function (...args) {
+    originalWarn.apply(console, args);
+    processLog("warn", args);
+  };
+  console.error = function (...args) {
+    originalError.apply(console, args);
+    processLog("error", args);
+  };
+  console.info = function (...args) {
+    originalInfo.apply(console, args);
+    processLog("info", args);
+  };
+
+  isConsoleProxied = true;
+  console.log("[Anima] Log Interceptor Attached.");
 }

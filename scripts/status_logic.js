@@ -648,19 +648,44 @@ export function getSettingsFromCharacterCard(key) {
 
 // 防线检查
 export function checkReplyIntegrity(content) {
-  if (!content || content.trim().length < 5) {
-    console.warn("[Anima Defense] ⛔ 拦截：回复内容为空或过短");
+  // 1. 基础长度检查
+  if (!content || content.trim().length < 1) {
+    console.warn("[Anima Defense] ⛔ 拦截：回复内容为空");
     return false;
   }
-  const stopPunctuation = /[.!?。"”…—~>）\]\}＊*`]$/;
-  if (!stopPunctuation.test(content.trim())) {
-    const lastChar = content.trim().slice(-1);
-    console.warn(
-      `[Anima Defense] ⛔ 拦截：回复似乎被截断。结尾字符: [${lastChar}]`,
-    );
-    return false;
+
+  const trimmedContent = content.trim();
+
+  // 2. 获取设置
+  const settings = getStatusSettings();
+  const customStop = settings.update_management?.stop_sequence;
+
+  // 3. 定义默认检测规则 (硬编码部分)
+  // 这里保留你原始的列表
+  const defaultPunctuation = /[.!?。"”…—~>）\]\}＊*`]$/;
+  const isDefaultPass = defaultPunctuation.test(trimmedContent);
+
+  // 4. 定义自定义检测规则 (用户 UI 设置部分)
+  let isCustomPass = false;
+  if (customStop && customStop.trim().length > 0) {
+    // 使用 endsWith 进行精确匹配，这样用户填 "💙" 就能匹配到 emoji
+    // 同时也避免了用户输入特殊正则符号导致报错的问题
+    isCustomPass = trimmedContent.endsWith(customStop.trim());
   }
-  return true;
+
+  // 5. 综合判定：只要满足其中任意一条，就放行 (OR 逻辑)
+  // 如果用户没填自定义，isCustomPass 为 false，逻辑退化为只检测默认
+  // 如果用户填了 "💙"，那么以 "。" 结尾能过，以 "💙" 结尾也能过
+  if (isDefaultPass || isCustomPass) {
+    return true;
+  }
+
+  // 6. 拦截日志
+  const lastChar = trimmedContent.slice(-1);
+  console.warn(
+    `[Anima Defense] ⛔ 拦截：回复似乎被截断。结尾字符: [${lastChar}] (未匹配默认符号或自定义: ${customStop || "None"})`,
+  );
+  return false;
 }
 
 /**

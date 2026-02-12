@@ -654,7 +654,7 @@ export async function runSummarizationTask({
             : getLastSummarizedIndex() + 1;
         keepRunning = false;
       } else {
-        // --- 自动模式 ---
+        // --- 自动模式 (Auto Mode) ---
         let lastMsgArray;
         try {
           lastMsgArray = window.TavernHelper.getChatMessages(-1);
@@ -668,27 +668,65 @@ export async function runSummarizationTask({
         const latestMsg = lastMsgArray[0];
         const latestId = latestMsg.message_id;
         const interval = settings.trigger_interval;
+
+        // 1. 计算理论上的截止点 (例如: 上次4 + 间隔5 = 目标9)
         const calcTargetEndId = lastSummarizedId + interval;
 
+        // 如果还没到理论截止点，直接退出
         if (latestId < calcTargetEndId) {
           keepRunning = false;
           break;
         }
 
-        if (latestId === calcTargetEndId) {
-          const isUser = latestMsg.is_user || latestMsg.role === "user";
-          if (!isUser) {
+        // 2. 获取【理论截止点】那一条消息的详细信息
+        // 我们需要判断第 29 楼到底是谁发的
+        const targetMsgList = window.TavernHelper.getChatMessages(
+          `${calcTargetEndId}-${calcTargetEndId}`,
+        );
+        if (!targetMsgList || !targetMsgList.length) {
+          console.log(
+            `[Anima] 无法获取目标楼层 #${calcTargetEndId}，停止任务。`,
+          );
+          keepRunning = false;
+          break;
+        }
+        const targetMsg = targetMsgList[0];
+        const isTargetUser = targetMsg.is_user || targetMsg.role === "user";
+
+        // 3. 根据角色修正总结范围
+        if (isTargetUser) {
+          // 情况 A: 29楼是 User
+          // 策略: 回退一格，总结 0-28。这样 29(User) 会留给下一批次作为开头。
+          console.log(
+            `[Anima] 目标截止点 #${calcTargetEndId} 是 User，自动回退至 #${calcTargetEndId - 1} 以保持交互完整。`,
+          );
+          targetEndId = calcTargetEndId - 1;
+        } else {
+          // 情况 B: 29楼是 AI
+          // 策略: 必须等待 30 楼出现才能总结 0-29 (避免 AI 正在生成或用户想重随)
+          if (latestId === calcTargetEndId) {
             console.log(
-              `[Anima] 挂起: 等待 User 发言确认 (Current #${latestId})`,
+              `[Anima] 挂起: 目标楼层 #${calcTargetEndId} 为 AI 回复，等待后续 User 发言确认 (Current #${latestId})`,
             );
             keepRunning = false;
             break;
           }
+          // 如果 latest > 14 (User 已经回了 15)，则可以放心地总结 0-14
+          targetEndId = calcTargetEndId;
         }
 
+        // 设定本轮任务参数
         startId = lastSummarizedId + 1;
-        targetEndId = calcTargetEndId;
         finalIndex = getLastSummarizedIndex() + 1;
+
+        // 兜底防止 start > end (例如间隔设为1且连续User发言的极端情况)
+        if (startId > targetEndId) {
+          console.log(
+            `[Anima] 范围计算调整后无效 (${startId}-${targetEndId})，跳过本轮，等待更多上下文。`,
+          );
+          keepRunning = false;
+          break;
+        }
       }
 
       // C. 冲突检测

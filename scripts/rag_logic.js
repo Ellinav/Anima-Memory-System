@@ -1,5 +1,5 @@
 import { getAnimaConfig } from "./api.js"; // 引用你在 api.js 写的配置获取函数
-import { processMacros } from "./utils.js";
+import { processMacros, createRenderContext } from "./utils.js";
 
 // 🟢 [新增] 全局状态：当前是否为重绘 (Swipe)
 let _isSwipeMode = false;
@@ -167,11 +167,15 @@ function smartCompare(actual, op, targetStr) {
 function evaluateStatusRules(data, rules) {
   if (!data || !Array.isArray(rules) || rules.length === 0) return [];
 
+  // 🔥 [新增] 创建标准化上下文 (注入 _user, _char 别名)
+  // 这样 getValueByPath(ctx, "_user.HP") 就能自动指向 data["Player"]["HP"]
+  const contextData = createRenderContext(data);
+
   const triggeredTags = new Set();
 
   rules.forEach((rule) => {
-    // 1. 获取实际值
-    const actualValue = getValueByPath(data, rule.path);
+    // 🔥 [修改] 这里传入 contextData 而不是原始 data
+    const actualValue = getValueByPath(contextData, rule.path);
 
     // 2. 比对
     const isHit = smartCompare(actualValue, rule.op, rule.value);

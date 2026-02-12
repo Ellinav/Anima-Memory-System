@@ -464,19 +464,19 @@ function bindRagListEvents(wbName) {
   });
 
   // 2. 刷新/重新向量化 (Refres/Re-embed)
-  // 逻辑：读取当前世界书文本 -> 调用 insertMemory -> 后端自动覆盖旧文件
   container.on("click", ".btn-refresh-vector", async function (e) {
     e.stopPropagation();
     const $btn = $(this);
     const $entry = $btn.closest(".anima-history-entry");
     const $badge = $entry.find(".status-badge");
 
-    // 1. 收集数据
+    // 1. 获取唯一标识 (这是永远不变的锚点)
     const uniqueId = $entry.attr("data-unique-id");
-    const uid = $entry.attr("data-uid"); // 条目UID
+    // const uid = $entry.attr("data-uid"); // ❌ 不再信任 DOM 里的 uid
     const batchId = $entry.attr("data-batch-id");
+    const timestamp = $entry.attr("data-timestamp");
 
-    // 解析 Tags (防止 JSON 解析报错)
+    // 解析 Tags
     let tags = [];
     try {
       tags = JSON.parse(decodeURIComponent($entry.attr("data-tags") || "[]"));
@@ -484,9 +484,7 @@ function bindRagListEvents(wbName) {
       tags = [];
     }
 
-    const timestamp = $entry.attr("data-timestamp");
-
-    // 2. UI 锁定 (显示 Loading)
+    // 2. UI 锁定
     const originalHtml = $btn.html();
     $btn
       .prop("disabled", true)
@@ -494,29 +492,61 @@ function bindRagListEvents(wbName) {
     $badge.html('<i class="fa-solid fa-spinner fa-spin"></i> 处理中...');
 
     try {
-      // 3. 获取最新文本 (确保是根据最新的总结内容生成)
-      const text = await getSummaryTextFromEntry(uid, uniqueId);
-      if (!text) throw new Error("无法读取切片文本 (可能已被删除)");
+      // ============================================================
+      // 🟢 核心修复 1: 暴力扫描最新世界书，获取鲜活的 UID
+      // ============================================================
+      const currentEntries = await window.TavernHelper.getWorldbook(wbName);
 
-      // 4. 🔥 核心操作：调用底层接口
-      // 此时后端会先请求 API，成功后才会覆盖旧文件
-      const targetCollectionId = getSmartCollectionId(); // 🟢 获取 ID
+      let freshUid = null;
+
+      // 遍历所有 Anima 创建的条目，寻找包含此 uniqueId 的宿主
+      const hostEntry = currentEntries.find(
+        (entry) =>
+          entry.extra &&
+          entry.extra.createdBy === "anima_summary" &&
+          Array.isArray(entry.extra.history) &&
+          entry.extra.history.some(
+            (h) => String(h.unique_id || h.index) === String(uniqueId),
+          ),
+      );
+
+      if (hostEntry) {
+        freshUid = hostEntry.uid;
+        console.log(`[Anima] 重新定位切片 #${uniqueId} -> 新UID: ${freshUid}`);
+      } else {
+        throw new Error(
+          "在当前世界书中找不到该切片，请刷新列表或检查是否已被删除。",
+        );
+      }
+
+      // 3. 获取文本 (使用刚找到的 freshUid)
+      const text = await getSummaryTextFromEntry(freshUid, uniqueId);
+
+      // ============================================================
+      // 🟢 核心修复 2: 拦截错误字符串，防止污染数据库
+      // ============================================================
+      if (!text || text === "(条目已丢失)" || text.includes("(条目已丢失)")) {
+        throw new Error("无法读取切片文本 (内容丢失或无效)");
+      }
+
+      // 4. 调用底层接口
+      const targetCollectionId = getSmartCollectionId();
 
       const result = await insertMemory(
         text,
         tags,
         timestamp,
-        targetCollectionId, // 🟢 替换 wbName
+        targetCollectionId,
         null,
         uniqueId,
         batchId,
       );
 
-      // 5. 🔥 只有后端明确返回成功，才执行后续操作
+      // 5. 成功回调
       if (result && result.success === true) {
-        // A. 更新世界书 (持久化变绿)
+        // 更新世界书状态 (使用 freshUid)
         await window.TavernHelper.updateWorldbookWith(wbName, (entries) => {
-          const e = entries.find((x) => x.uid === uid);
+          const e = entries.find((x) => x.uid === freshUid);
           if (e && e.extra && Array.isArray(e.extra.history)) {
             const h = e.extra.history.find(
               (x) => String(x.unique_id || x.index) === String(uniqueId),
@@ -528,31 +558,26 @@ function bindRagListEvents(wbName) {
 
         toastr.success(`切片 #${uniqueId} 更新成功`);
 
-        // B. 前端 UI 变绿 (视觉反馈)
+        // 更新 DOM 上的 uid，方便下次操作
+        $entry.attr("data-uid", freshUid);
+
         $badge.html('<i class="fa-solid fa-check"></i> 已向量化').css({
           color: "#4ade80",
           borderColor: "#22c55e",
           background: "rgba(74, 222, 128, 0.2)",
         });
       } else {
-        // 6. 失败分支：抛出错误，进入 catch
-        // result.error 已经在后端被我们清洗过了，是干净的文本
         throw new Error(result?.error || "后端未返回成功标识");
       }
     } catch (err) {
       console.error(err);
-
-      // 显示具体错误原因
       toastr.error("更新失败: " + err.message);
-
-      // UI 变红 (恢复原状或显示失败)
       $badge.html('<i class="fa-solid fa-xmark"></i> 失败').css({
         color: "#f87171",
         borderColor: "#ef4444",
         background: "rgba(248, 113, 113, 0.2)",
       });
     } finally {
-      // 解锁按钮
       $btn.prop("disabled", false).html(originalHtml);
     }
   });

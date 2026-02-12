@@ -1,6 +1,17 @@
 import { getAnimaConfig } from "./api.js"; // 引用你在 api.js 写的配置获取函数
 import { processMacros } from "./utils.js";
 
+// 🟢 [新增] 全局状态：当前是否为重绘 (Swipe)
+let _isSwipeMode = false;
+
+// 🟢 [新增] 供 index.js 调用的设置函数
+export function setSwipeState(isSwipe) {
+  _isSwipeMode = !!isSwipe;
+  console.log(
+    `[Anima RAG] 🔄 生成模式切换: ${isSwipe ? "Swipe (重绘)" : "Normal (普通)"}`,
+  );
+}
+
 // [新增] 统一配置获取函数：角色卡配置 > 全局配置
 export function getEffectiveSettings() {
   const context = SillyTavern.getContext();
@@ -858,7 +869,8 @@ export async function queryDual({
     const response = await callBackend("/query", {
       searchText,
       ignore_ids: excludeIds || [],
-
+      sessionId: cleanMainId,
+      is_swipe: _isSwipeMode,
       // 新版双轨参数
       chatContext: {
         ids: finalChatIds,
@@ -869,7 +881,48 @@ export async function queryDual({
         strategy: kbStrategyPayload,
       },
     });
+    if (
+      response &&
+      response._debug_logs &&
+      Array.isArray(response._debug_logs)
+    ) {
+      const logs = response._debug_logs;
+      const totalCount =
+        (response.chat_results?.length || 0) +
+        (response.kb_results?.length || 0);
 
+      console.groupCollapsed(
+        `%c[Anima RAG] 🕵️ 检索报告 | 命中: ${totalCount} | 日志: ${logs.length} 条`,
+        "color: #22d3ee; font-weight: bold; background: #0f172a; padding: 2px 6px; border-radius: 4px;",
+      );
+
+      logs.forEach((log) => {
+        // 🎨 样式区分：Echo 系统用紫色，普通检索用青色
+        const isEcho = (log.step || "").includes("Echo");
+
+        const stepColor = isEcho ? "#d8b4fe" : "#67e8f9"; // 紫色 vs 青色
+        const stepLabel = `[${log.step}]`.padEnd(15, " ");
+
+        // 构建元数据字符串 (库名 + 分数 + ID)
+        let metaParts = [];
+        if (log.library) metaParts.push(log.library);
+        if (log.uniqueID && log.uniqueID !== "-")
+          metaParts.push(`ID:${log.uniqueID}`);
+        if (log.score && log.score !== "-") metaParts.push(`Sc:${log.score}`);
+        const metaStr =
+          metaParts.length > 0 ? `[${metaParts.join(" | ")}]` : "";
+
+        // 打印
+        console.log(
+          `%c${stepLabel}%c ${metaStr} %c${log.tags || log.info || ""}`,
+          `color: ${stepColor}; font-weight: bold; font-family: monospace;`, // Step 样式
+          "color: #94a3b8; font-size: 0.9em;", // Meta 样式 (灰色)
+          "color: inherit;", // 内容默认颜色
+        );
+      });
+
+      console.groupEnd();
+    }
     // 调试日志回传 UI (合并 Chat 和 KB 的日志，或者只传 Chat 的)
     // 目前后端只返回了 Chat 的 debug 记录在 _debug_logs 中，如果需要 KB 的也可以让后端加
     if (response && response._debug_logs) {

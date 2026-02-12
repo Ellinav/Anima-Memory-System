@@ -15,6 +15,8 @@ import {
 export const MODULE_NAME = "anima_memory_system";
 let isSummarizing = false;
 const DEFAULT_GLOBAL_SETTINGS = Object.freeze({
+  trigger_interval: 30,
+  hide_skip_count: 5,
   regex_strings: [],
   output_regex: [],
   skip_layer_zero: true,
@@ -46,8 +48,6 @@ const DEFAULT_GLOBAL_SETTINGS = Object.freeze({
 });
 
 const DEFAULT_LOCAL_SETTINGS = Object.freeze({
-  trigger_interval: 30,
-  hide_skip_count: 5,
   auto_run: false,
   exclude_user: false, // 是否排除用户内容，这通常取决于特定扮演场景
 });

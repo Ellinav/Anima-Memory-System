@@ -52,6 +52,10 @@ const PARENT_MODULE_NAME = "anima_memory_system";
 export const DEFAULT_RAG_SETTINGS = {
   rag_enabled: true,
 
+  base_life: 1, // 基础粘性
+  imp_life: 2, // 重要粘性
+  echo_max_count: 10, // 最大总量
+
   knowledge_base: {
     delimiter: "", // 切片自定义分隔符 (如 "###")
     chunk_size: 500, // 切片字符数 (delimiter为空时生效)
@@ -625,7 +629,49 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                         </button>
                     </div>
                 </div>
+
                 <div class="anima-card">
+                <div style="margin-bottom: 20px; border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 10px;">
+                        <div style="font-size:16px; font-weight:bold; color: #7b20dc; margin-bottom:15px; display:flex; align-items:center;">
+                            <i class="fa-solid fa-bullhorn" style="margin-right:8px;"></i> 记忆回响
+                        </div>
+
+                        <div class="anima-flex-row">
+                            <div class="anima-label-group">
+                                <span class="anima-label-text">基础粘性</span>
+                                <span class="anima-desc-inline">普通检索结果的停留回合数</span>
+                            </div>
+                            <div class="anima-input-wrapper">
+                                <input type="number" id="rag_echo_base_life" class="anima-input" 
+                                    style="width:80px; text-align:center;"
+                                    value="${settings.base_life ?? 1}" min="0">
+                            </div>
+                        </div>
+
+                        <div class="anima-flex-row">
+                            <div class="anima-label-group">
+                                <span class="anima-label-text">重要粘性</span>
+                                <span class="anima-desc-inline">重要/特殊策略结果的停留回合数</span>
+                            </div>
+                            <div class="anima-input-wrapper">
+                                <input type="number" id="rag_echo_imp_life" class="anima-input" 
+                                    style="width:80px; text-align:center;"
+                                    value="${settings.imp_life ?? 2}" min="0">
+                            </div>
+                        </div>
+
+                        <div class="anima-flex-row">
+                            <div class="anima-label-group">
+                                <span class="anima-label-text">最大总量</span>
+                                <span class="anima-desc-inline">回响池中同时存在的最大切片数</span>
+                            </div>
+                            <div class="anima-input-wrapper">
+                                <input type="number" id="rag_echo_max_count" class="anima-input" 
+                                    style="width:80px; text-align:center;"
+                                    value="${settings.echo_max_count ?? 10}" min="0">
+                            </div>
+                        </div>
+                    </div>
                     <div class="anima-flex-row">
                         <div class="anima-label-group">
                             <span class="anima-label-text">基础结果数量</span>
@@ -1031,6 +1077,10 @@ function bindRagEvents(settings) {
         // 全局项
         base_count: parseInt($("#rag_base_count").val()) || 2,
         min_score: parseFloat($("#rag_min_score").val()) || 0.2,
+        base_life: parseInt($("#rag_echo_base_life").val()) || 1,
+        imp_life: parseInt($("#rag_echo_imp_life").val()) || 2,
+        echo_max_count: parseInt($("#rag_echo_max_count").val()) || 10,
+
         auto_vectorize: $("#rag_auto_vectorize").prop("checked"),
         skip_layer_zero: $("#rag_skip_layer_zero").prop("checked"), // 跳过开场白
         regex_skip_user: $("#rag_regex_skip_user").prop("checked"),
@@ -1313,43 +1363,59 @@ function bindRagEvents(settings) {
     if (r.results && r.results.length > 0) {
       contentHtml += r.results
         .map((item, idx) => {
-          // 🟢 修改 2：增加 uniqueID / index 显示
-          // 优先取 uniqueID，如果没有取 index (兼容不同后端返回格式)
           const displayId = item.uniqueID || item.index || "N/A";
-
           const sourceDb = item.source || "Unknown";
+
+          // 1. 知识库判断
           const isKb = sourceDb.startsWith("kb_");
 
-          // 🟢 样式分歧配置
-          const theme = isKb
-            ? {
-                borderColor: "#eab308", // Yellow-500
-                headerBg: "rgba(234, 179, 8, 0.15)",
-                countColor: "#facc15",
-                icon: "fa-book",
-              }
-            : {
-                borderColor: "#444", // 默认灰色或保留原来的
-                headerBg: "rgba(59, 130, 246, 0.15)", // Blue
-                countColor: "#60a5fa",
-                icon: "fa-database",
-              };
+          // 2. 回响判断 (现在后端修好了，可以直接用 is_echo)
+          const isEcho = item.is_echo === true;
+
+          // 3. 样式三选一
+          let theme = {};
+
+          if (isKb) {
+            // 🟡 知识库：黄色
+            theme = {
+              borderColor: "#eab308",
+              headerBg: "rgba(234, 179, 8, 0.15)",
+              countColor: "#facc15",
+              icon: "fa-book",
+            };
+          } else if (isEcho) {
+            // 🟣 回响：紫色 (你想要的颜色)
+            theme = {
+              borderColor: "#a855f7", // Purple-500
+              headerBg: "rgba(168, 85, 247, 0.15)",
+              countColor: "#d8b4fe",
+              icon: "fa-bullhorn",
+            };
+          } else {
+            // 🔵 普通：蓝色
+            theme = {
+              borderColor: "#444",
+              headerBg: "rgba(59, 130, 246, 0.15)",
+              countColor: "#60a5fa",
+              icon: "fa-database",
+            };
+          }
 
           return `
-            <div class="anima-preview-block" style="border:1px solid ${theme.borderColor}; margin-bottom:8px; border-radius:4px; overflow:hidden;">
-                <div class="block-header" style="background:${theme.headerBg}; padding:6px 10px; font-size:12px; display:flex; justify-content:space-between; align-items:center;">
-                    <div>
-                        <span style="color:${theme.countColor}; font-weight:bold;">#${idx + 1}</span>
-                        <span style="color:#fff; font-weight:bold; margin:0 6px; font-family:monospace;">[${escapeHtml(displayId)}]</span>
-                        <span style="color:${theme.countColor};">Score: ${item.score?.toFixed(4)}</span>
-                    </div>
-                    <span style="color:#aaa; font-size:11px;" title="来源数据库">
-                        <i class="fa-solid ${theme.icon}" style="margin-right:4px;"></i>${escapeHtml(sourceDb)}
-                    </span>
+        <div class="anima-preview-block" style="border:1px solid ${theme.borderColor}; margin-bottom:8px; border-radius:4px; overflow:hidden;">
+            <div class="block-header" style="background:${theme.headerBg}; padding:6px 10px; font-size:12px; display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <span style="color:${theme.countColor}; font-weight:bold;">#${idx + 1}</span>
+                    <span style="color:#fff; font-weight:bold; margin:0 6px; font-family:monospace;">[${escapeHtml(displayId)}]</span>
+                    <span style="color:${theme.countColor};">Score: ${typeof item.score === "number" ? item.score.toFixed(4) : item.score}</span>
                 </div>
-                <div class="block-content" style="padding:10px; font-size:12px; color:#ccc; background:rgba(0,0,0,0.2); white-space:pre-wrap; max-height:150px; overflow-y:auto;">${escapeHtml(item.text)}</div>
+                <span style="color:#aaa; font-size:11px;" title="来源数据库">
+                    <i class="fa-solid ${theme.icon}" style="margin-right:4px;"></i>${escapeHtml(sourceDb)}
+                </span>
             </div>
-        `;
+            <div class="block-content" style="padding:10px; font-size:12px; color:#ccc; background:rgba(0,0,0,0.2); white-space:pre-wrap; max-height:150px; overflow-y:auto;">${escapeHtml(item.text)}</div>
+        </div>
+    `;
         })
         .join("");
     } else {
@@ -1377,6 +1443,8 @@ function bindRagEvents(settings) {
         if (stepName.includes("BASE")) stepColor = "#3b82f6";
         else if (stepName.includes("IMPORTANT")) stepColor = "#eab308";
         else if (stepName.includes("STATUS")) stepColor = "#ef4444";
+        else if (stepName.includes("ECHO"))
+          stepColor = "#d946ef"; // Echo 亮紫色
         else if (stepName.includes("HOLIDAY") || stepName.includes("SPECIAL"))
           stepColor = "#a855f7";
         else if (stepName.includes("PERIOD")) stepColor = "#48ecd1";
@@ -1384,33 +1452,41 @@ function bindRagEvents(settings) {
 
         const libraryName = data.library || "Unknown DB";
 
+        // 2. ✨ 核心修复：样式调整
+        // 如果是 Echo，使用 normal (自动换行) + break-word (长词折行)
+        // 不要用 pre-wrap，否则会把 HTML 代码里的缩进也显示出来
+        const isEcho = stepName.includes("ECHO");
+        const tagsStyle = isEcho
+          ? "color: #888; white-space: normal; word-break: break-word; line-height: 1.3;" // Echo: 紧凑换行
+          : "color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"; // 普通: 单行省略
+
         return `
-                <div class="anima-log-card" style="
-                    background: rgba(0,0,0,0.3); 
-                    border: 1px solid rgba(255,255,255,0.08); 
-                    border-left: 3px solid ${stepColor}; 
-                    border-radius: 4px; 
-                    margin-bottom: 6px; 
-                    padding: 8px 10px;
-                    font-size: 11px;
-                ">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                        <div style="font-weight: bold; color: ${stepColor}; font-size: 13px;"> ${escapeHtml(data.step)}
-                        </div>
-                        <div style="text-align: right;">
-                            <div style="color: #eee; font-family: monospace; font-weight: bold;">${parseFloat(data.score).toFixed(4)}</div>
-                        </div>
+            <div class="anima-log-card" style="
+                background: rgba(0,0,0,0.3); 
+                border: 1px solid rgba(255,255,255,0.08); 
+                border-left: 3px solid ${stepColor}; 
+                border-radius: 4px; 
+                margin-bottom: 6px; 
+                padding: 6px 10px; /* 稍微减小 padding 让它更紧凑 */
+                font-size: 11px;
+            ">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                    <div style="font-weight: bold; color: ${stepColor}; font-size: 12px;"> ${escapeHtml(data.step)}
                     </div>
+                    <div style="text-align: right;">
+                        <div style="color: #eee; font-family: monospace; font-weight: bold;">${parseFloat(data.score).toFixed(4)}</div>
+                    </div>
+                </div>
 
-                    <div style="color: #aaa; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(libraryName)}">
-                        <i class="fa-solid fa-database" style="font-size:10px; margin-right:4px;"></i>${escapeHtml(libraryName)}
-                    </div>
+                <div style="color: #aaa; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display:flex; align-items:center;" title="${escapeHtml(libraryName)}">
+                    <i class="fa-solid fa-database" style="font-size:10px; margin-right:4px; color:#666;"></i>${escapeHtml(libraryName)}
+                </div>
 
-                    <div style="color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                        <span style="color:#555;">ID:</span> ${data.uniqueID} 
-                        <span style="color:#555; margin-left:8px;">Tags:</span> ${escapeHtml(data.tags || "-")}
-                    </div>
-                </div>`;
+                <div style="${tagsStyle}">
+                    <span style="color:#555; font-weight:bold;">ID:</span> <span style="color:#ccc; margin-right:8px;">${data.uniqueID}</span>
+                    <span style="color:#555; font-weight:bold;">Log:</span> ${escapeHtml(data.tags || "-")}
+                </div>
+            </div>`;
       };
 
       // ✅ 修改点：移除了 border-top:1px solid #444

@@ -12,7 +12,7 @@ import {
   getSummarySettings,
 } from "./scripts/summary_logic.js";
 import { initRagSettings, clearLastRetrievalResult } from "./scripts/rag.js";
-import { insertMemory, queryDual } from "./scripts/rag_logic.js";
+import { insertMemory, queryDual, setSwipeState } from "./scripts/rag_logic.js";
 import { initInterceptor } from "./scripts/interceptor.js";
 import {
   clearRagEntry,
@@ -136,6 +136,7 @@ import { initToolsSettings } from "./scripts/tools.js";
       // 🟢 1. 确保 debounceTimer 定义在这一层，让下面所有事件都能访问到
       let debounceTimer = null;
       let isGenerationActive = false;
+      let preSwipeContent = null;
       const triggerAutomationCheck = (source, customDelay = 1000) => {
         const settings = getSummarySettings();
         if (!settings || !settings.auto_run) return;
@@ -403,6 +404,25 @@ import { initToolsSettings } from "./scripts/tools.js";
       let wasGenerationStopped = false;
 
       context.eventSource.on("generation_started", async (type, arg1, arg2) => {
+        console.log("[Anima Debug] Generation Started Type:", type);
+
+        // 🟢 [新增] 核心逻辑：设置 RAG 的重绘状态
+        // 只要 type 是 "swipe"，我们就标记为 true
+        if (typeof setSwipeState === "function") {
+          const isSwipe = type === "swipe";
+          setSwipeState(isSwipe);
+        }
+
+        if (type === "swipe") {
+          const msgs = window.TavernHelper.getChatMessages(-1);
+          if (msgs && msgs.length > 0) {
+            preSwipeContent = msgs[0].message;
+          }
+        } else {
+          // 如果是普通生成，重置该变量
+          preSwipeContent = null;
+        }
+
         const isDryRun = arg1 === true || arg2 === true;
         if (isDryRun) {
           return;
@@ -487,6 +507,9 @@ import { initToolsSettings } from "./scripts/tools.js";
       // 建议：与其监听 character_message_rendered (可能会在编辑消息时多次触发)
       // 不如重点监听 generation_ended，这是 AI 回复完成的确切时间点
       context.eventSource.on("generation_ended", async () => {
+        if (typeof setSwipeState === "function") {
+          setSwipeState(false);
+        }
         isGenerationActive = false;
         if (wasGenerationStopped) {
           console.log("[Anima] ⚠️ 检测到生成被中断，跳过所有自动化流程。");
@@ -587,6 +610,32 @@ import { initToolsSettings } from "./scripts/tools.js";
           }
 
           return; // ⛔ 终止后续流程
+        }
+
+        if (preSwipeContent !== null) {
+          // 检查内容是否回滚（即内容没变）
+          if (lastMsg.message === preSwipeContent) {
+            console.warn("[Anima] 🛑 检测到 Swipe 失败/取消，内容已回滚。");
+
+            // 1. 消费掉状态
+            preSwipeContent = null;
+
+            // 2. 🔥 强制 ST 重绘该楼层 🔥
+            try {
+              console.log("[Anima] 🔄 正在强制刷新 UI 以修复状态栏显示...");
+              await window.TavernHelper.setChatMessages([
+                {
+                  message_id: lastMsg.message_id,
+                },
+              ]);
+            } catch (e) {
+              console.warn("[Anima] 强制刷新失败:", e);
+            }
+
+            return; // ⛔ 终止后续的状态更新流程 (Status Update)
+          }
+          // 内容变了，说明 Swipe 成功，重置变量并继续向下执行
+          preSwipeContent = null;
         }
 
         if (isAi) {

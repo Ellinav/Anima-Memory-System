@@ -647,8 +647,14 @@ export function getSettingsFromCharacterCard(key) {
 }
 
 // 防线检查
+// status_logic.js
+
+// 确保在文件顶部导入了获取设置的函数
+// import { getStatusSettings } from "./status_logic.js";
+// (如果都在同一个文件里就不需要 import)
+
 export function checkReplyIntegrity(content) {
-  // 1. 基础长度检查
+  // 1. 基础防空检查 (放宽到长度 1，避免拦截单个 emoji 回复)
   if (!content || content.trim().length < 1) {
     console.warn("[Anima Defense] ⛔ 拦截：回复内容为空");
     return false;
@@ -656,34 +662,46 @@ export function checkReplyIntegrity(content) {
 
   const trimmedContent = content.trim();
 
-  // 2. 获取设置
-  const settings = getStatusSettings();
-  const customStop = settings.update_management?.stop_sequence;
-
-  // 3. 定义默认检测规则 (硬编码部分)
-  // 这里保留你原始的列表
+  // ============================================================
+  // A. 默认检测规则 (硬编码部分 - 你的原始列表)
+  // ============================================================
   const defaultPunctuation = /[.!?。"”…—~>）\]\}＊*`]$/;
-  const isDefaultPass = defaultPunctuation.test(trimmedContent);
-
-  // 4. 定义自定义检测规则 (用户 UI 设置部分)
-  let isCustomPass = false;
-  if (customStop && customStop.trim().length > 0) {
-    // 使用 endsWith 进行精确匹配，这样用户填 "💙" 就能匹配到 emoji
-    // 同时也避免了用户输入特殊正则符号导致报错的问题
-    isCustomPass = trimmedContent.endsWith(customStop.trim());
+  if (defaultPunctuation.test(trimmedContent)) {
+    return true; // 默认通过
   }
 
-  // 5. 综合判定：只要满足其中任意一条，就放行 (OR 逻辑)
-  // 如果用户没填自定义，isCustomPass 为 false，逻辑退化为只检测默认
-  // 如果用户填了 "💙"，那么以 "。" 结尾能过，以 "💙" 结尾也能过
-  if (isDefaultPass || isCustomPass) {
-    return true;
+  // ============================================================
+  // B. 自定义多符号检测规则 (UI 设置部分)
+  // ============================================================
+  const settings = getStatusSettings();
+  const customStopRaw = settings.update_management?.stop_sequence || "";
+
+  if (customStopRaw && customStopRaw.trim().length > 0) {
+    // 1. 按逗号切割 (支持英文逗号 "," 和 中文逗号 "，")
+    const customList = customStopRaw.split(/[,，]/);
+
+    // 2. 遍历检查每一个自定义符号
+    for (const item of customList) {
+      const symbol = item.trim(); // 去除符号前后的空格
+
+      // 跳过空项 (例如用户输入了 "a, ,b")
+      if (!symbol) continue;
+
+      // 3. 核心比对：检查回复是否以该符号结尾
+      // 使用 endsWith 是最安全的，因为它不涉及正则转义问题
+      if (trimmedContent.endsWith(symbol)) {
+        // console.log(`[Anima Defense] ✅ 通过自定义符号放行: [${symbol}]`);
+        return true; // 只要匹配中一个，立即放行
+      }
+    }
   }
 
-  // 6. 拦截日志
-  const lastChar = trimmedContent.slice(-1);
+  // ============================================================
+  // C. 均未通过 -> 拦截
+  // ============================================================
+  const lastChar = trimmedContent.slice(-1); // 获取最后一个字符用于日志
   console.warn(
-    `[Anima Defense] ⛔ 拦截：回复似乎被截断。结尾字符: [${lastChar}] (未匹配默认符号或自定义: ${customStop || "None"})`,
+    `[Anima Defense] ⛔ 拦截：回复似乎被截断。结尾字符: [${lastChar}] (未匹配默认或自定义规则)`,
   );
   return false;
 }
@@ -1636,7 +1654,7 @@ function showStatusChangeToast(updates) {
             <div style="margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 4px; font-weight: bold; color:var(--anima-primary);">
                 <i class="fa-solid fa-bolt-lightning"></i> 状态数值变更
             </div>
-            <div style="max-height: 150px; overflow-y: auto;">
+            <div style="max-height: 80px; overflow-y: auto;">
                 ${changes.join("<br>")}
             </div>
         </div>
@@ -1646,8 +1664,6 @@ function showStatusChangeToast(updates) {
     // 使用 info 类型，并关闭重复过滤
     window.toastr.info(htmlContent, null, {
       progressBar: true,
-      timeOut: "6000",
-      extendedTimeOut: "2000",
       escapeHtml: false,
       preventDuplicates: false, // 允许显示重复内容的通知
       closeButton: true,

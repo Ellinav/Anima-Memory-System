@@ -670,9 +670,9 @@ export async function getPreviousSummaries(targetBatchId, count) {
         const uniqueId = h.unique_id !== undefined ? h.unique_id : h.index;
 
         allHistory.push({
-          batch_id: batchId,
-          slice_id: sliceId,
-          unique_id: uniqueId, // 关键：用于正则提取
+          batch_id: Number(batchId),
+          slice_id: Number(sliceId),
+          unique_id: String(uniqueId),
           parentContent: entry.content,
         });
       });
@@ -1024,8 +1024,18 @@ export async function clearRagEntry() {
 export async function getLatestSummaryInfo(chatId) {
   if (!window.TavernHelper || !chatId) return null;
 
-  // 根据 chatId 推导世界书名
-  const wbName = chatId.replace(/\.(json|jsonl)$/i, "");
+  let wbName = null;
+  const context = SillyTavern.getContext();
+
+  // 1. 优先尝试获取当前聊天实际绑定的世界书名称
+  if (chatId === context.chatId && window.TavernHelper.getChatWorldbookName) {
+    wbName = await window.TavernHelper.getChatWorldbookName("current");
+  }
+
+  // 2. 如果没有获取到，再降级使用文件名推导
+  if (!wbName) {
+    wbName = chatId.replace(/\.(json|jsonl)$/i, "");
+  }
 
   try {
     const entries = await window.TavernHelper.getWorldbook(wbName);

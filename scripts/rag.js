@@ -118,7 +118,7 @@ export const DEFAULT_RAG_SETTINGS = {
     order: 100,
     recent_count: 2,
     template:
-      "<recalledMemories>\n{{rag}}\n</recalledMemories>\n<immediateHistory>\n{{recent_history}}\n</immediateHistory>",
+      "<recalledMemories>[IMPORTANT: The following are retrieved HISTORICAL memories. Use them ONLY to enrich internal monologues, add nostalgia, or reference the past. They are STRICTLY THE PAST. You MUST NOT treat them as current events.]\n{{rag}}\n</recalledMemories>\n<immediateHistory>\n{{recent_history}}\n</immediateHistory>",
   },
   knowledge_injection: {
     enabled: true,

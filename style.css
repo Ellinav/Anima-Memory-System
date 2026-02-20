@@ -185,24 +185,35 @@
   padding: 24px;
   margin-bottom: 24px;
 }
-.anima-input,
-.anima-textarea,
-.anima-select {
+#anima-overlay input.anima-input,
+#anima-overlay input[type="text"].anima-input,
+#anima-overlay textarea.anima-textarea,
+#anima-overlay select.anima-select {
   width: 100%;
-  background-color: var(--anima-bg-input);
-  border: 1px solid var(--anima-border);
-  color: var(--anima-text-main);
+
+  /* 你的核心颜色设定，保留 !important */
+  background-color: var(--anima-bg-input) !important;
+  color: var(--anima-text-main) !important;
+  border: 1px solid var(--anima-border) !important;
+
   padding: 12px 16px;
   border-radius: 8px;
   margin-bottom: 16px;
   font-size: 14px;
-  box-sizing: border-box; /* 防止 padding 撑大宽度 */
+  box-sizing: border-box;
+
+  /* 追加这一行：有些美化主题会强制覆盖背景图片或渐变，我们需要清空它 */
+  background-image: none !important;
 }
-.anima-input:focus,
-.anima-textarea:focus,
-.anima-select:focus {
-  outline: none;
-  border-color: var(--anima-primary);
+#anima-overlay input.anima-input:focus,
+#anima-overlay input[type="text"].anima-input:focus,
+#anima-overlay textarea.anima-textarea:focus,
+#anima-overlay select.anima-select:focus {
+  outline: none !important;
+  background-color: var(--anima-bg-input) !important;
+  color: var(--anima-text-main) !important;
+  border-color: var(--anima-primary) !important;
+  background-image: none !important;
 }
 .anima-btn {
   padding: 10px 20px;

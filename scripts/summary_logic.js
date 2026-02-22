@@ -294,14 +294,14 @@ export async function requestSummaryFromAPI(
 
     // === B. 处理角色卡信息 ===
     if (item.type === "char_info") {
-      const content = `[Character Description of ${charName}]:\n${processMacros(charDesc)}`;
+      const content = `${processMacros(charDesc)}`;
       rawSegments.push({ role: item.role, content: content });
       continue;
     }
 
     // === C. 处理用户信息 ===
     if (item.type === "user_info") {
-      const content = `[User Persona of ${userName}]:\n${processMacros(userPersona)}`;
+      const content = `${processMacros(userPersona)}`;
       rawSegments.push({ role: item.role, content: content });
       continue;
     }

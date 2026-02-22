@@ -453,28 +453,27 @@ function bindSummaryEvents() {
       // === 1. 角色卡信息 & 用户信息 (保持不变) ===
       if (msg.type === "char_info" || msg.type === "user_info") {
         const isChar = msg.type === "char_info";
-        const title = isChar ? "👤 角色卡信息" : "🧑 用户设定";
-        const colorClass = isChar ? "color:#f59e0b" : "color:#8b5cf6";
+        const title = isChar ? "👾 角色卡信息" : "👩🏻 用户设定";
+        // 角色卡使用紫色，用户设定使用粉色
+        const colorClass = isChar ? "color:#a855f7" : "color:#ec4899";
+        const borderColor = isChar ? "#a855f7" : "#ec4899";
+        const bgColor = isChar
+          ? "rgba(168, 85, 247, 0.1)"
+          : "rgba(236, 72, 153, 0.1)";
 
-        // ✅ 确保使用 $() 包裹 HTML 字符串
         $item = $(`
-            <div class="anima-regex-item anima-special-item" data-idx="${idx}" data-type="${
-              msg.type
-            }">
-                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+            <div class="anima-regex-item anima-special-item" data-idx="${idx}" data-type="${msg.type}" 
+                 style="border-color: ${borderColor}; height: 44px; display: flex; align-items: center; padding: 0 10px; box-sizing: border-box; background: ${bgColor};">
+                <div style="display: flex; align-items: center; gap:10px; width: 100%; height: 100%;">
+                    <i class="fa-solid fa-bars anima-drag-handle" title="拖动排序" style="cursor:grab; margin: 0; display:flex; align-items:center;"></i>
+                    <span style="font-weight:bold; font-size:13px; ${colorClass}; display:flex; align-items:center; gap:5px; line-height: 1;">${title}</span>
                     
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <i class="fa-solid fa-bars anima-drag-handle" title="拖动排序" style="cursor:grab;"></i>
-                        <span style="font-weight:bold; font-size:13px; ${colorClass}">${title}</span>
-                        </div>
-
-                    <label class="anima-switch" title="启用/关闭">
-                        <input type="checkbox" class="special-toggle" ${
-                          msg.enabled ? "checked" : ""
-                        }>
-                        <span class="slider round"></span>
-                    </label>
-
+                    <div style="margin-left:auto; display:flex; align-items:center; height: 100%;">
+                        <label class="anima-switch" title="启用/关闭" style="margin: 0; display: flex; align-items: center;">
+                            <input type="checkbox" class="special-toggle" ${msg.enabled !== false ? "checked" : ""}>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
                 </div>
             </div>
         `);
@@ -484,29 +483,26 @@ function bindSummaryEvents() {
           settings.summary_messages[idx].enabled = $(this).prop("checked");
         });
       } else if (msg.type === "prev_summaries") {
+        const colorHex = "#22c55e"; // 绿色
+        const bgColor = "rgba(34, 197, 94, 0.1)";
         $item = $(`
-        <div class="anima-regex-item anima-special-item" data-idx="${idx}" data-type="prev_summaries" style="border-color: #3b82f6;">
-            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-                
-                <div style="display:flex; align-items:center; gap:10px;">
-                    <i class="fa-solid fa-bars anima-drag-handle" title="拖动排序" style="cursor:grab;"></i>
-                    <span style="font-weight:bold; font-size:13px; color:#60a5fa">⏮️ 插入前文总结</span>
+            <div class="anima-regex-item anima-special-item" data-idx="${idx}" data-type="prev_summaries" 
+                 style="border-color: ${colorHex}; height: 44px; display: flex; align-items: center; padding: 0 10px; box-sizing: border-box; background: ${bgColor};">
+                <div style="display: flex; align-items: center; gap:10px; width: 100%; height: 100%;">
+                    <i class="fa-solid fa-bars anima-drag-handle" title="拖动排序" style="cursor:grab; margin: 0; display:flex; align-items:center;"></i>
+                    <span style="font-weight:bold; font-size:13px; color:${colorHex}; display:flex; align-items:center; gap:5px; line-height: 1;">
+                        <i class="fa-solid fa-clock-rotate-left"></i> 插入前文总结
+                    </span>
+                    
+                    <div style="margin-left:auto; display:flex; align-items:center; gap:5px; height: 100%;">
+                        <span style="font-size:12px; color:#aaa;">数量:</span>
+                        <input type="number" class="prev-count-input anima-input" 
+                               style="width: 50px; height: 24px; padding: 0 5px; text-align: center; margin: 0; box-sizing: border-box;" 
+                               min="0" placeholder="0" value="${msg.count || 0}" title="设为 0 则不插入。设为 N 则插入最近的 N 条总结作为参考。">
+                    </div>
                 </div>
-
-                <div style="display:flex; align-items:center; gap:5px;">
-                    <span style="font-size:12px; color:#aaa;">插入数量:</span>
-                    <input type="number" class="prev-count-input anima-input" 
-                           style="width: 60px; height: 24px; padding: 0 5px; text-align: center; margin: 0; box-sizing: border-box;" 
-                           min="0" placeholder="0" 
-                           value="${msg.count || 0}">
-                </div>
-
             </div>
-            <div style="font-size:11px; color:#666; margin-left: 26px; margin-top: 2px;">
-                如果设为 0 则不插入。设为 N 则插入最近的 N 条总结作为参考。
-            </div>
-        </div>
-    `);
+        `);
 
         // 绑定数字变化事件
         $item.find(".prev-count-input").on("change", function () {
@@ -517,13 +513,19 @@ function bindSummaryEvents() {
       }
       // === 2. 历史记录占位符 ({{context}}) ===
       else if (msg.content === "{{context}}") {
+        const colorHex = "#3b82f6"; // 蓝色
+        const bgColor = "rgba(59, 130, 246, 0.1)";
         $item = $(`
             <div class="anima-regex-item anima-context-item" data-idx="${idx}" data-type="context" 
-                 style="border-style: solid !important; min-height: 46px; display: flex; align-items: center;">
-                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <i class="fa-solid fa-bars anima-drag-handle" title="拖动排序" style="cursor:grab;"></i>
-                        <span style="font-weight:bold; font-size:13px; color:#ffffff;">📚 待总结内容</span>
+                 style="border-color: ${colorHex}; border-style: solid !important; height: 44px; display: flex; align-items: center; padding: 0 10px; box-sizing: border-box; background: ${bgColor};">
+                <div style="display: flex; align-items: center; gap:10px; width: 100%; height: 100%;">
+                    <i class="fa-solid fa-bars anima-drag-handle" title="拖动排序" style="cursor:grab; margin: 0; display:flex; align-items:center;"></i>
+                    <span style="font-weight:bold; font-size:13px; color:${colorHex}; display:flex; align-items:center; gap:5px; line-height: 1;">
+                        <i class="fa-solid fa-book-open"></i> 待总结内容
+                    </span>
+                    
+                    <div style="margin-left:auto; opacity: 0.5;">
+                         <i class="fa-solid fa-lock" title="核心条目" style="color:${colorHex};"></i>
                     </div>
                 </div>
             </div>
@@ -1589,11 +1591,21 @@ async function previewSummary(startId, endId, targetIndex, titlePrefix = "") {
     const { charName, charDesc, userName, userPersona } = getContextData();
 
     // E. 辅助渲染函数 (Block)
-    const createBlock = (title, content, color, borderColor, bgColor) => {
+    const createBlock = (
+      title,
+      content,
+      color,
+      borderColor,
+      bgColor,
+      headerExtra = "",
+    ) => {
       return `
             <div class="anima-preview-block" style="border-color: ${borderColor};">
                 <div class="block-header" style="background: ${bgColor}; color: ${color};">
-                    <span>${title}</span>
+                    <div style="display:flex; align-items:center; justify-content: space-between; flex:1; padding-right: 10px;">
+                        <span style="display:flex; align-items:center; gap:8px;">${title}</span>
+                        ${headerExtra}
+                    </div>
                     <i class="fa-solid fa-chevron-down arrow-icon"></i>
                 </div>
                 <div class="block-content" style="display: none; white-space: pre-wrap; color: #ccc;">${content}</div>
@@ -1612,16 +1624,22 @@ async function previewSummary(startId, endId, targetIndex, titlePrefix = "") {
         if (item.enabled === false) continue;
 
         const isChar = item.type === "char_info";
-        const labelTitle = isChar ? `👤 角色卡信息` : `🧑 用户设定`;
-        // ... 后续渲染代码保持不变 ...
+        const labelTitle = isChar ? `👾 角色卡信息` : `👑 用户设定`;
         let raw = isChar ? charDesc : userPersona;
         raw = processMacros(raw || "");
+        const pColor = isChar ? "#d8b4fe" : "#f472b6"; // 亮色字体
+        const pBorder = isChar ? "#9333ea" : "#db2777"; // 边框
+        const pBg = isChar
+          ? "rgba(168, 85, 247, 0.2)"
+          : "rgba(236, 72, 153, 0.2)"; // 背景
+
         finalPreviewHtml += createBlock(
           labelTitle,
           escapeHtml(raw),
-          "#fbbf24",
-          "#f59e0b",
-          "rgba(245, 158, 11, 0.2)",
+          pColor,
+          pBorder,
+          pBg,
+          `<span class="anima-tag secondary" style="font-size:10px;">SYSTEM</span>`,
         );
         continue;
       }
@@ -1638,11 +1656,12 @@ async function previewSummary(startId, endId, targetIndex, titlePrefix = "") {
         // 必须 await
         const prevText = await getPreviousSummaries(targetIndex, count);
         finalPreviewHtml += createBlock(
-          `⏮️ Previous`,
+          `⏮️ 插入前文总结`,
           escapeHtml(prevText || "无"),
-          "#60a5fa",
-          "#1d4ed8",
-          "rgba(29, 78, 216, 0.2)",
+          "#4ade80",
+          "#16a34a",
+          "rgba(34, 197, 94, 0.2)",
+          `<span class="anima-tag secondary" style="font-size:10px;">SYSTEM</span>`,
         );
         continue;
       }
@@ -1675,19 +1694,19 @@ async function previewSummary(startId, endId, targetIndex, titlePrefix = "") {
         }
 
         finalPreviewHtml += createBlock(
-          `📎 待总结内容 (Range: ${startId} - ${endId})`,
+          `📎 待总结内容`,
           contextHtml,
           "#93c5fd",
-          "#64748b",
-          "rgba(100, 149, 237, 0.2)",
+          "#2563eb",
+          "rgba(59, 130, 246, 0.2)",
+          `<span style="font-size:12px; font-family:monospace; opacity: 0.8;">${startId} - ${endId}</span>`,
         );
         continue;
       }
 
       // 普通条目
-      const titleStr = item.title
-        ? `${item.title} (${item.role})`
-        : `📝 Prompt #${index + 1} (${item.role})`;
+      const roleStr = (item.role || "system").toUpperCase();
+      const titleStr = item.title ? item.title : `📝 Prompt #${index + 1}`;
       const processedContent = processMacros(item.content);
 
       finalPreviewHtml += createBlock(
@@ -1696,6 +1715,7 @@ async function previewSummary(startId, endId, targetIndex, titlePrefix = "") {
         "#aaa",
         "#444",
         "rgba(0,0,0,0.3)",
+        `<span class="anima-tag secondary" style="font-size:10px;">${roleStr}</span>`,
       );
     }
 
@@ -1709,7 +1729,13 @@ async function previewSummary(startId, endId, targetIndex, titlePrefix = "") {
             </div>
         `;
 
-    const style = `<style>.anima-preview-block { border: 1px solid #444; border-radius: 6px; margin-bottom: 10px; overflow: hidden; background: rgba(0,0,0,0.1); } .block-header { padding: 8px 10px; font-size: 12px; font-weight: bold; cursor: pointer; display: flex; justify-content: space-between; align-items: center; } .block-header:hover { filter: brightness(1.2); } .block-content { padding: 10px; font-size: 12px; border-top: 1px solid rgba(0,0,0,0.2); background: rgba(0,0,0,0.2); } .anima-preview-block.expanded .arrow-icon { transform: rotate(180deg); }</style>`;
+    const style = `<style>
+        .anima-preview-block { border: 1px solid #444; border-radius: 6px; margin-bottom: 10px; overflow: hidden; background: rgba(0,0,0,0.1); } 
+        .block-header { padding: 8px 10px; font-size: 13px; font-weight: bold; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none; } 
+        .block-header:hover { filter: brightness(1.2); } 
+        .block-content { padding: 10px; font-size: 12px; border-top: 1px solid rgba(0,0,0,0.2); background: rgba(0,0,0,0.2); line-height: 1.5; } 
+        .anima-preview-block.expanded .arrow-icon { transform: rotate(180deg); }
+    </style>`;
 
     console.log("[Anima Preview] Calling showModal..."); // 🟢 Debug
 

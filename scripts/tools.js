@@ -190,19 +190,19 @@ const toolsTemplate = `
         <i class="fa-solid fa-terminal"></i> 神经连接日志
     </h2>
     <div class="anima-card">
-        <div class="anima-flex-row" style="align-items: center; justify-content: space-between; margin-bottom: 10px;">
-            <div class="anima-desc-inline">
-                <i class="fa-solid fa-bug"></i> 仅包含 "Anima" 的控制台日志
-            </div>
-            <div>
-                <button id="anima_btn_clear_log" class="anima-btn" style="padding: 5px 10px; font-size: 0.8em;">
-                    <i class="fa-solid fa-trash"></i> 清空
-                </button>
-                <button id="anima_btn_toggle_log" class="anima-btn" style="padding: 5px 10px; font-size: 0.8em;">
-                    <i class="fa-solid fa-chevron-down"></i> 展开/收起
-                </button>
-            </div>
-        </div>
+        <div class="anima-flex-row" style="flex-direction: column; align-items: flex-start; gap: 8px; margin-bottom: 10px;">
+          <div class="anima-desc-inline" style="width: 100%;">
+             <i class="fa-solid fa-bug"></i> 仅包含 "Anima" 的控制台日志
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button id="anima_btn_clear_log" class="anima-btn" style="padding: 5px 10px; font-size: 0.8em;">
+              <i class="fa-solid fa-trash"></i> 清空
+            </button>
+            <button id="anima_btn_toggle_log" class="anima-btn" style="padding: 5px 10px; font-size: 0.8em;">
+               <i class="fa-solid fa-chevron-down"></i> 展开
+            </button>
+          </div>
+    </div>
 
         <div id="anima-console-container" style="display: none; background: #1e1e1e; color: #36d19dbc; font-family: 'Consolas', monospace; font-size: 12px; padding: 10px; border-radius: 5px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;">
             <div id="anima-log-output">等待日志流接入...</div>
@@ -317,13 +317,17 @@ export function initToolsSettings() {
 
   toggleBtn.on("click", () => {
     logContainer.slideToggle(200, function () {
-      // 切换图标
       const isVisible = $(this).is(":visible");
       toggleBtn.html(
         isVisible
           ? `<i class="fa-solid fa-chevron-up"></i> 收起`
-          : `<i class="fa-solid fa-chevron-down"></i> 展开/收起`,
+          : `<i class="fa-solid fa-chevron-down"></i> 展开`,
       );
+
+      // 修复：展开时，如果勾选了自动滚动，则立刻滚到底部
+      if (isVisible && $("#anima_log_autoscroll").is(":checked")) {
+        $(this).scrollTop($(this)[0].scrollHeight);
+      }
     });
   });
 
@@ -336,7 +340,7 @@ export function initToolsSettings() {
 // 这里的 Set 用于防止重复拦截
 let isConsoleProxied = false;
 // 缓存日志，防止切换 Tab 时丢失（可选，视需求而定，这里为了简单直接写 DOM）
-const MAX_LOG_LINES = 500;
+const MAX_LOG_LINES = 50;
 
 function setupLogInterceptor() {
   if (isConsoleProxied) return;
@@ -379,6 +383,12 @@ function setupLogInterceptor() {
           `${msgStr}` +
           `</div>`;
 
+        if (
+          outputDiv.children().length === 0 &&
+          outputDiv.text().includes("等待日志流接入")
+        ) {
+          outputDiv.empty();
+        }
         outputDiv.append(logHtml);
 
         // 限制行数防止卡顿
@@ -387,9 +397,15 @@ function setupLogInterceptor() {
         }
 
         // 自动滚动
-        if ($("#anima_log_autoscroll").is(":checked")) {
+        if (
+          $("#anima_log_autoscroll").is(":checked") &&
+          $("#anima-console-container").is(":visible")
+        ) {
           const container = $("#anima-console-container");
-          container.scrollTop(container[0].scrollHeight);
+          // 使用 setTimeout 宏任务，确保 DOM 渲染更新完成再获取高度
+          setTimeout(() => {
+            container.scrollTop(container[0].scrollHeight);
+          }, 0);
         }
       }
     }

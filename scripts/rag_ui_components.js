@@ -85,6 +85,14 @@ export function renderStrategyTable(settings) {
             font-size: 12px !important; line-height: 22px !important; vertical-align: middle !important;
             box-sizing: border-box !important;
         }
+        .rag-table-wrapper {
+            overflow-x: auto;
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;     /* Firefox */
+        }
+        .rag-table-wrapper::-webkit-scrollbar {
+            display: none;             /* Chrome, Safari and Opera */
+        }
     </style>
 
     <table class="anima-rag-tag-table rag-strat-table" style="table-layout: fixed;">
@@ -538,12 +546,12 @@ export function renderHolidayModal(settings) {
       // 3. 节前触发
       const tdBefore = isEditing
         ? `<td><div class="rag-edit-container"><input type="number" class="anima-input rag-compact-input h-before" value="${h.range_before || 0}" min="0" style="width:100%; text-align:center;"></div></td>`
-        : `<td style="text-align:center;"><span style="color:#aaa;">${h.range_before || 0} 天</span></td>`;
+        : `<td style="text-align:center;"><span style="color:#aaa;">${h.range_before || 0}</span></td>`;
 
       // 4. 节后触发
       const tdAfter = isEditing
         ? `<td><div class="rag-edit-container"><input type="number" class="anima-input rag-compact-input h-after" value="${h.range_after || 0}" min="0" style="width:100%; text-align:center;"></div></td>`
-        : `<td style="text-align:center;"><span style="color:#aaa;">${h.range_after || 0} 天</span></td>`;
+        : `<td style="text-align:center;"><span style="color:#aaa;">${h.range_after || 0}</span></td>`;
 
       // 5. 操作列
       let tdAction = "";
@@ -598,18 +606,18 @@ export function renderHolidayModal(settings) {
   };
 
   const modalHtml = `
-        <div style="margin-bottom:15px; display:flex; justify-content:space-between; align-items:center;">
-             <div style="font-size:12px; color:#aaa;">
-                <i class="fa-solid fa-circle-info"></i> 节前/节后设置为 0 表示仅当天触发
-             </div>
+        <div style="margin-bottom:10px; font-size:12px; color:#aaa; line-height:1.4;">
+             <div><i class="fa-solid fa-circle-info"></i> 日期格式：<code>06-15</code>。节前/节后设置为 0 表示仅当天触发</div>
+        </div>
+        <div style="margin-bottom:10px; display:flex; justify-content:flex-end;">
              <button id="btn_holiday_add" class="anima-btn primary small"><i class="fa-solid fa-plus"></i> 添加节日</button>
         </div>
         
-        <div style="max-height:300px; overflow-y:auto; background:rgba(0,0,0,0.2); border-radius:4px; border:1px solid rgba(255,255,255,0.1);">
+        <div class="rag-table-wrapper" style="max-height:300px; overflow-y:auto; background:rgba(0,0,0,0.2); border-radius:4px; border:1px solid rgba(255,255,255,0.1);">
             <table class="anima-rag-tag-table rag-strat-table" style="margin:0;">
                 <thead>
                     <tr>
-                        <th style="width: 20%;">日期 (MM-DD)</th>
+                        <th style="width: 20%;">日期</th>
                         <th style="width: 30%;">节日名</th>
                         <th style="width: 15%; text-align:center;">节前</th>
                         <th style="width: 15%; text-align:center;">节后</th>
@@ -832,14 +840,14 @@ function renderPeriodModal(settings) {
         
         <div class="anima-divider"></div>
 
-        <div style="margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
-             <div style="font-size:12px; color:#aaa;">
-                <i class="fa-solid fa-circle-info"></i> 日期格式: <code>2025-01-30</code>
-             </div>
+        <div style="margin-bottom:10px; font-size:12px; color:#aaa; line-height:1.4;">
+             <div><i class="fa-solid fa-circle-info"></i> 日期格式: <code>2025-01-30</code></div>
+        </div>
+        <div style="margin-bottom:10px; display:flex; justify-content:flex-end;">
              <button id="btn_period_add" class="anima-btn primary small"><i class="fa-solid fa-plus"></i> 添加事件</button>
         </div>
 
-        <div style="max-height:300px; overflow-y:auto; background:rgba(0,0,0,0.2); border-radius:4px; border:1px solid rgba(255,255,255,0.1);">
+        <div class="rag-table-wrapper" style="max-height:300px; overflow-y:auto; background:rgba(0,0,0,0.2); border-radius:4px; border:1px solid rgba(255,255,255,0.1);">
             <table class="anima-rag-tag-table rag-strat-table" style="margin:0; table-layout:fixed;">
                 <thead>
                     <tr>
@@ -863,7 +871,7 @@ function renderPeriodModal(settings) {
     </div>
     `;
 
-  showRagModal("生理周期/周期事件配置", html);
+  showRagModal("周期事件配置", html);
   renderList();
 
   // === 事件绑定 ===
@@ -955,7 +963,7 @@ function renderStatusRulesModal(settings) {
         { v: "gte", t: "≥ (大等)" },
         { v: "lte", t: "≤ (小等)" },
         { v: "includes", t: "Includes (包含)" },
-        { v: "not_includes", t: "Not Includes" },
+        { v: "not_includes", t: "Not Includes (不包含)" },
         { v: "exists", t: "Exists (存在)" },
       ];
       let opOptions = ops
@@ -999,14 +1007,14 @@ function renderStatusRulesModal(settings) {
 
   const modalHtml = `
         <div style="margin-bottom:10px; font-size:12px; color:#aaa; line-height:1.4;">
-            定义状态映射逻辑。系统将解析 <code>anima_data</code> JSON 对象。<br>
-            当规则命中时，对应的 <b>Tag</b> 将被用于向量检索。
+            <div>当规则命中状态变量时，对应的 <b>Tag</b> 将被用于向量检索。</div>
+            <div style="margin-top:4px;">Path 示例: <code>Player.HP</code></div>
         </div>
         <div style="margin-bottom:10px; display:flex; justify-content:flex-end;">
              <button id="btn_add_rule" class="anima-btn primary small"><i class="fa-solid fa-plus"></i> 添加规则</button>
         </div>
         
-        <div style="max-height:300px; overflow-y:auto; background:rgba(0,0,0,0.2); border-radius:4px; border:1px solid rgba(255,255,255,0.1);">
+        <div class="rag-table-wrapper" style="max-height:300px; overflow-y:auto; background:rgba(0,0,0,0.2); border-radius:4px; border:1px solid rgba(255,255,255,0.1);">
             <table class="anima-rag-tag-table rag-strat-table" style="margin:0; table-layout:fixed;">
                 <thead>
                     <tr>
@@ -1014,19 +1022,16 @@ function renderStatusRulesModal(settings) {
                         <th width="25%">路径</th>
                         <th width="20%">逻辑</th>
                         <th width="25%">值</th>
-                        <th width="10%" style="text-align:center;">Action</th>
+                        <th width="10%" style="text-align:center;">操作</th>
                     </tr>
                 </thead>
                 <tbody id="anima_status_rules_tbody"></tbody>
             </table>
         </div>
 
-        <div style="margin-top:15px; display:flex; justify-content:space-between; align-items:center;">
-            <div style="font-size:12px; color:#666;">Path 示例: <code>Player.HP</code> 或 <code>Player.Status</code></div>
-            <div>
-                <button class="anima-close-rag-modal anima-btn secondary">取消</button>
-                <button id="rag_btn_save_rules" class="anima-btn primary">确认修改</button>
-            </div>
+        <div style="margin-top:15px; display:flex; justify-content:flex-end; align-items:center; gap: 10px;">
+            <button class="anima-close-rag-modal anima-btn secondary">取消</button>
+            <button id="rag_btn_save_rules" class="anima-btn primary">确认修改</button>
         </div>
     `;
 

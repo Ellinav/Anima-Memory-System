@@ -251,10 +251,10 @@ export function initApiSettings() {
   container.innerHTML = `
         ${styles}
         <h2 class="anima-title">API 连接配置</h2>
-        <p class="anima-subtitle">分别配置用于总结 (LLM)、状态更新 (Status) 和 向量检索 (RAG) 的模型服务。</p>
+        <p class="anima-subtitle">分别配置用于总结、状态更新和向量检索的模型服务。</p>
         
-        ${getApiCardHtml("llm", "🧠 总结模型 (Summary)")}
-        ${getApiCardHtml("status", "📊 状态模型 (Status)")}  ${getApiCardHtml("rag", "📚 向量模型 (Embedding)")}
+        ${getApiCardHtml("llm", "🧠 总结模型")}
+        ${getApiCardHtml("status", "📊 状态模型")}  ${getApiCardHtml("rag", "📚 向量模型")}
         
         ${modalHtml} 
     `;
@@ -839,7 +839,16 @@ export async function generateText(
 
   const { source, key, model, stream } = config;
   let { url } = config;
-
+  if (key && /[^\x20-\x7E]/.test(key)) {
+    throw new Error(
+      "API Key 包含非法字符（如中文标点或全角空格），请重新检查！",
+    );
+  }
+  if (url && /[^\x20-\x7E]/.test(url)) {
+    throw new Error(
+      "API URL 包含非法字符（如中文标点或全角空格），请重新检查！",
+    );
+  }
   // 获取高级参数 (赋予默认值以防万一)
   const temperature = Number(config.temperature ?? 1.0);
   const maxOutput = Number(config.max_output ?? 8192);

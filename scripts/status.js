@@ -51,6 +51,28 @@ export function initStatusSettings() {
     // 不必立即 save，等用户操作其他东西时一并保存，或者手动 saveStatusSettings(currentSettings);
   }
 
+  const hasCharInfo = currentSettings.prompt_rules.some(
+    (r) => r.type === "char_info",
+  );
+  const hasUserInfo = currentSettings.prompt_rules.some(
+    (r) => r.type === "user_info",
+  );
+
+  if (!hasUserInfo) {
+    currentSettings.prompt_rules.unshift({
+      type: "user_info",
+      role: "system",
+      enabled: true,
+    });
+  }
+  if (!hasCharInfo) {
+    currentSettings.prompt_rules.unshift({
+      type: "char_info",
+      role: "system",
+      enabled: true,
+    });
+  }
+
   // 2. 渲染总开关
   const masterSwitchHtml = `
         <div class="anima-setting-group" style="margin-bottom: 20px;">
@@ -1060,7 +1082,40 @@ function renderStatusList() {
 
   currentSettings.prompt_rules.forEach((msg, idx) => {
     let $item = null;
-    if (msg.content === "{{status}}") {
+
+    // --- 新增：角色卡信息 & 用户信息 ---
+    if (msg.type === "char_info" || msg.type === "user_info") {
+      const isChar = msg.type === "char_info";
+      const title = isChar ? "👾 角色卡信息" : "👑 用户设定";
+      const colorClass = isChar ? "color:#a855f7" : "color:#ec4899";
+      const borderColor = isChar ? "#a855f7" : "#ec4899";
+      const bgColor = isChar
+        ? "rgba(168, 85, 247, 0.1)"
+        : "rgba(236, 72, 153, 0.1)";
+
+      $item = $(`
+          <div class="anima-regex-item anima-special-item" data-idx="${idx}" data-type="${msg.type}" 
+               style="border-color: ${borderColor}; height: 44px; display: flex; align-items: center; padding: 0 10px; box-sizing: border-box; background: ${bgColor};">
+              <div style="display: flex; align-items: center; gap:10px; width: 100%; height: 100%;">
+                  <i class="fa-solid fa-bars anima-drag-handle" title="拖动排序" style="cursor:grab; margin: 0; display:flex; align-items:center;"></i>
+                  <span style="font-weight:bold; font-size:13px; ${colorClass}; display:flex; align-items:center; gap:5px; line-height: 1;">${title}</span>
+                  
+                  <div style="margin-left:auto; display:flex; align-items:center; height: 100%;">
+                      <label class="anima-switch" title="启用/关闭" style="margin: 0; display: flex; align-items: center;">
+                          <input type="checkbox" class="special-toggle" ${msg.enabled !== false ? "checked" : ""}>
+                          <span class="slider round"></span>
+                      </label>
+                  </div>
+              </div>
+          </div>
+      `);
+
+      // 绑定开关事件，并即时保存
+      $item.find(".special-toggle").on("change", function () {
+        currentSettings.prompt_rules[idx].enabled = $(this).prop("checked");
+        saveStatusSettings(currentSettings);
+      });
+    } else if (msg.content === "{{status}}") {
       $item = $(`
                 <div class="anima-regex-item anima-special-item" data-idx="${idx}" data-type="status_placeholder" 
                      style="border-color: var(--anima-primary); height: 44px; display: flex; align-items: center; padding: 0 10px; box-sizing: border-box;">
@@ -3176,10 +3231,41 @@ async function showStatusPreviewModal() {
     // =========================================================
     // 6. 遍历 Prompt Rules 构建列表
     // =========================================================
+    let charDesc = processMacros("{{description}}");
+    if (charDesc === "{{description}}") charDesc = "未检测到角色卡信息";
+
+    let userPersona = processMacros("{{persona}}");
+    if (userPersona === "{{persona}}") userPersona = "未检测到用户设定";
+
     let listHtml = "";
 
     for (let i = 0; i < rules.length; i++) {
       const rule = rules[i];
+
+      // --- 新增：过滤掉未启用的条目 ---
+      if (rule.enabled === false) continue;
+
+      // --- 新增：处理角色卡和用户设定 ---
+      if (rule.type === "char_info" || rule.type === "user_info") {
+        const isChar = rule.type === "char_info";
+        const labelTitle = isChar ? `👾 角色卡信息` : `👑 用户设定`;
+
+        // 使用刚才获取到的 charDesc 和 userPersona
+        let raw = isChar ? charDesc : userPersona;
+        raw = processMacros(raw || "");
+
+        const extraTag = `<span class="anima-tag secondary" style="font-size:10px;">SYSTEM</span>`;
+        listHtml += createBlock(
+          labelTitle,
+          escapeHtml(raw),
+          isChar ? "#d8b4fe" : "#f472b6", // Color (天蓝浅色)
+          isChar ? "#9333ea" : "#db2777", // Border (天蓝深色)
+          isChar ? "rgba(168, 85, 247, 0.2)" : "rgba(236, 72, 153, 0.2)", // Background
+          false,
+          extraTag,
+        );
+        continue;
+      }
 
       // --- A. 状态插入位 {{status}} ---
       if (rule.content === "{{status}}") {
@@ -3191,7 +3277,7 @@ async function showStatusPreviewModal() {
           "#10b981", // Green
           "#059669",
           "rgba(5, 150, 105, 0.2)",
-          true,
+          false,
           extraInfo,
         );
         continue;
@@ -3228,12 +3314,12 @@ async function showStatusPreviewModal() {
           : "";
 
         listHtml += createBlock(
-          `<i class="fa-solid fa-clock-rotate-left"></i> 增量剧情 (Context)`,
+          `<i class="fa-solid fa-clock-rotate-left"></i> 增量剧情`,
           bubblesHtml,
           "#60a5fa", // Blue
           "#2563eb",
           "rgba(37, 99, 235, 0.2)",
-          true,
+          false,
           rangeInfo,
         );
         continue;
@@ -3248,9 +3334,9 @@ async function showStatusPreviewModal() {
       listHtml += createBlock(
         `<i class="fa-solid fa-file-lines"></i> ${escapeHtml(titleStr)}`,
         escapeHtml(processedContent),
-        "#fbbf24", // Amber
-        "#d97706",
-        "rgba(217, 119, 6, 0.2)",
+        "#aaa",
+        "#444",
+        "rgba(0,0,0,0.3)",
         false,
         extraTag,
       );
@@ -3258,10 +3344,7 @@ async function showStatusPreviewModal() {
 
     // 7. 显示模态框
     const containerHtml = `<div id="anima-preview-container-status" style="padding: 5px;">${listHtml}</div>`;
-    createCustomModal(
-      "状态更新序列预览 (Prompt Sequence)",
-      cssStyle + containerHtml,
-    );
+    createCustomModal("状态更新序列预览", cssStyle + containerHtml);
 
     // 8. 绑定折叠事件
     setTimeout(() => {

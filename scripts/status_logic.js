@@ -25,6 +25,17 @@ export const DEFAULT_STATUS_SETTINGS = {
   status_enabled: false,
   current_status_yaml: "Status: Normal",
   prompt_rules: [
+    // --- 新增：角色卡信息与用户设定默认占位 ---
+    {
+      type: "char_info",
+      role: "system",
+      enabled: true,
+    },
+    {
+      type: "user_info",
+      role: "system",
+      enabled: true,
+    },
     // 1. 状态插入位 (Status Placeholder) - 对应 UI 中的特殊栏
     // 这里 content 必须严格等于 "{{status}}"，status.js 才能渲染成那个带心跳图标的特殊条目
     {
@@ -371,10 +382,28 @@ async function constructStatusPrompt(statusConfig, contextData, targetMsgId) {
 
   // 5. 遍历规则
   for (const rule of rules) {
-    let finalContent = rule.content || "";
+    // --- 新增 1：如果条目被关闭，则直接跳过不发送 ---
+    if (rule.enabled === false) continue;
 
-    // A. 特殊占位符处理
-    if (finalContent === "{{chat_context}}") {
+    let finalContent = rule.content || "";
+    const currentRole = rule.role || "system"; // 提取 role 备用
+
+    // --- 新增 2：拦截角色卡信息与用户设定，并注入上下文 ---
+    if (rule.type === "char_info") {
+      const charDesc = processMacros("{{description}}");
+      // 如果解析后还是原宏（说明没匹配到）或为空，则跳过
+      if (!charDesc || charDesc === "{{description}}") continue;
+
+      finalContent = `${charDesc}`;
+      // 不用再包一层 processMacros，因为 {{description}} 解析出的文本内部的宏会在后续步骤被处理
+    } else if (rule.type === "user_info") {
+      const userPersona = processMacros("{{persona}}");
+      if (!userPersona || userPersona === "{{persona}}") continue;
+
+      finalContent = `${userPersona}`;
+
+      // A. 特殊占位符处理 (原有的逻辑改为 else if 承接)
+    } else if (finalContent === "{{chat_context}}") {
       if (!incrementalText) continue;
       finalContent = `${incrementalText}`;
     } else if (

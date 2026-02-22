@@ -725,7 +725,7 @@ function renderPeriodModal(settings) {
 
       // 样式优化：输入框和普通文本都强制居中
       const inputStyle =
-        "width:100%; text-align:center; height:28px; line-height:28px;";
+        "width:100%; text-align:center; height:32px; line-height:32px; box-sizing: border-box; font-size: 14px;";
       const textStyle = "text-align:center; vertical-align:middle; color:#ddd;";
 
       const makeCell = (
@@ -848,16 +848,16 @@ function renderPeriodModal(settings) {
         </div>
 
         <div class="rag-table-wrapper" style="max-height:300px; overflow-y:auto; background:rgba(0,0,0,0.2); border-radius:4px; border:1px solid rgba(255,255,255,0.1);">
-            <table class="anima-rag-tag-table rag-strat-table" style="margin:0; table-layout:fixed;">
+            <table class="anima-rag-tag-table rag-strat-table" style="margin:0; min-width: 580px; white-space: nowrap;">
                 <thead>
                     <tr>
-                        <th width="18%" style="text-align:center;">标签</th>
-                        <th width="22%" style="text-align:center;">基准日期</th>
-                        <th width="10%" style="text-align:center;">周期</th>
-                        <th width="10%" style="text-align:center;">持续</th>
-                        <th width="10%" style="text-align:center;">前(天)</th>
-                        <th width="10%" style="text-align:center;">后(天)</th>
-                        <th width="15%" style="text-align:center;">操作</th>
+                        <th style="width: 15%; text-align:center; min-width: 80px;">标签</th>
+                        <th style="width: 22%; text-align:center; min-width: 110px;">基准日期</th>
+                        <th style="width: 10%; text-align:center; min-width: 60px;">周期</th>
+                        <th style="width: 10%; text-align:center; min-width: 60px;">持续</th>
+                        <th style="width: 12%; text-align:center; min-width: 70px;">前(天)</th>
+                        <th style="width: 12%; text-align:center; min-width: 70px;">后(天)</th>
+                        <th style="width: 15%; text-align:center; min-width: 90px;">操作</th>
                     </tr>
                 </thead>
                 <tbody id="anima_period_tbody"></tbody>
@@ -1015,14 +1015,14 @@ function renderStatusRulesModal(settings) {
         </div>
         
         <div class="rag-table-wrapper" style="max-height:300px; overflow-y:auto; background:rgba(0,0,0,0.2); border-radius:4px; border:1px solid rgba(255,255,255,0.1);">
-            <table class="anima-rag-tag-table rag-strat-table" style="margin:0; table-layout:fixed;">
+            <table class="anima-rag-tag-table rag-strat-table" style="margin:0; min-width: 540px; white-space: nowrap;">
                 <thead>
                     <tr>
-                        <th width="20%">标签</th>
-                        <th width="25%">路径</th>
-                        <th width="20%">逻辑</th>
-                        <th width="25%">值</th>
-                        <th width="10%" style="text-align:center;">操作</th>
+                        <th style="width: 20%; min-width: 90px;">标签</th>
+                        <th style="width: 25%; min-width: 120px;">路径</th>
+                        <th style="width: 20%; min-width: 110px;">逻辑</th>
+                        <th style="width: 25%; min-width: 120px;">值</th>
+                        <th style="width: 10%; text-align:center; min-width: 90px;">操作</th>
                     </tr>
                 </thead>
                 <tbody id="anima_status_rules_tbody"></tbody>

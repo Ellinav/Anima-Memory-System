@@ -607,7 +607,10 @@ export function renderHolidayModal(settings) {
 
   const modalHtml = `
         <div style="margin-bottom:10px; font-size:12px; color:#aaa; line-height:1.4;">
-             <div><i class="fa-solid fa-circle-info"></i> 日期格式：<code>06-15</code>。节前/节后设置为 0 表示仅当天触发</div>
+             <div><i class="fa-solid fa-circle-info"></i> 
+                  日期格式：<code>06-15</code>。节前/节后设置为 0 表示仅当天触发。
+                  请左右滑动表格完成完整配置！
+             </div>
         </div>
         <div style="margin-bottom:10px; display:flex; justify-content:flex-end;">
              <button id="btn_holiday_add" class="anima-btn primary small"><i class="fa-solid fa-plus"></i> 添加节日</button>
@@ -1007,7 +1010,7 @@ function renderStatusRulesModal(settings) {
 
   const modalHtml = `
         <div style="margin-bottom:10px; font-size:12px; color:#aaa; line-height:1.4;">
-            <div>当规则命中状态变量时，对应的 <b>Tag</b> 将被用于向量检索。</div>
+            <div>当命中状态变量时，对应 <b>Tag</b> 将被用于向量检索。请左右滑动表格完成完整配置！</div>
             <div style="margin-top:4px;">Path 示例: <code>Player.HP</code></div>
         </div>
         <div style="margin-bottom:10px; display:flex; justify-content:flex-end;">

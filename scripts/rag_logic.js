@@ -829,6 +829,8 @@ export async function queryDual({
   // 构建 Chat 策略 Payload
   const chatStrategyPayload = {
     enabled: isDistributed,
+    recent_weight: settings?.recent_weight || 0,
+    current_session_id: cleanMainId,
     global_multiplier: stratConfig.candidate_multiplier,
     min_score: minScore,
     steps: [

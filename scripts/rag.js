@@ -68,7 +68,7 @@ export const DEFAULT_RAG_SETTINGS = {
   base_count: 2, // 既是未开启时的总数，也是开启后的“基础切片”数量
   // 虚拟时间模式 (新增)
   virtual_time_mode: false,
-
+  recent_weight: 0.05,
   // === 2. 分布式策略开关 ===
   distributed_retrieval: true,
 
@@ -672,6 +672,17 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                             </div>
                         </div>
                     </div>
+                    <div class="anima-flex-row" style="align-items: center; margin-bottom: 15px;">
+                        <div class="anima-label-group">
+                            <span class="anima-label-text">近因加权</span>
+                            <span class="anima-desc-inline">给予当前对话的数据库额外加分</span>
+                        </div>
+                        <div class="anima-input-wrapper" style="display: flex; align-items: center; height: 100%;">
+                            <input type="number" id="rag_recent_weight" class="anima-input" 
+                                   style="width:80px; text-align:center; margin:0;"
+                                   value="${settings.recent_weight !== undefined ? settings.recent_weight : 0.05}" step="0.01" min="0">
+                        </div>
+                    </div>
                     <div class="anima-flex-row">
                         <div class="anima-label-group">
                             <span class="anima-label-text">基础结果数量</span>
@@ -1077,6 +1088,7 @@ function bindRagEvents(settings) {
         // 全局项
         base_count: parseInt($("#rag_base_count").val()) || 2,
         min_score: parseFloat($("#rag_min_score").val()) || 0.2,
+        recent_weight: parseFloat($("#rag_recent_weight").val()) || 0,
         base_life: parseInt($("#rag_echo_base_life").val()) || 1,
         imp_life: parseInt($("#rag_echo_imp_life").val()) || 2,
         echo_max_count: parseInt($("#rag_echo_max_count").val()) || 10,
@@ -1495,7 +1507,7 @@ function bindRagEvents(settings) {
                 <details style="cursor: pointer;">
                     <summary style="font-size:14px; color:#ddd; font-weight:bold; outline:none; list-style:none; display:flex; align-items:center;">
                         <i class="fa-solid fa-caret-right" style="margin-right:8px; transition: transform 0.2s;"></i>
-                        🔎 策略执行追踪 (Trace Log)
+                        🔎 策略执行追踪
                         <span style="margin-left:auto; font-size:12px; color:#666; font-weight:normal;">${r.strategy_log.length} steps</span>
                     </summary>
                     

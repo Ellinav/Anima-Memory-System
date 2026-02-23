@@ -478,7 +478,8 @@ export async function handlePostSummary(
 
 /**
  * 获取或初始化叙事时间 (Narrative Time)
- * 优先读取 chatMetadata，如果不存在则解析文件名并写入 metadata，确保时间戳恒定。
+ * 优先读取 chatMetadata，如果不存在则通过 API 获取底层 create_date；
+ * 若 API 获取失败则降级解析文件名并写入 metadata，确保时间戳恒定。
  */
 export async function getOrInitNarrativeTime() {
   const context = SillyTavern.getContext();
@@ -488,39 +489,116 @@ export async function getOrInitNarrativeTime() {
   const metadata = context.chatMetadata;
 
   // 1. 优先检查 Metadata 中是否已存在
-  if (metadata && metadata.anima_narrative_time) {
-    // console.log("[Anima] 使用 Metadata 中的 Narrative Time:", new Date(metadata.anima_narrative_time).toLocaleString());
-    return metadata.anima_narrative_time;
+  if (
+    metadata &&
+    metadata.anima_narrative_time !== undefined &&
+    metadata.anima_narrative_time !== null
+  ) {
+    const savedTime = metadata.anima_narrative_time;
+    let parsedTime = Number(savedTime); // 尝试转为数字
+
+    // 兼容旧数据中可能存在的 ISO 字符串
+    if (isNaN(parsedTime) && typeof savedTime === "string") {
+      parsedTime = new Date(savedTime).getTime();
+    }
+
+    // 如果清洗后是有效数字，直接返回
+    if (!isNaN(parsedTime) && parsedTime > 0) {
+      return parsedTime;
+    }
   }
 
-  // 2. 如果不存在，解析文件名 (你的原始逻辑)
-  let finalTime = Date.now();
+  // 2. 如果不存在，尝试获取初始时间戳
+  let finalTime = null;
   if (chatId) {
-    const name = chatId.replace(/\.(json|jsonl)$/i, "");
-    // 尝试匹配常见格式: Role - YYYY-MM-DD @HHh MMm SSs MSms
-    const match = name.match(
-      /@\s*(\d{1,2})h\s*(\d{1,2})m\s*(\d{1,2})s(\s*(\d{1,3})ms)?/,
-    );
+    // --- 方案 A：优先通过 API 获取底层的 create_date ---
+    try {
+      const charId = context.characterId;
+      // 确保是单人角色聊天（群聊暂不支持此特定接口，交由降级方案处理）
+      if (
+        charId !== undefined &&
+        context.characters &&
+        context.characters[charId]
+      ) {
+        const currentChar = context.characters[charId];
 
-    if (match) {
-      const dateMatch = name.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
-      const year = dateMatch ? parseInt(dateMatch[1]) : 1970;
-      const month = dateMatch ? parseInt(dateMatch[2]) - 1 : 0;
-      const day = dateMatch ? parseInt(dateMatch[3]) : 1;
+        const response = await $.post("/api/chats/get", {
+          ch_name: currentChar.name,
+          avatar_url: currentChar.avatar,
+          file_name: chatId,
+        });
 
-      const h = parseInt(match[1]);
-      const m = parseInt(match[2]);
-      const s = parseInt(match[3]);
-      const ms = parseInt(match[4]);
+        // 提取第 0 项的 Header 数据
+        if (
+          Array.isArray(response) &&
+          response.length > 0 &&
+          response[0].create_date
+        ) {
+          const createDateStr = response[0].create_date;
 
-      finalTime = new Date(year, month, day, h, m, s, ms).getTime();
-      console.log(
-        "[Anima] 从文件名解析时间成功:",
-        new Date(finalTime).toLocaleString(),
+          // 将 "2026-02-03@16h00m48s" 转换为 "2026-02-03T16:00:48"
+          const isoString = createDateStr
+            .replace("@", "T")
+            .replace("h", ":")
+            .replace("m", ":")
+            .replace("s", "");
+
+          const parsedDate = new Date(isoString).getTime();
+
+          if (!isNaN(parsedDate) && parsedDate > 0) {
+            finalTime = parsedDate;
+            console.log(
+              "[Anima] 从底层的 create_date 解析时间成功:",
+              new Date(finalTime).toLocaleString(),
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(
+        "[Anima] 获取 create_date 失败，将尝试降级解析文件名:",
+        error,
       );
-    } else {
-      console.warn("[Anima] 文件名时间解析失败，使用当前时间作为锚点");
     }
+
+    // --- 方案 B：降级方案（保留原有逻辑） ---
+    // 如果 API 请求失败，或者没拿到 create_date，回退到解析文件名
+    if (finalTime === null) {
+      const name = chatId.replace(/\.(json|jsonl)$/i, "");
+      // 尝试匹配常见格式: Role - YYYY-MM-DD @HHh MMm SSs MSms
+      const match = name.match(
+        /@\s*(\d{1,2})h\s*(\d{1,2})m\s*(\d{1,2})s(\s*(\d{1,3})ms)?/,
+      );
+
+      if (match) {
+        const dateMatch = name.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+        const year = dateMatch ? parseInt(dateMatch[1]) : 1970;
+        const month = dateMatch ? parseInt(dateMatch[2]) - 1 : 0;
+        const day = dateMatch ? parseInt(dateMatch[3]) : 1;
+
+        const h = parseInt(match[1]) || 0;
+        const m = parseInt(match[2]) || 0;
+        const s = parseInt(match[3]) || 0;
+        const ms = match[5] ? parseInt(match[5]) : 0;
+
+        finalTime = new Date(year, month, day, h, m, s, ms).getTime();
+
+        if (isNaN(finalTime)) {
+          finalTime = Date.now();
+        }
+        console.log(
+          "[Anima] (降级)从文件名解析时间成功:",
+          new Date(finalTime).toLocaleString(),
+        );
+      } else {
+        console.warn(
+          "[Anima] create_date 和文件名提取均失败，使用当前时间作为锚点",
+        );
+        finalTime = Date.now();
+      }
+    }
+  } else {
+    finalTime = Date.now();
   }
 
   // 3. 关键：将确定的时间写入 Metadata (持久化)

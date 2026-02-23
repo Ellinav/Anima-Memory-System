@@ -418,6 +418,9 @@ import { initToolsSettings } from "./scripts/tools.js";
           if (msgs && msgs.length > 0) {
             preSwipeContent = msgs[0].message;
           }
+          setTimeout(() => {
+            refreshStatusPanel();
+          }, 50);
         } else {
           // 如果是普通生成，重置该变量
           preSwipeContent = null;
@@ -449,7 +452,7 @@ import { initToolsSettings } from "./scripts/tools.js";
               // 只要有 anima_data，不管是不是一样的，直接删
               if (vars && vars.anima_data) {
                 console.warn(
-                  `[Anima] 🛑 生成前哨战：发现 User 楼层(#${userMsg.message_id}) 携带脏数据，强制清除！`,
+                  `[Anima] 🛑 发现 User 楼层(#${userMsg.message_id}) 携带脏数据，强制清除！`,
                 );
                 const cleanVars = { ...vars };
                 delete cleanVars.anima_data;

@@ -1939,18 +1939,19 @@ export function renderAnimaTemplate(template, contextData) {
       // C. 替换内部属性 {{描述}} -> itemData["描述"]
       // 这是一个简单的贪婪替换，只替换当前作用域下的属性
       itemHtml = itemHtml.replace(/\{\{\s*([^\s}]+)\s*\}\}/g, (m, propPath) => {
-        // 如果是 @key 已经在上面换过了，跳过
         if (propPath === "@key") return key;
 
-        // 尝试从当前 itemData 里取值
-        // 如果 itemData 是 { 描述: "...", 数量: 1 }
         let val = undefined;
         if (typeof itemData === "object" && itemData !== null) {
-          // 简单支持一层属性，如果需要支持 {{属性.子属性}} 可以加 lodash 逻辑
-          val = itemData[propPath];
+          // 利用全局的 lodash 支持深层点号路径解析
+          if (window["_"] && window["_"].get) {
+            val = window["_"].get(itemData, propPath);
+          } else {
+            // 兜底方案：原生 reduce 解析
+            val = propPath.split(".").reduce((o, k) => (o || {})[k], itemData);
+          }
         }
 
-        // 如果在当前物品里找到了属性，就替换；没找到则保留原样(留给外层处理)
         return val !== undefined ? val : m;
       });
 

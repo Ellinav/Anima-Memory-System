@@ -997,6 +997,7 @@ function initYamlEditor() {
 
   // 1. 初始化时立即刷新一次数据
   refreshStatusPanel();
+  bindYamlAutoIndent($textarea);
 
   $("#btn-sync-status")
     .off("click")
@@ -1179,6 +1180,60 @@ function initYamlEditor() {
   }
 }
 
+/**
+ * 为文本框绑定 YAML 自动缩进功能
+ * @param {jQuery} $textarea - 需要绑定的 textarea 元素
+ */
+function bindYamlAutoIndent($textarea) {
+  // 防止重复绑定
+  $textarea.off("keydown.yamlIndent").on("keydown.yamlIndent", function (e) {
+    // 监听回车键 (Enter)
+    if (e.key === "Enter") {
+      e.preventDefault(); // 阻止原生的换行行为
+
+      const el = this;
+      const start = el.selectionStart;
+      const end = el.selectionEnd;
+      const val = el.value;
+
+      // 1. 往前寻找当前行的开头位置
+      const lineStart = val.lastIndexOf("\n", start - 1) + 1;
+
+      // 2. 截取当前行的文本（光标之前的部分）
+      const currentLine = val.substring(lineStart, start);
+
+      // 3. 使用正则匹配当前行开头的空白字符（空格）
+      const match = currentLine.match(/^[\s]+/);
+      let indentSpaces = match ? match[0] : "";
+
+      // 4. 【进阶智能】如果当前行以冒号结尾，下一行理应再多缩进 2 个空格
+      if (currentLine.trim().endsWith(":")) {
+        indentSpaces += "  ";
+      }
+
+      // 5. 拼装要插入的内容：换行符 + 算好的空格
+      const textToInsert = "\n" + indentSpaces;
+
+      // 6. 重新拼接文本框的值
+      el.value = val.substring(0, start) + textToInsert + val.substring(end);
+
+      // 7. 将光标移动到新插入的空格之后
+      el.selectionStart = el.selectionEnd = start + textToInsert.length;
+    }
+
+    // 顺手处理一下 Tab 键：将其转化为 2 个空格，彻底防止非法字符
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const el = this;
+      const start = el.selectionStart;
+      const end = el.selectionEnd;
+      const val = el.value;
+
+      el.value = val.substring(0, start) + "  " + val.substring(end);
+      el.selectionStart = el.selectionEnd = start + 2;
+    }
+  });
+}
 // ==========================================
 // 逻辑模块 2: 提示词列表渲染
 // ==========================================
@@ -2515,6 +2570,7 @@ function initHistoryModule() {
 
   let tempContent = "";
   let currentFloorId = null;
+  bindYamlAutoIndent($textarea);
 
   // 1. 打开弹窗 (选择楼层)
   $btnOpenModal.on("click", (e) => {
@@ -2699,13 +2755,12 @@ function initHistoryModule() {
     $textarea.prop("disabled", true).removeClass("anima-input-active");
   }
 
-  // ... (initHistoryModule 函数前半部分保持不变，接在 refresh 按钮逻辑之后) ...
-
   // ===============================================
   // 新增：开场白状态绑定逻辑 (Greeting Presets)
   // ===============================================
   const $greetingSelect = $("#greeting-select");
   const $greetingTextarea = $("#greeting-yaml-content");
+  bindYamlAutoIndent($greetingTextarea);
   const $btnGreetingRefresh = $("#btn-greeting-refresh");
   const $btnGreetingEdit = $("#btn-greeting-edit");
   const $btnGreetingConfirm = $("#btn-greeting-confirm-edit");

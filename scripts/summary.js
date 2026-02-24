@@ -19,6 +19,7 @@ import {
   getIndexConflictInfo,
   getPreviousSummaries,
   getSummaryTextFromEntry,
+  addSingleSummaryItem,
 } from "./worldbook_api.js";
 import { insertMemory } from "./rag_logic.js";
 import { RegexListComponent, getRegexModalHTML } from "./regex_ui.js";
@@ -238,7 +239,6 @@ export function initSummarySettings() {
         </div>
 
         ${getRegexModalHTML()}
-
         <div id="anima-summary-modal" class="anima-modal hidden">
              <div class="anima-modal-content">
                 <div class="anima-modal-header">
@@ -247,6 +247,43 @@ export function initSummarySettings() {
                 </div>
                 <div id="anima-modal-body" class="anima-modal-body"></div>
              </div>
+        </div>
+
+        <div id="anima-add-summary-modal" class="anima-modal hidden" style="z-index: 99999 !important;">
+            <div class="anima-modal-content" style="max-width: 500px; z-index: 100000 !important;">
+                <div class="anima-modal-header">
+                    <h3><i class="fa-solid fa-plus"></i> 新增总结记录</h3>
+                </div>
+                <div class="anima-modal-body">
+                    <div class="anima-flex-row" style="margin-bottom: 10px;">
+                        <div class="anima-label-group">
+                            <span class="anima-label-text">序号 (必填)</span>
+                            <span class="anima-desc-inline">请使用 Batch_Slice 格式，例如: 1_3</span>
+                        </div>
+                        <input type="text" id="anima_add_summary_index" class="anima-input" placeholder="例: 1_3" style="width: 120px;">
+                    </div>
+                    
+                    <div class="anima-flex-row" style="margin-bottom: 10px; flex-direction: column; align-items: flex-start;">
+                        <div class="anima-label-group" style="margin-bottom: 5px;">
+                            <span class="anima-label-text">内容 (必填)</span>
+                        </div>
+                        <textarea id="anima_add_summary_content" class="anima-textarea" rows="6" style="width: 100%; resize: vertical; padding: 10px;" placeholder="输入总结内容..."></textarea>
+                    </div>
+
+                    <div class="anima-flex-row" style="margin-bottom: 15px;">
+                        <div class="anima-label-group">
+                            <span class="anima-label-text">标签 (选填)</span>
+                            <span class="anima-desc-inline">多个标签请用英文逗号 (,) 分隔</span>
+                        </div>
+                        <input type="text" id="anima_add_summary_tags" class="anima-input" placeholder="tag1, tag2" style="flex: 1;">
+                    </div>
+
+                    <div class="anima-btn-group" style="justify-content: flex-end; gap: 10px; margin-top: 15px;">
+                        <button id="anima-btn-cancel-add" class="anima-btn secondary">取消</button>
+                        <button id="anima-btn-confirm-add" class="anima-btn primary"><i class="fa-solid fa-check"></i> 确认</button>
+                    </div>
+                </div>
+            </div>
         </div>
     `;
   regexComponentPre = new RegexListComponent(
@@ -706,7 +743,6 @@ function bindSummaryEvents() {
     });
   }
 
-  // 在 bindSummaryEvents 底部加入初始化调用
   renderPromptList();
   $("#anima-btn-add-msg").on("click", () => {
     const settings = getSummarySettings();
@@ -892,6 +928,84 @@ function bindSummaryEvents() {
   $("#anima_btn_open_regex_modal_post").on("click", () => {
     currentRegexTarget = "post";
     openRegexModal();
+  });
+
+  // === 新增：手动添加总结模态框事件 ===
+  // 1. 关闭模态框
+  $(".anima-close-add-modal, #anima-btn-cancel-add").on("click", () => {
+    $("#anima-add-summary-modal").addClass("hidden");
+    // $("#anima-summary-modal").css("opacity", "1"); // 恢复透明度
+  });
+
+  // 2. 确认按钮 (UI层的基础校验，逻辑预留)
+  $("#anima-btn-confirm-add").on("click", async () => {
+    const indexStr = $("#anima_add_summary_index").val().trim();
+    const contentStr = $("#anima_add_summary_content").val().trim();
+    const tagsStr = $("#anima_add_summary_tags").val().trim();
+
+    if (!indexStr || !/^\d+_\d+$/.test(indexStr) || !contentStr) {
+      toastr.warning("请确保格式正确且内容不为空！");
+      return;
+    }
+
+    const [batchIdStr, sliceIdStr] = indexStr.split("_");
+    const batchId = parseInt(batchIdStr);
+    const sliceId = parseInt(sliceIdStr);
+    const tagsArray = tagsStr
+      ? tagsStr
+          .split(/[,，]/)
+          .map((t) => t.trim())
+          .filter((t) => t)
+      : [];
+
+    // 禁用按钮防连点
+    const $btn = $("#anima-btn-confirm-add");
+    $btn
+      .prop("disabled", true)
+      .html('<i class="fa-solid fa-spinner fa-spin"></i> 处理中...');
+
+    try {
+      // 1. 查重拦截
+      const conflictInfo = await getIndexConflictInfo(indexStr);
+      if (conflictInfo && conflictInfo.exists) {
+        toastr.error(
+          `序号 ${indexStr} 已存在于 [${conflictInfo.entryName}] 中，请更换序号！`,
+        );
+        $btn
+          .prop("disabled", false)
+          .html('<i class="fa-solid fa-check"></i> 确认');
+        return;
+      }
+
+      // 2. 获取当前的 group_size 配置用于计算 Chapter
+      const settings = getSummarySettings();
+      const groupSize = settings.group_size || 10;
+
+      // 3. 写入世界书并触发向量化
+      await addSingleSummaryItem(
+        indexStr,
+        batchId,
+        sliceId,
+        contentStr,
+        tagsArray,
+        groupSize,
+      );
+
+      toastr.success(`记录 #${indexStr} 已保存，正在后台同步向量！`);
+
+      // 4. 关闭弹窗并刷新列表
+      $("#anima-add-summary-modal").addClass("hidden");
+
+      // 触发上一层的模态框刷新
+      showSummaryHistoryModal();
+    } catch (e) {
+      console.error(e);
+      toastr.error("保存失败: " + e.message);
+    } finally {
+      $btn
+        .prop("disabled", false)
+        .html('<i class="fa-solid fa-check"></i> 确认');
+    }
   });
 
   // === 模态框确定 ===
@@ -1172,7 +1286,10 @@ async function showSummaryHistoryModal() {
   const modalHtml = `
         <div style="margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
             <span style="font-size:12px; color:#aaa;">当前世界书: <strong>${escapeHtml(wbName)}</strong> (共 ${cachedHistoryData.length} 条)</span>
-            <button id="anima-btn-refresh-list" class="anima-btn small secondary"><i class="fa-solid fa-sync"></i> 刷新</button>
+            <div style="display: flex; gap: 8px;">
+                <button id="anima-btn-open-add-modal" class="anima-btn small primary"><i class="fa-solid fa-plus"></i> 新增</button>
+                <button id="anima-btn-refresh-list" class="anima-btn small secondary"><i class="fa-solid fa-sync"></i> 刷新</button>
+            </div>
         </div>
         
         <div id="anima-history-list-container" style="min-height: 300px;"></div>
@@ -1191,6 +1308,19 @@ async function showSummaryHistoryModal() {
   $("#anima-btn-refresh-list")
     .off("click")
     .on("click", () => showSummaryHistoryModal());
+
+  $("#anima-btn-open-add-modal")
+    .off("click")
+    .on("click", () => {
+      // 清空之前的输入残留
+      $("#anima_add_summary_index").val("");
+      $("#anima_add_summary_content").val("");
+      $("#anima_add_summary_tags").val("");
+      // 显示新增弹窗
+      $("#anima-add-summary-modal").removeClass("hidden");
+      // （可选）如果不希望背景太黑，可以将下层弹窗稍微变暗或隐藏
+      // $("#anima-summary-modal").css("opacity", "0.3");
+    });
 
   // 分页按钮 (委托绑定)
   $("#anima-history-pagination")

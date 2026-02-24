@@ -1,6 +1,11 @@
 import { getOrInitNarrativeTime } from "./summary_logic.js";
 import { applyRegexRules } from "./utils.js";
-import { insertMemory, deleteMemory, deleteBatchMemory } from "./rag_logic.js";
+import {
+  insertMemory,
+  deleteMemory,
+  deleteBatchMemory,
+  getSmartCollectionId,
+} from "./rag_logic.js";
 
 /**
  * 批量保存总结切片 (已修复：支持后台写入指定聊天)
@@ -86,10 +91,8 @@ export async function saveSummaryBatchToWorldbook(
   // 修复：智能判断是否需要调用后端删除，防止全新 Batch 生成时卡死
   // ============================================================
   if (targetEntry) {
-    // A. 检查本地是否真的存在该 Batch 的旧数据
     let hasOldBatchData = false;
     if (Array.isArray(targetEntry.extra.history)) {
-      // 只有当历史记录里能找到对应的 batch_id 时，才说明是“重新生成”
       hasOldBatchData = targetEntry.extra.history.some(
         (h) => h.batch_id === batchId,
       );
@@ -97,18 +100,22 @@ export async function saveSummaryBatchToWorldbook(
 
     // B. 只有当确实存在旧数据，且有关联向量库时，才请求后端删除
     // 这样全新的总结（如 Batch 4）就会跳过此步骤，不再发生网络请求撞车
-    if (hasOldBatchData && targetEntry.extra.source_file) {
-      console.log(
-        `[Anima] 检测到 Batch ${batchId} 的旧数据，正在请求后端清理向量...`,
-      );
+    if (hasOldBatchData) {
+      const smartCollectionId = getSmartCollectionId();
 
-      // 🔥 核心修改：一次请求，原子删除
-      await deleteBatchMemory(targetEntry.extra.source_file, batchId);
+      if (smartCollectionId) {
+        console.log(
+          `[Anima] 检测到 Batch ${batchId} 的旧数据，正在请求后端清理向量...`,
+        );
+        // 改为使用 smartCollectionId
+        await deleteBatchMemory(smartCollectionId, batchId);
+      } else {
+        console.warn(
+          `[Anima] 警告：无法获取合法的 Collection ID，后端旧批次可能残留。`,
+        );
+      }
     } else {
-      // 调试日志：确认跳过了清理
-      console.log(
-        `[Anima] Batch ${batchId} 为全新内容或无关联库，跳过向量清理步骤。`,
-      );
+      console.log(`[Anima] Batch ${batchId} 为全新内容，跳过向量清理步骤。`);
     }
 
     // C. 清理 Worldbook 文本内容 (本地操作，保持不变)
@@ -336,59 +343,59 @@ export async function saveSummaryBatchToWorldbook(
 /**
  * 删除单条总结的辅助函数
  */
+/**
+ * 删除单条总结的辅助函数
+ */
 export async function deleteSummaryItem(wbName, entryUid, targetIndex) {
   try {
     const currentEntries = await window.TavernHelper.getWorldbook(wbName);
     const targetEntry = currentEntries.find((x) => x.uid === entryUid);
 
-    // 只有当条目包含 source_file 时才能删除向量
-    if (targetEntry && targetEntry.extra && targetEntry.extra.source_file) {
-      const collectionId = targetEntry.extra.source_file;
+    // === 🚀 修复核心：直接使用 getSmartCollectionId 获取精准的库名称 ===
+    const collectionId = getSmartCollectionId();
+
+    if (collectionId) {
       console.log(
         `[Anima] 正在请求后端删除向量: ID=${collectionId}, Index=${targetIndex}`,
       );
 
-      // 调用我们刚才写的接口
+      // 调用 rag_logic.js 中的接口
       await deleteMemory(collectionId, targetIndex);
 
-      if (window.toastr) toastr.success(`后端向量 #${targetIndex} 已清理`);
+      console.log(`[Anima] 后端向量 #${targetIndex} 删除请求已发送`);
+    } else {
+      console.warn("[Anima] 找不到对应的 Collection ID，跳过后端的向量删除");
     }
   } catch (e) {
     console.error("尝试删除向量时出错 (不影响前端删除):", e);
   }
 
+  // === 👇 下面删除世界书文本内容的逻辑保持完全不变 👇 ===
   await window.TavernHelper.updateWorldbookWith(wbName, (entries) => {
     const e = entries.find((x) => x.uid === entryUid);
     if (!e) return entries;
 
-    // 1. 删除文本内容: <index>...</index> (保持不变)
+    // 1. 删除文本内容: <index>...</index>
     const regex = new RegExp(
       `<${targetIndex}>[\\s\\S]*?<\\/${targetIndex}>`,
       "g",
     );
     e.content = e.content.replace(regex, "").trim();
 
-    // 2. 删除 Extra 元数据 (🔥 修改这里)
+    // 2. 删除 Extra 元数据
     if (Array.isArray(e.extra.history)) {
       e.extra.history = e.extra.history.filter((h) => {
-        // 兼容逻辑：优先取 unique_id，没有则取 index (旧数据)
         const currentId = h.unique_id !== undefined ? h.unique_id : h.index;
-
-        // 必须转为字符串比较，防止 3 !== "3" 的情况
         return String(currentId) !== String(targetIndex);
       });
 
-      // 如果删完后 history 还有剩，更新 extra 根属性为最新的一条
       if (e.extra.history.length > 0) {
-        // 取最后一条 (按数组顺序)
         const lastItem = e.extra.history[e.extra.history.length - 1];
         Object.assign(e.extra, lastItem);
       } else {
-        // 如果删光了，清理根属性
         delete e.extra.index;
         delete e.extra.range_start;
         delete e.extra.range_end;
-        // 注意：不要删 createdBy，否则条目会“失联”
       }
     }
 
@@ -440,6 +447,102 @@ export async function updateSummaryContent(
 
   // 触发向量更新 (防抖)
   scheduleVectorUpdate(targetIndex);
+}
+
+/**
+ * 新增单条总结记录 (写入指定 Batch 卷并触发向量化)
+ */
+export async function addSingleSummaryItem(
+  uniqueId,
+  batchId,
+  sliceId,
+  content,
+  tags,
+  groupSize = 10,
+) {
+  if (!window.TavernHelper) return;
+
+  const context = SillyTavern.getContext();
+  const targetChatId = context.chatId;
+  let wbName = await window.TavernHelper.getChatWorldbookName("current");
+  if (!wbName)
+    wbName = await window.TavernHelper.getOrCreateChatWorldbook(
+      "current",
+      targetChatId.replace(/\.(json|jsonl)$/i, ""),
+    );
+
+  // 1. 计算要写入哪个 Chapter
+  const chapterNum = Math.ceil(batchId / groupSize);
+  const entryName = `chapter_${chapterNum}`;
+  const narrativeTime = Date.now();
+
+  const existingEntries = await window.TavernHelper.getWorldbook(wbName);
+  let targetEntry = existingEntries.find(
+    (e) =>
+      e.name === entryName && e.extra && e.extra.createdBy === "anima_summary",
+  );
+
+  const newBlock = `<${uniqueId}>${content}</${uniqueId}>`;
+  const newHistoryItem = {
+    unique_id: uniqueId,
+    batch_id: batchId,
+    slice_id: sliceId,
+    range_start: 0, // 手动新增的没有严格楼层概念
+    range_end: 0,
+    narrative_time: narrativeTime,
+    last_modified: Date.now(),
+    tags: tags || [],
+    source_file: targetChatId,
+    vectorized: false,
+  };
+
+  if (targetEntry) {
+    // 追加到现有分卷
+    await window.TavernHelper.updateWorldbookWith(wbName, (entries) => {
+      const e = entries.find((x) => x.uid === targetEntry.uid);
+      if (!e) return entries;
+
+      e.content = e.content + "\n\n" + newBlock;
+      if (!e.extra.history) e.extra.history = [];
+      e.extra.history.push(newHistoryItem);
+
+      // 重新排序
+      e.extra.history.sort((a, b) => {
+        if (a.narrative_time !== b.narrative_time)
+          return a.narrative_time - b.narrative_time;
+        if (a.batch_id !== b.batch_id) return a.batch_id - b.batch_id;
+        return a.slice_id - b.slice_id;
+      });
+      return entries;
+    });
+  } else {
+    // 如果分卷不存在则创建新卷
+    const calculatedOrder = 100 + chapterNum;
+    const newEntry = {
+      keys: ["summary", "前情提要", entryName],
+      content: newBlock,
+      name: entryName,
+      enabled: false, // 假设 RAG 是主导，保持和批量生成行为一致
+      strategy: { type: "constant" },
+      position: {
+        type: "at_depth",
+        role: "system",
+        depth: 9999,
+        order: calculatedOrder,
+      },
+      extra: {
+        createdBy: "anima_summary",
+        source_file: targetChatId,
+        narrative_time: narrativeTime,
+        history: [newHistoryItem],
+      },
+    };
+    await window.TavernHelper.createWorldbookEntries(wbName, [newEntry]);
+  }
+
+  // 2. 写入世界书完成后，复用现有的向量化触发器
+  // triggerVectorUpdate 内部会读取开关，如果开启会自动同步并变绿
+  triggerVectorUpdate(uniqueId);
 }
 
 // worldbook_api.js
@@ -624,9 +727,13 @@ export async function getIndexConflictInfo(targetIndex) {
       entry.extra.createdBy === "anima_summary" &&
       Array.isArray(entry.extra.history)
     ) {
+      const targetStr = String(targetIndex);
       const historyItem = entry.extra.history.find(
-        (h) => h.index === targetIndex,
+        (h) =>
+          String(h.unique_id !== undefined ? h.unique_id : h.index) ===
+          targetStr,
       );
+
       if (historyItem) {
         return {
           exists: true,

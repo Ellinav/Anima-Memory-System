@@ -467,6 +467,11 @@ export function objectToYaml(obj) {
 }
 
 export function yamlToObject(yamlStr) {
+  // 1. 如果完全为空，按照原有逻辑返回 null，让业务层自己处理空值报错
+  if (!yamlStr || !yamlStr.trim()) {
+    return null;
+  }
+
   try {
     const yamlLib = window["jsyaml"];
     if (yamlLib && yamlLib.load) {
@@ -474,6 +479,39 @@ export function yamlToObject(yamlStr) {
     }
     return JSON.parse(yamlStr);
   } catch (e) {
-    return null;
+    throw e;
   }
+}
+
+export function smartFixYaml(rawYaml) {
+  // 1. 绝对安全的修复：Tab 转 2 个空格
+  let fixed = rawYaml.replace(/\t/g, "  ");
+
+  // 2. 绝对安全的修复：用户可能直接粘贴了合法的 JSON
+  try {
+    const jsonObj = JSON.parse(rawYaml);
+    return {
+      success: true,
+      fixedStr: objectToYaml(jsonObj),
+      reason: "检测到 JSON 格式，已自动转换为 YAML",
+    };
+  } catch (e) {
+    // 不是 JSON，不管它
+  }
+
+  // 判断仅仅替换 Tab 后是否就合法了
+  try {
+    const testObj = yamlToObject(fixed);
+    if (testObj && typeof testObj === "object") {
+      return {
+        success: true,
+        fixedStr: fixed,
+        reason: "已自动将非法制表符(Tab)替换为空格",
+      };
+    }
+  } catch (e) {
+    return { success: false, error: e };
+  }
+
+  return { success: false, error: new Error("无法安全修复") };
 }

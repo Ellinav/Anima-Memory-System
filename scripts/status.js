@@ -22,6 +22,7 @@ import {
   processMacros,
   applyRegexRules,
   createRenderContext,
+  smartFixYaml,
 } from "./utils.js";
 import { RegexListComponent, getRegexModalHTML } from "./regex_ui.js";
 // 全局变量缓存
@@ -930,6 +931,58 @@ export function refreshStatusPanel() {
   }
 }
 
+function showYamlFixPreviewModal(originalStr, fixedStr, reason, onConfirm) {
+  const title = `<span style="color: var(--anima-warning, #fbbf24);"><i class="fa-solid fa-triangle-exclamation"></i> YAML 格式修复建议</span>`;
+
+  // 构建弹窗内容：左右分栏或上下分栏对比
+  const contentHtml = `
+        <div style="margin-bottom: 15px; color: #ccc;">
+            检测到格式错误，Anima 已尝试自动修复 (原因: <span style="color: #4ade80;">${reason}</span>)。<br>
+            请确认修复后的格式是否符合预期，确认后将直接保存。
+        </div>
+        
+        <div style="display: flex; gap: 15px; height: 300px; margin-bottom: 15px;">
+            <div style="flex: 1; display: flex; flex-direction: column;">
+                <label class="anima-label-text" style="color: #f87171;"><i class="fa-solid fa-xmark"></i> 你的原始输入</label>
+                <textarea class="anima-textarea" disabled style="flex: 1; resize: none; font-family: monospace; font-size: 12px; background: rgba(0,0,0,0.2); opacity: 0.7;">${escapeHtml(originalStr)}</textarea>
+            </div>
+            
+            <div style="flex: 1; display: flex; flex-direction: column;">
+                <label class="anima-label-text" style="color: #4ade80;"><i class="fa-solid fa-check"></i> 智能修复结果</label>
+                <textarea id="anima-yaml-fixed-preview" class="anima-textarea" style="flex: 1; resize: none; font-family: monospace; font-size: 12px; border-color: #4ade80;">${escapeHtml(fixedStr)}</textarea>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+            <button id="btn-cancel-yaml-fix" class="anima-btn secondary anima-close-modal">取消并返回修改</button>
+            <button id="btn-confirm-yaml-fix" class="anima-btn primary" style="background: #10b981; border-color: #059669;">
+                <i class="fa-solid fa-floppy-disk"></i> 确认保存
+            </button>
+        </div>
+    `;
+
+  // 使用你现有的通用弹窗组件
+  createCustomModal(title, contentHtml);
+
+  // 绑定这个弹窗特有的确认事件
+  $("#btn-confirm-yaml-fix")
+    .off("click")
+    .on("click", async () => {
+      const finalYaml = $("#anima-yaml-fixed-preview").val();
+
+      // 禁用按钮防止重复点击
+      $(this)
+        .prop("disabled", true)
+        .html('<i class="fa-solid fa-spinner fa-spin"></i> 保存中...');
+
+      // 执行传入的回调
+      await onConfirm(finalYaml);
+
+      // 关闭弹窗 (触发你原本 createCustomModal 里的关闭逻辑)
+      $("#anima-custom-preview-modal .anima-close-modal").first().click();
+    });
+}
+
 function initYamlEditor() {
   console.log("[Anima] Init YAML Editor (Real-time Variable Mode)...");
 
@@ -1031,35 +1084,89 @@ function initYamlEditor() {
   // 5. 绑定“确认”按钮 (核心保存逻辑)
   $btnConfirm.off("click").on("click", async (e) => {
     e.preventDefault();
-    const yamlStr = $textarea.val(); // 获取当前编辑器里的内容
+    const yamlStr = $textarea.val();
 
     try {
-      // A. 解析 YAML
+      // 1. 尝试正常解析
       const statusObj = yamlToObject(yamlStr);
-      if (!statusObj) throw new Error("YAML 格式无效");
+      if (!statusObj) throw new Error("YAML 格式无效或为空");
 
-      // 🔴 修复前：直接保存 statusObj (导致平铺)
-      // await saveRealtimeStatusVariables(statusObj);
-
-      // 🟢 修复后：包裹一层 anima_data (保持结构一致)
+      // 解析成功，走正常的保存逻辑...
       await saveRealtimeStatusVariables({ anima_data: statusObj });
-
       if (window.toastr) window.toastr.success("变量已更新");
-
-      // 退出编辑模式
       exitEditMode();
-
-      // 手动更新显示层
-      $textarea.val(yamlStr);
-
-      // 【关键】强制刷新一下面板状态，让 "源: 3" 变成 "源: 5"
-      // 因为现在格式对了，refreshStatusPanel 应该能认出 5 楼的数据了
-      setTimeout(() => {
-        refreshStatusPanel();
-      }, 500);
+      setTimeout(() => refreshStatusPanel(), 500);
     } catch (err) {
-      console.error(err);
-      if (window.toastr) window.toastr.error("保存失败: " + err.message);
+      // 1. 正常解析失败，尝试智能修复 (只处理 Tab 和 JSON)
+      console.warn("[Anima] YAML 解析失败，尝试智能修复...", err);
+      const fixResult = smartFixYaml(yamlStr);
+
+      if (fixResult.success) {
+        // 2. 修复成功，调用预览弹窗让用户确认
+        showYamlFixPreviewModal(
+          yamlStr,
+          fixResult.fixedStr,
+          fixResult.reason,
+          // 传入回调：如果用户点击确认，执行真正的保存
+          async (confirmedYaml) => {
+            const finalObj = yamlToObject(confirmedYaml);
+            await saveRealtimeStatusVariables({ anima_data: finalObj });
+            $textarea.val(confirmedYaml); // 更新面板内容
+            if (window.toastr) window.toastr.success("已应用修复并保存");
+            exitEditMode();
+            setTimeout(() => refreshStatusPanel(), 500);
+          },
+        );
+        return; // 修复成功并进入弹窗流程后，直接 return，不走下面的报错
+      }
+
+      // 3. 修复失败，精准提取错误信息并拦截
+      let errorMsg = "YAML 格式错误。";
+
+      // js-yaml 的标准错误通常包含 mark 对象
+      if (err.mark && err.mark.line !== undefined) {
+        const lineNum = err.mark.line + 1; // mark.line 是索引，转为人类可读行号
+        const reason = err.reason || "语法错误";
+
+        const lines = yamlStr.split("\n");
+        const errorIdx = err.mark.line;
+
+        // 辅助函数：只提取冒号前面的 Key 名称
+        const extractKey = (lineText) => {
+          if (!lineText) return "";
+          // 匹配开头可能的空格或列表符，截取到第一个冒号之前
+          const match = lineText.match(/^[\s-]*([^:]+):/);
+          // 如果没匹配到冒号，就截取前 10 个字符作为兜底
+          return match
+            ? match[1].trim()
+            : lineText.trim().substring(0, 10) + "...";
+        };
+
+        const currentKey = extractKey(lines[errorIdx]);
+        const prevKey = errorIdx > 0 ? extractKey(lines[errorIdx - 1]) : "";
+
+        // 拼装极其清爽的提示
+        const contextDisplay = prevKey
+          ? `【 ${prevKey} 】或【 ${currentKey} 】`
+          : `【 ${currentKey} 】`;
+
+        errorMsg = `YAML 第 ${lineNum} 行出错。请检查 ${contextDisplay} 附近的空格或缩进！`;
+      } else {
+        // 备用兜底：尝试从 message 字符串中正则提取行号
+        const lineMatch =
+          err.message.match(/at line (\d+)/i) ||
+          err.message.match(/line: (\d+)/i);
+        if (lineMatch) {
+          errorMsg = `YAML 第 ${lineMatch[1]} 行格式错误，请检查缩进或冒号后是否缺少空格。`;
+        } else {
+          errorMsg = `YAML 格式错误: ${err.message}`;
+        }
+      }
+
+      // 4. 拦截并提示，保持在编辑状态，让用户自己动手改
+      if (window.toastr) {
+        window.toastr.error(errorMsg, "保存失败", { timeOut: 7000 });
+      }
     }
   });
 

@@ -1284,12 +1284,17 @@ async function showSummaryHistoryModal() {
 
   // 2. 初始化模态框框架
   const modalHtml = `
-        <div style="margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:12px; color:#aaa;">当前世界书: <strong>${escapeHtml(wbName)}</strong> (共 ${cachedHistoryData.length} 条)</span>
-            <div style="display: flex; gap: 8px;">
+        <div style="margin-bottom:10px; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:10px;">
+            
+            <span style="font-size:12px; color:#aaa; word-break: break-all;">
+                当前世界书: <strong>${escapeHtml(wbName)}</strong> (共 ${cachedHistoryData.length} 条)
+            </span>
+            
+            <div style="display: flex; gap: 8px; margin-left: auto;">
                 <button id="anima-btn-open-add-modal" class="anima-btn small primary"><i class="fa-solid fa-plus"></i> 新增</button>
                 <button id="anima-btn-refresh-list" class="anima-btn small secondary"><i class="fa-solid fa-sync"></i> 刷新</button>
             </div>
+            
         </div>
         
         <div id="anima-history-list-container" style="min-height: 300px;"></div>

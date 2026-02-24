@@ -260,7 +260,7 @@ export function initSummarySettings() {
                             <span class="anima-label-text">序号 (必填)</span>
                             <span class="anima-desc-inline">请使用 Batch_Slice 格式，例如: 1_3</span>
                         </div>
-                        <input type="text" id="anima_add_summary_index" class="anima-input" placeholder="例: 1_3" style="width: 120px;">
+                        <input type="text" id="anima_add_summary_index" class="anima-input" style="width: 120px;">
                     </div>
                     
                     <div class="anima-flex-row" style="margin-bottom: 10px; flex-direction: column; align-items: flex-start;">
@@ -273,7 +273,7 @@ export function initSummarySettings() {
                     <div class="anima-flex-row" style="margin-bottom: 15px;">
                         <div class="anima-label-group">
                             <span class="anima-label-text">标签 (选填)</span>
-                            <span class="anima-desc-inline">多个标签请用英文逗号 (,) 分隔</span>
+                            <span class="anima-desc-inline">多个标签请用英文逗号分隔</span>
                         </div>
                         <input type="text" id="anima_add_summary_tags" class="anima-input" placeholder="tag1, tag2" style="flex: 1;">
                     </div>

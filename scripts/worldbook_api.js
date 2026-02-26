@@ -8,6 +8,43 @@ import {
 } from "./rag_logic.js";
 
 /**
+ * 安全获取当前聊天的世界书名称
+ * 如果发现丢失绑定但存在同名世界书，会自动尝试修复绑定
+ */
+export async function safeGetChatWorldbookName() {
+  if (!window.TavernHelper) return null;
+
+  const context = SillyTavern.getContext();
+  const currentChatId = context.chatId;
+  if (!currentChatId) return null;
+
+  // 1. 尝试正常获取
+  let wbName = await window.TavernHelper.getChatWorldbookName("current");
+  if (wbName) return wbName;
+
+  // 2. 补救逻辑：推导名称并查找
+  const expectedName = currentChatId.replace(/\.(json|jsonl)$/i, "");
+  const allWbNames = window.TavernHelper.getWorldbookNames();
+
+  // 3. 发现同名遗失世界书，尝试重新绑定
+  if (allWbNames.includes(expectedName)) {
+    console.log(
+      `[Anima] 发现未绑定的同名世界书 ${expectedName}，正在尝试自动恢复绑定...`,
+    );
+    try {
+      await window.TavernHelper.rebindChatWorldbook("current", expectedName);
+      return expectedName; // 绑定成功，返回名称
+    } catch (e) {
+      console.error("[Anima] 自动恢复世界书绑定失败:", e);
+      return null;
+    }
+  }
+
+  // 4. 确实没有世界书
+  return null;
+}
+
+/**
  * 批量保存总结切片 (已修复：支持后台写入指定聊天)
  * @param {Array} summaryList
  * @param {number} batchId
@@ -757,7 +794,7 @@ export async function getPreviousSummaries(targetBatchId, count) {
   if (!count || count <= 0) return "";
   if (!window.TavernHelper) return "";
 
-  const wbName = await window.TavernHelper.getChatWorldbookName("current");
+  const wbName = await safeGetChatWorldbookName();
   if (!wbName) return "";
 
   const entries = await window.TavernHelper.getWorldbook(wbName);
@@ -826,7 +863,7 @@ export async function getPreviousSummaries(targetBatchId, count) {
 export async function getSummaryTextFromEntry(entryUid, targetIndex) {
   if (!window.TavernHelper) return "";
 
-  const wbName = await window.TavernHelper.getChatWorldbookName("current");
+  const wbName = await safeGetChatWorldbookName();
   if (!wbName) return "";
 
   const entries = await window.TavernHelper.getWorldbook(wbName);
@@ -900,7 +937,7 @@ export async function triggerVectorUpdate(index) {
   }
 
   // === 以下是执行逻辑，保持你原有代码不变 ===
-  const wbName = await window.TavernHelper.getChatWorldbookName("current");
+  const wbName = await safeGetChatWorldbookName();
   if (!wbName) return;
 
   const entries = await window.TavernHelper.getWorldbook(wbName);
@@ -1195,7 +1232,7 @@ export async function getLatestRecentSummaries(count) {
   if (!count || count <= 0) return { text: "", ids: [] };
   if (!window.TavernHelper) return { text: "", ids: [] };
 
-  const wbName = await window.TavernHelper.getChatWorldbookName("current");
+  const wbName = await safeGetChatWorldbookName();
   if (!wbName) return { text: "", ids: [] };
 
   const entries = await window.TavernHelper.getWorldbook(wbName);
@@ -1283,7 +1320,7 @@ export async function getLatestRecentSummaries(count) {
 export async function toggleAllSummariesState(isRagEnabled) {
   if (!window.TavernHelper) return;
 
-  const wbName = await window.TavernHelper.getChatWorldbookName("current");
+  const wbName = await safeGetChatWorldbookName();
   if (!wbName) return;
 
   // 逻辑反转：RAG 开 -> 条目关；RAG 关 -> 条目开

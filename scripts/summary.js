@@ -20,6 +20,7 @@ import {
   getPreviousSummaries,
   getSummaryTextFromEntry,
   addSingleSummaryItem,
+  safeGetChatWorldbookName,
 } from "./worldbook_api.js";
 import { insertMemory } from "./rag_logic.js";
 import { RegexListComponent, getRegexModalHTML } from "./regex_ui.js";
@@ -1218,12 +1219,22 @@ const PAGE_SIZE = 20;
 async function showSummaryHistoryModal() {
   if (!window.TavernHelper) return;
 
-  const wbName = await window.TavernHelper.getChatWorldbookName("current");
+  const context = SillyTavern.getContext();
+  const currentChatId = context.chatId;
+
+  if (!currentChatId) {
+    toastr.warning("请先打开一个聊天窗口以查看历史记录。");
+    return;
+  }
+
+  let wbName = await safeGetChatWorldbookName();
+
+  // 2. 如果返回 null，说明确实没有生成过总结（或者恢复绑定失败了）
   if (!wbName) {
     toastr.warning("当前聊天没有绑定世界书，暂无总结存档。");
     return;
   }
-  const currentChatId = SillyTavern.getContext().chatId;
+
   const entries = await window.TavernHelper.getWorldbook(wbName);
   const animaEntries = entries.filter(
     (e) =>

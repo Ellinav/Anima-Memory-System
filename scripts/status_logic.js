@@ -10,6 +10,7 @@ import {
   createRenderContext,
 } from "./utils.js";
 import { generateText } from "./api.js";
+import { safeGetChatWorldbookName } from "./worldbook_api.js";
 
 /**
  * @typedef {Object} ExtensionSettings
@@ -980,7 +981,7 @@ export async function syncStatusToWorldBook(
   const context = SillyTavern.getContext();
   if (!context.chatId) return;
 
-  let wbName = await window.TavernHelper.getChatWorldbookName("current");
+  let wbName = await safeGetChatWorldbookName();
   if (!wbName) {
     // 【核心修改点】
     // 如果没有绑定世界书，且 forceCreate 为 false，则直接“懒惰退出”

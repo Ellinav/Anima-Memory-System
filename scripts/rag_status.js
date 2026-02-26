@@ -2,6 +2,7 @@ import { escapeHtml, showRagModal } from "./rag.js";
 import {
   getSummaryTextFromEntry,
   triggerVectorUpdate,
+  safeGetChatWorldbookName,
 } from "./worldbook_api.js";
 import {
   insertMemory, // 🟢 必须引入：用于刷新/重新向量化
@@ -20,7 +21,7 @@ export async function showVectorStatusModal() {
   if (!window.TavernHelper) return;
 
   // 1. 获取数据
-  const wbName = await window.TavernHelper.getChatWorldbookName("current");
+  const wbName = await safeGetChatWorldbookName();
   if (!wbName) {
     toastr.warning("当前聊天没有绑定世界书，暂无数据。");
     return;
@@ -621,7 +622,7 @@ export async function checkAndSyncDirtyVectors() {
   if (!window.TavernHelper) return;
 
   // 1. 获取当前数据
-  const wbName = await window.TavernHelper.getChatWorldbookName("current");
+  const wbName = await safeGetChatWorldbookName();
   if (!wbName) return;
   const entries = await window.TavernHelper.getWorldbook(wbName);
 

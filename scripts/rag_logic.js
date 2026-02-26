@@ -207,9 +207,21 @@ function findDateRecursive(obj, depth = 0) {
   for (const [key, value] of Object.entries(obj)) {
     if (typeof value === "string") {
       if (timeKeyRegex.test(key)) {
-        // 尝试解析
-        const date = new Date(value);
-        // 简单的有效性检查 (排除 Invalid Date)
+        // 1. 尝试用正则提取中文格式 (例如 "2025年6月15日 下午2点" -> 提取 2025, 6, 15)
+        const cnMatch = value.match(
+          /(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]?/,
+        );
+
+        let dateToParse = value;
+        if (cnMatch) {
+          // 如果匹配到中文，强制拼装成标准格式 YYYY/MM/DD
+          dateToParse = `${cnMatch[1]}/${cnMatch[2]}/${cnMatch[3]}`;
+        }
+
+        // 2. 尝试解析 (此时标准的会原样解析，中文的已经被清洗)
+        const date = new Date(dateToParse);
+
+        // 3. 简单的有效性检查 (排除 Invalid Date)
         if (!isNaN(date.getTime())) return date;
       }
     }
@@ -249,7 +261,8 @@ function getSimulationDate(settings, animaData) {
     const chat = context.chat || [];
     const recentMsgs = chat.slice(-10).reverse();
     // 扩充正则以支持 YYYY/MM/DD
-    const timeRegex = /\[Time:\s*(\d{4}[-/]\d{1,2}[-/]\d{1,2})/i;
+    const timeRegex =
+      /\[(?:Time|Date|时间|日期)\s*[:：]\s*(\d{4}[-/]\d{1,2}[-/]\d{1,2})/i;
 
     for (const msg of recentMsgs) {
       const match = (msg.mes || "").match(timeRegex);

@@ -15,7 +15,6 @@ import { generateText } from "./api.js";
  * @typedef {Object} ExtensionSettings
  * @property {Object} [anima_status]
  */
-
 const stWindow = window;
 const { extensionSettings, saveSettingsDebounced } = SillyTavern.getContext();
 const ROOT_KEY = "anima_memory_system";

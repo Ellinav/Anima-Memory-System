@@ -890,7 +890,11 @@ export async function queryDual({
       ignore_ids: excludeIds || [],
       sessionId: cleanMainId,
       is_swipe: _isSwipeMode,
-      // 新版双轨参数
+      echoConfig: {
+        max_count: settings?.echo_max_count ?? 10,
+        base_life: settings?.base_life ?? 1,
+        imp_life: settings?.imp_life ?? 2,
+      },
       chatContext: {
         ids: finalChatIds,
         strategy: chatStrategyPayload,

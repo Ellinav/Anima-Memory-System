@@ -1015,6 +1015,7 @@ function bindRagEvents(settings) {
   $("#rag_btn_add_prompt_item").on("click", () => {
     // 🟢 修改：添加时显式指定 type: "text"，防止预览时被忽略
     settings.vector_prompt.unshift({
+      type: "text",
       role: "system",
       title: "新规则",
       content: "",
@@ -1368,7 +1369,7 @@ function bindRagEvents(settings) {
             
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
                 <div style="${headerStyle}">检索到的切片 (${r.results ? r.results.length : 0})</div>
-                <div style="${headerStyle}; font-family:monospace;">Total Content: ${totalResultLen} 字符数</div>
+                <div style="${headerStyle}; font-family:monospace;">总字数：${totalResultLen}</div>
             </div>
         `;
 
@@ -1508,7 +1509,7 @@ function bindRagEvents(settings) {
                     <summary style="font-size:14px; color:#ddd; font-weight:bold; outline:none; list-style:none; display:flex; align-items:center;">
                         <i class="fa-solid fa-caret-right" style="margin-right:8px; transition: transform 0.2s;"></i>
                         🔎 策略执行追踪
-                        <span style="margin-left:auto; font-size:12px; color:#666; font-weight:normal;">${r.strategy_log.length} steps</span>
+                        <span style="margin-left:auto; font-size:12px; color:#666; font-weight:normal;">${r.strategy_log.length} 条</span>
                     </summary>
                     
                     <div style="margin-top: 10px; padding-right: 5px;" class="anima-scroll">

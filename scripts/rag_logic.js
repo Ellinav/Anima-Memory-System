@@ -885,11 +885,24 @@ export async function queryDual({
   // 🚀 发送请求
   // ============================================
   try {
+    // 🟢 [修复] 引入正确的 API 配置路径
+    const fullConfig = getAnimaConfig(); // 获取包含 api 的总配置
+    const rerankApiConfig = fullConfig?.api?.rerank || {}; // 读取实际保存的 url, key, model
+
+    const isRerankEnabled = settings?.rerank_enabled === true;
+    const rerankCount = settings?.rerank_count || 30;
+
     const response = await callBackend("/query", {
       searchText,
       ignore_ids: excludeIds || [],
       sessionId: cleanMainId,
       is_swipe: _isSwipeMode,
+      // 🟢 [修复] 组装正确的 Rerank 配置发给后端
+      rerankConfig: {
+        enabled: isRerankEnabled,
+        count: rerankCount,
+        api: rerankApiConfig, // 现在这里面有真实的 url 和 key 了
+      },
       echoConfig: {
         max_count: settings?.echo_max_count ?? 10,
         base_life: settings?.base_life ?? 1,

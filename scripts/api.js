@@ -34,6 +34,12 @@ const defaultSettings = {
       top_k: 5,
       threshold: 0.4,
     },
+    rerank: {
+      url: "",
+      key: "",
+      model: "",
+      timeout: 15,
+    },
   },
 };
 
@@ -254,8 +260,9 @@ export function initApiSettings() {
         <p class="anima-subtitle">分别配置用于总结、状态更新和向量检索的模型服务。</p>
         
         ${getApiCardHtml("llm", "🧠 总结模型")}
-        ${getApiCardHtml("status", "📊 状态模型")}  ${getApiCardHtml("rag", "📚 向量模型")}
-        
+        ${getApiCardHtml("status", "📊 状态模型")}
+        ${getApiCardHtml("rag", "📚 向量模型")}
+        ${getApiCardHtml("rerank", "⚖️ 重排模型")}
         ${modalHtml} 
     `;
 
@@ -265,6 +272,7 @@ export function initApiSettings() {
   bindLogic("llm");
   bindLogic("status");
   bindLogic("rag");
+  bindLogic("rerank");
 
   // 初始化弹窗逻辑
   initModalLogic();
@@ -273,7 +281,15 @@ export function initApiSettings() {
 function getApiCardHtml(type, title) {
   let extraSettingsHtml = "";
 
-  // === 修改判断条件：允许 llm 和 status 共享高级设置 ===
+  // 默认的 API 类型选择 HTML
+  let apiTypeHtml = `
+    <label>API 类型</label>
+    <select class="anima-select" id="anima-${type}-source">
+        <option value="openai">自定义OpenAI</option>
+        <option value="google">Google Gemini</option>
+    </select>
+  `;
+
   if (type === "llm" || type === "status") {
     extraSettingsHtml = `
         <div class="anima-row">
@@ -298,22 +314,38 @@ function getApiCardHtml(type, title) {
             </div>
         </div>
         `;
+  } else if (type === "rerank") {
+    // ⚖️ 重排模型不需要选择 API 类型，隐藏掉
+    apiTypeHtml = "";
+    extraSettingsHtml = `
+        <div class="anima-row">
+            <div class="anima-col">
+                <label>超时时间 (秒)</label>
+                <input type="number" class="anima-input" id="anima-${type}-timeout" step="1" min="1" placeholder="15">
+            </div>
+        </div>
+    `;
   }
 
-  // 返回完整卡片 HTML (保持不变)
+  // 为 Rerank 提供更明确的 URL 提示
+  let urlLabel =
+    type === "rerank"
+      ? "Endpoint URL (需包含 /rerank 结尾)"
+      : "Endpoint URL (Base URL)";
+  let urlPlaceholder =
+    type === "rerank"
+      ? "例如: https://api.siliconflow.cn/v1/rerank"
+      : "https://api.openai.com/v1";
+
   return `
     <div class="anima-card" data-config-type="${type}">
         <div class="anima-card-title">${title}</div>
         
-        <label>API 类型</label>
-        <select class="anima-select" id="anima-${type}-source">
-            <option value="openai">自定义OpenAI</option>
-            <option value="google">Google Gemini</option>
-        </select>
+        ${apiTypeHtml}
         
-        <label>Endpoint URL (Base URL)</label>
+        <label>${urlLabel}</label>
         <div class="anima-input-group">
-            <input type="text" class="anima-input" placeholder="https://api.openai.com/v1" id="anima-${type}-url">
+            <input type="text" class="anima-input" placeholder="${urlPlaceholder}" id="anima-${type}-url">
         </div>
         
         <label>API Key</label>
@@ -395,6 +427,12 @@ function saveSettingsFromUI() {
       top_k: extensionSettings[MODULE_NAME]?.rag?.top_k ?? 5,
       threshold: extensionSettings[MODULE_NAME]?.rag?.threshold ?? 0.4,
     },
+    rerank: {
+      url: getVal("anima-rerank-url"),
+      key: getVal("anima-rerank-key"),
+      model: getVal("anima-rerank-model"),
+      timeout: getNum("anima-rerank-timeout") ?? 15,
+    },
   };
 
   if (!extensionSettings[MODULE_NAME].api) {
@@ -413,6 +451,7 @@ function saveSettingsFromUI() {
   extensionSettings[MODULE_NAME].api.llm = newApiConfig.llm;
   extensionSettings[MODULE_NAME].api.status = newApiConfig.status;
   extensionSettings[MODULE_NAME].api.rag = newApiConfig.rag;
+  extensionSettings[MODULE_NAME].api.rerank = newApiConfig.rerank;
 
   saveSettingsDebounced();
 
@@ -468,6 +507,12 @@ function loadSettingsToUI() {
     setVal("anima-rag-url", config.rag.url);
     setVal("anima-rag-key", config.rag.key);
     setModel("rag", config.rag.model);
+  }
+  if (config.rerank) {
+    setVal("anima-rerank-url", config.rerank.url);
+    setVal("anima-rerank-key", config.rerank.key);
+    setModel("rerank", config.rerank.model);
+    setVal("anima-rerank-timeout", config.rerank.timeout);
   }
 }
 
@@ -526,7 +571,7 @@ function bindLogic(type) {
 
   if (btnTest) {
     btnTest.addEventListener("click", async () => {
-      const currentSource = selectSource.value;
+      const currentSource = selectSource ? selectSource.value : "openai";
       const currentUrl = inputUrl.value;
       const currentKey = inputKey.value;
       const currentModel = selectModel.value;
@@ -544,7 +589,41 @@ function bindLogic(type) {
         // ============================
         // 🟢 分支 A: RAG 模型 (走后端测试)
         // ============================
-        if (type === "rag") {
+        if (type === "rerank") {
+          // 🟢 分支 C: Rerank 模型 (直接构造虚假切片进行打分测试)
+          if (!currentUrl) throw new Error("请填写 Rerank 的 URL");
+          const configPayload = {
+            model: currentModel || "BAAI/bge-reranker-v2-m3",
+            query: "苹果",
+            documents: ["红富士", "香蕉", "汽车"], // 测试数据
+          };
+
+          const res = await fetch(currentUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${currentKey}`,
+            },
+            body: JSON.stringify(configPayload),
+          });
+
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(
+              `Rerank 报错 (${res.status}): ${errText.substring(0, 100)}`,
+            );
+          }
+
+          const data = await res.json();
+          // 如果返回结构里有 results 数组，说明完全跑通了标准格式
+          const firstScore = data.results?.[0]?.relevance_score || "成功获取";
+          if (window.toastr)
+            window.toastr.success(
+              `测试成功! 返回相关性首位得分: ${firstScore}`,
+              "Rerank 系统",
+            );
+          console.log("[Anima] Rerank Test Result:", data);
+        } else if (type === "rag") {
           const configPayload = {
             source: currentSource,
             url: currentUrl,
@@ -627,7 +706,7 @@ function bindLogic(type) {
   // 4. 连接按钮逻辑 (已修复 Google 反代支持)
   if (btnConnect) {
     btnConnect.addEventListener("click", async () => {
-      const source = selectSource.value;
+      const source = selectSource ? selectSource.value : "openai";
       let url = inputUrl.value;
       const key = inputKey.value;
 
@@ -681,12 +760,22 @@ function bindLogic(type) {
           }
         } else {
           // === OpenAI/通用 连接逻辑 (严格模式：不使用保底列表) ===
-          url = processApiUrl(url, source);
-          inputUrl.value = url;
+          let modelsFetchUrl = url;
+          if (type === "rerank") {
+            // 针对 rerank：原 url 通常以 /rerank 结尾。为了获取模型列表，我们退回到 base URL
+            // 例如 https://api.siliconflow.cn/v1/rerank -> https://api.siliconflow.cn/v1
+            modelsFetchUrl =
+              url.replace(/\/rerank\/?$/, "").replace(/\/v1\/?$/, "") + "/v1";
+            // 注意：这里不要覆盖 inputUrl.value，保留用户输入的完整 rerank url 供保存
+          } else {
+            url = processApiUrl(url, source);
+            inputUrl.value = url;
+            modelsFetchUrl = url;
+          }
 
           try {
             // 1. 尝试直接从浏览器 Fetch (直连)
-            const directResponse = await fetch(`${url}/models`, {
+            const directResponse = await fetch(`${modelsFetchUrl}/models`, {
               method: "GET",
               headers: {
                 Authorization: `Bearer ${key}`,
@@ -715,8 +804,8 @@ function bindLogic(type) {
               contentType: "application/json",
               data: JSON.stringify({
                 chat_completion_source: "custom",
-                custom_url: url,
-                reverse_proxy: url,
+                custom_url: modelsFetchUrl,
+                reverse_proxy: modelsFetchUrl,
                 proxy_password: key,
                 custom_include_headers: "",
               }),

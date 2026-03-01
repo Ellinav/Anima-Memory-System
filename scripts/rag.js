@@ -55,6 +55,8 @@ export const DEFAULT_RAG_SETTINGS = {
   base_life: 1, // 基础粘性
   imp_life: 2, // 重要粘性
   echo_max_count: 10, // 最大总量
+  rerank_enabled: false, // 默认关闭重排
+  rerank_count: 5, // 重排后最终保留的数量
 
   knowledge_base: {
     delimiter: "", // 切片自定义分隔符 (如 "###")
@@ -76,13 +78,10 @@ export const DEFAULT_RAG_SETTINGS = {
   strategy_settings: {
     candidate_multiplier: 2,
     important: { labels: ["Important"], count: 1 },
-
     // 节日 (自动匹配)
     special: { count: 1 },
-
     // 🔥 新增：生理 (Period) 独立配置
     period: { count: 1 },
-
     // 状态 (Status) 独立配置
     status: {
       labels: ["Sick", "Injury"], // 这里的 labels 变为“只读”，由 rules 自动生成用于显示
@@ -631,58 +630,6 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                 </div>
 
                 <div class="anima-card">
-                <div style="margin-bottom: 20px; border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 10px;">
-                        <div style="font-size:16px; font-weight:bold; color: #7b20dc; margin-bottom:15px; display:flex; align-items:center;">
-                            <i class="fa-solid fa-bullhorn" style="margin-right:8px;"></i> 记忆回响
-                        </div>
-
-                        <div class="anima-flex-row">
-                            <div class="anima-label-group">
-                                <span class="anima-label-text">基础粘性</span>
-                                <span class="anima-desc-inline">普通检索结果的停留回合数</span>
-                            </div>
-                            <div class="anima-input-wrapper">
-                                <input type="number" id="rag_echo_base_life" class="anima-input" 
-                                    style="width:80px; text-align:center;"
-                                    value="${settings.base_life ?? 1}" min="0">
-                            </div>
-                        </div>
-
-                        <div class="anima-flex-row">
-                            <div class="anima-label-group">
-                                <span class="anima-label-text">重要粘性</span>
-                                <span class="anima-desc-inline">重要/特殊策略结果的停留回合数</span>
-                            </div>
-                            <div class="anima-input-wrapper">
-                                <input type="number" id="rag_echo_imp_life" class="anima-input" 
-                                    style="width:80px; text-align:center;"
-                                    value="${settings.imp_life ?? 2}" min="0">
-                            </div>
-                        </div>
-
-                        <div class="anima-flex-row">
-                            <div class="anima-label-group">
-                                <span class="anima-label-text">最大总量</span>
-                                <span class="anima-desc-inline">回响池中同时存在的最大切片数</span>
-                            </div>
-                            <div class="anima-input-wrapper">
-                                <input type="number" id="rag_echo_max_count" class="anima-input" 
-                                    style="width:80px; text-align:center;"
-                                    value="${settings.echo_max_count ?? 10}" min="0">
-                            </div>
-                        </div>
-                    </div>
-                    <div class="anima-flex-row" style="align-items: center; margin-bottom: 15px;">
-                        <div class="anima-label-group">
-                            <span class="anima-label-text">近因加权</span>
-                            <span class="anima-desc-inline">给予当前对话的数据库额外加分</span>
-                        </div>
-                        <div class="anima-input-wrapper" style="display: flex; align-items: center; height: 100%;">
-                            <input type="number" id="rag_recent_weight" class="anima-input" 
-                                   style="width:80px; text-align:center; margin:0;"
-                                   value="${settings.recent_weight !== undefined ? settings.recent_weight : 0.05}" step="0.01" min="0">
-                        </div>
-                    </div>
                     <div class="anima-flex-row">
                         <div class="anima-label-group">
                             <span class="anima-label-text">基础结果数量</span>
@@ -759,6 +706,102 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                         </button>
                     </div>
                  </div>
+            </div>
+
+            <div class="anima-setting-group">
+                <h2 class="anima-title"><i class="fa-solid fa-wand-magic-sparkles"></i> 增强处理 (Enhancements)</h2>
+                <div class="anima-card">
+                    <div class="anima-flex-row" style="align-items: center; margin-bottom: 15px;">
+                        <div class="anima-label-group">
+                            <span class="anima-label-text">近因加权</span>
+                            <span class="anima-desc-inline">给予当前对话的数据库额外加分</span>
+                        </div>
+                        <div class="anima-input-wrapper" style="display: flex; align-items: center; height: 100%;">
+                            <input type="number" id="rag_recent_weight" class="anima-input" 
+                                   style="width:80px; text-align:center; margin:0;"
+                                   value="${settings.recent_weight !== undefined ? settings.recent_weight : 0.05}" step="0.01" min="0">
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 10px; padding-bottom: 10px;">
+                        <div style="font-size:14px; font-weight:bold; color: #a020dc; margin-bottom:15px; display:flex; align-items:center;">
+                            <i class="fa-solid fa-bullhorn" style="margin-right:8px;"></i> 记忆回响
+                        </div>
+
+                        <div class="anima-flex-row">
+                            <div class="anima-label-group">
+                                <span class="anima-label-text">基础粘性</span>
+                                <span class="anima-desc-inline">普通检索结果的停留回合数</span>
+                            </div>
+                            <div class="anima-input-wrapper">
+                                <input type="number" id="rag_echo_base_life" class="anima-input" 
+                                    style="width:80px; text-align:center;"
+                                    value="${settings.base_life ?? 1}" min="0">
+                            </div>
+                        </div>
+
+                        <div class="anima-flex-row">
+                            <div class="anima-label-group">
+                                <span class="anima-label-text">重要粘性</span>
+                                <span class="anima-desc-inline">重要/特殊策略结果的停留回合数</span>
+                            </div>
+                            <div class="anima-input-wrapper">
+                                <input type="number" id="rag_echo_imp_life" class="anima-input" 
+                                    style="width:80px; text-align:center;"
+                                    value="${settings.imp_life ?? 2}" min="0">
+                            </div>
+                        </div>
+
+                        <div class="anima-flex-row">
+                            <div class="anima-label-group">
+                                <span class="anima-label-text">最大总量</span>
+                                <span class="anima-desc-inline">回响池中同时存在的最大切片数</span>
+                            </div>
+                            <div class="anima-input-wrapper">
+                                <input type="number" id="rag_echo_max_count" class="anima-input" 
+                                    style="width:80px; text-align:center;"
+                                    value="${settings.echo_max_count ?? 10}" min="0">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div style="font-size:14px; font-weight:bold; color: #eab308; margin-bottom:15px; display:flex; align-items:center;">
+                            <i class="fa-solid fa-scale-balanced" style="margin-right:8px;"></i> 结果重排
+                        </div>
+                        
+                        <div class="anima-flex-row">
+                            <div class="anima-label-group">
+                                <span class="anima-label-text">启用重排功能</span>
+                                <span class="anima-desc-inline">需配置好重排模型的API</span>
+                            </div>
+                            <label class="anima-switch">
+                                <input type="checkbox" id="rag_rerank_switch" ${settings.rerank_enabled ? "checked" : ""}>
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+
+                        <div id="rag_rerank_config" class="${settings.rerank_enabled ? "" : "hidden"}" style="margin-top: 10px;">
+                            <div class="anima-flex-row">
+                                <div class="anima-label-group">
+                                    <span class="anima-label-text">待重排数量</span>
+                                    <span class="anima-desc-inline">发给重排模型的基础/重要检索步骤的切片总数</span>
+                                </div>
+                                <div class="anima-input-wrapper">
+                                    <input type="number" id="rag_rerank_count" class="anima-input" 
+                                           style="width:80px; text-align:center;"
+                                           value="${settings.rerank_count ?? 30}" min="1">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 15px;">
+                        <button id="rag_btn_save_enhance" class="anima-btn primary" style="width:100%">
+                            <i class="fa-solid fa-floppy-disk"></i> 保存配置
+                        </button>
+                    </div>
+
+                </div>
             </div>
 
             <div class="anima-setting-group">
@@ -1035,6 +1078,16 @@ function bindRagEvents(settings) {
     }
   });
 
+  // --- 重排开关联动 ---
+  $("#rag_rerank_switch").on("change", function () {
+    const isChecked = $(this).prop("checked");
+    if (isChecked) {
+      $("#rag_rerank_config").removeClass("hidden");
+    } else {
+      $("#rag_rerank_config").addClass("hidden");
+    }
+  });
+
   // --- 标签编辑 ---
   $("#btn_edit_tags").on("click", () => {
     $("#rag_tags_action_btns").hide();
@@ -1094,6 +1147,9 @@ function bindRagEvents(settings) {
         imp_life: parseInt($("#rag_echo_imp_life").val()) || 2,
         echo_max_count: parseInt($("#rag_echo_max_count").val()) || 10,
 
+        rerank_enabled: $("#rag_rerank_switch").prop("checked"),
+        rerank_count: parseInt($("#rag_rerank_count").val()) || 30,
+
         auto_vectorize: $("#rag_auto_vectorize").prop("checked"),
         skip_layer_zero: $("#rag_skip_layer_zero").prop("checked"), // 跳过开场白
         regex_skip_user: $("#rag_regex_skip_user").prop("checked"),
@@ -1145,10 +1201,11 @@ function bindRagEvents(settings) {
     "#rag_btn_save_settings_top",
     "#rag_btn_save_settings_bottom",
     "#rag_btn_save_simple",
-    "#rag_btn_save_kb_settings", // 包含了你关心的 kb_settings
+    "#rag_btn_save_kb_settings",
     "#rag_btn_save_dist",
     "#rag_btn_save_prompt_cfg",
     "#rag_btn_save_prompt_bottom",
+    "#rag_btn_save_enhance",
   ].join(", ");
 
   // 使用 off() 先解绑，再绑定，防止重复
@@ -1385,11 +1442,11 @@ function bindRagEvents(settings) {
           // 2. 回响判断 (现在后端修好了，可以直接用 is_echo)
           const isEcho = item.is_echo === true;
 
+          const isReranked = item.rerank_score !== undefined;
+
           // 3. 样式三选一
           let theme = {};
-
           if (isKb) {
-            // 🟡 知识库：黄色
             theme = {
               borderColor: "#eab308",
               headerBg: "rgba(234, 179, 8, 0.15)",
@@ -1397,15 +1454,21 @@ function bindRagEvents(settings) {
               icon: "fa-book",
             };
           } else if (isEcho) {
-            // 🟣 回响：紫色 (你想要的颜色)
             theme = {
-              borderColor: "#a855f7", // Purple-500
+              borderColor: "#a855f7",
               headerBg: "rgba(168, 85, 247, 0.15)",
               countColor: "#d8b4fe",
               icon: "fa-bullhorn",
             };
+          } else if (isReranked) {
+            // 🟢 重排结果：青色/薄荷绿
+            theme = {
+              borderColor: "#14b8a6", // Teal-500
+              headerBg: "rgba(20, 184, 166, 0.15)",
+              countColor: "#5eead4",
+              icon: "fa-scale-balanced",
+            };
           } else {
-            // 🔵 普通：蓝色
             theme = {
               borderColor: "#444",
               headerBg: "rgba(59, 130, 246, 0.15)",
@@ -1414,13 +1477,18 @@ function bindRagEvents(settings) {
             };
           }
 
+          let displayScore = `Score: ${typeof item.score === "number" ? item.score.toFixed(4) : item.score}`;
+          if (isReranked) {
+            displayScore = `Rerank: ${item.rerank_score.toFixed(4)}`;
+          }
+
           return `
         <div class="anima-preview-block" style="border:1px solid ${theme.borderColor}; margin-bottom:8px; border-radius:4px; overflow:hidden;">
             <div class="block-header" style="background:${theme.headerBg}; padding:6px 10px; font-size:12px; display:flex; justify-content:space-between; align-items:center;">
                 <div>
                     <span style="color:${theme.countColor}; font-weight:bold;">#${idx + 1}</span>
                     <span style="color:#fff; font-weight:bold; margin:0 6px; font-family:monospace;">[${escapeHtml(displayId)}]</span>
-                    <span style="color:${theme.countColor};">Score: ${typeof item.score === "number" ? item.score.toFixed(4) : item.score}</span>
+                    <span style="color:${theme.countColor};">${escapeHtml(displayScore)}</span>
                 </div>
                 <span style="color:#aaa; font-size:11px;" title="来源数据库">
                     <i class="fa-solid ${theme.icon}" style="margin-right:4px;"></i>${escapeHtml(sourceDb)}
@@ -1487,7 +1555,9 @@ function bindRagEvents(settings) {
                     <div style="font-weight: bold; color: ${stepColor}; font-size: 12px;"> ${escapeHtml(data.step)}
                     </div>
                     <div style="text-align: right;">
-                        <div style="color: #eee; font-family: monospace; font-weight: bold;">${parseFloat(data.score).toFixed(4)}</div>
+                        <div style="color: #eee; font-family: monospace; font-weight: bold; font-size: 11px;">
+                            ${typeof data.score === "number" ? data.score.toFixed(4) : escapeHtml(String(data.score))}
+                        </div>
                     </div>
                 </div>
 

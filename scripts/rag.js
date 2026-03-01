@@ -709,7 +709,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
             </div>
 
             <div class="anima-setting-group">
-                <h2 class="anima-title"><i class="fa-solid fa-wand-magic-sparkles"></i> 增强处理 (Enhancements)</h2>
+                <h2 class="anima-title"><i class="fa-solid fa-wand-magic-sparkles"></i> 增强处理</h2>
                 <div class="anima-card">
                     <div class="anima-flex-row" style="align-items: center; margin-bottom: 15px;">
                         <div class="anima-label-group">

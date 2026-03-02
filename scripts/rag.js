@@ -1139,6 +1139,14 @@ function bindRagEvents(settings) {
       // 2. 组装新对象 (遵循你的分类要求)
       const newSettings = {
         ...currentSettings,
+
+        knowledge_base: {
+          delimiter: $("#rag_kb_delimiter").val() || "",
+          chunk_size: parseInt($("#rag_kb_chunk_size").val()) || 500,
+          search_top_k: parseInt($("#rag_kb_search_top_k").val()) || 3,
+          min_score: parseFloat($("#rag_kb_min_score").val()) || 0.5,
+        },
+
         // 全局项
         base_count: parseInt($("#rag_base_count").val()) || 2,
         min_score: parseFloat($("#rag_min_score").val()) || 0.2,

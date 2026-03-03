@@ -469,31 +469,26 @@ export async function getAvailableCollections() {
  * @param {object} payload - 发送的数据
  */
 async function callBackend(endpoint, payload, method = "POST") {
-  const settings = getAnimaConfig(); // 获取 anima_memory_system 总配置
-
-  // 🔥 核心修复：适配新的配置结构
-  // 优先尝试 settings.api.rag (新位置)，如果不存在则回退到 settings.rag (旧位置)
-  // 这样既能读到你现在的 Key，也能防止报错
+  const settings = getAnimaConfig();
   const apiCredentials = settings?.api?.rag || settings?.rag || {};
 
   // 🔍 调试日志：看看它到底读到了哪里 (修复后可注释掉)
   // console.log("[Anima Debug] Config Source:", settings?.api?.rag ? "New (api.rag)" : "Old (rag)", apiCredentials);
 
   if (method === "POST" && (!apiCredentials.key || !apiCredentials.model)) {
-    console.error(
-      "[Anima Debug] ❌ 前端拦截: 缺少 API Key 或 Model 配置",
-      apiCredentials,
-    );
-    throw new Error("请先在 API 设置面板配置向量模型 (RAG)！");
+    const errMsg = "缺少 API Key 或 Model 配置，请先在设置面板填写！";
+    console.error(`[Anima Debug] ❌ 前端拦截: ${errMsg}`, apiCredentials);
+    // 强制弹窗
+    if (window.toastr) toastr.error(errMsg, "Anima API 拦截");
+    throw new Error(errMsg);
   }
 
-  // 准备发送给后端的数据包
   const requestBody = {
     ...payload,
     apiConfig: {
       source: apiCredentials.source,
       url: apiCredentials.url,
-      key: apiCredentials.key, // ✅ 现在能正确取到了
+      key: apiCredentials.key,
       model: apiCredentials.model,
     },
   };
@@ -504,24 +499,36 @@ async function callBackend(endpoint, payload, method = "POST") {
       type: method,
       contentType: "application/json",
       data: JSON.stringify(requestBody),
+      timeout: 30000, // 🟢 新增：30秒超时机制，防止请求死锁挂起
       success: (data) => {
         resolve(data);
       },
-      error: (jqXHR) => {
+      error: (jqXHR, textStatus, errorThrown) => {
         let errMsg = "未知错误";
-        try {
-          // 尝试解析后端返回的标准 JSON: { success: false, message: "..." }
-          const errData = JSON.parse(jqXHR.responseText);
-          errMsg = errData.message || errData.error || errMsg;
-        } catch (e) {
-          // 如果后端挂了返回 502 Bad Gateway 的 HTML
-          const rawText = jqXHR.responseText || jqXHR.statusText;
-          // 再次清洗 HTML 标签
-          errMsg = rawText.replace(/<[^>]*>?/gm, "").trim();
-          // 压缩多余空格并截断
-          errMsg = errMsg.replace(/\s+/g, " ").substring(0, 150);
+
+        // 🟢 新增：细化网络层面的报错
+        if (jqXHR.status === 0) {
+          errMsg = "无法连接到后端服务器 (请检查 Node.js 后端是否启动)。";
+        } else if (textStatus === "timeout") {
+          errMsg = "向量 API 请求超时 (超过30秒)，请检查代理或网络。";
+        } else {
+          try {
+            const errData = JSON.parse(jqXHR.responseText);
+            errMsg = errData.message || errData.error || errMsg;
+          } catch (e) {
+            const rawText = jqXHR.responseText || jqXHR.statusText || "";
+            errMsg = rawText
+              .replace(/<[^>]*>?/gm, "")
+              .trim()
+              .replace(/\s+/g, " ")
+              .substring(0, 150);
+            if (!errMsg) errMsg = `HTTP Error ${jqXHR.status}`;
+          }
         }
+
         console.error(`[Anima Debug] ❌ Backend Error:`, errMsg);
+        // 失败直接弹窗
+        if (window.toastr) toastr.error(errMsg, "Anima 向量接口报错");
         reject(new Error(errMsg));
       },
     });
@@ -595,7 +602,12 @@ export async function insertMemory(
   }
 
   text = processMacros(text);
-
+  if (!text || text.trim() === "") {
+    console.warn("[Anima RAG] 拒绝写入：内容为空");
+    if (window.toastr)
+      toastr.warning("切片内容为空，已跳过向量存入。", "Anima RAG");
+    return { success: false, error: "Empty text" };
+  }
   try {
     console.log(
       `[Anima Debug] 🚀 发起写入请求: ID=${index}, Collection=${collectionId}`,
@@ -682,28 +694,34 @@ export async function queryDual({
   extraChatFiles,
   kbFiles,
   excludeIds,
+  isSilent = false,
 }) {
-  // ============== 总开关拦截 ==============
+  const showToast = (msg, type = "info", title = "Anima RAG") => {
+    if (!isSilent && window.toastr) {
+      if (type === "error") toastr.error(msg, title);
+      else if (type === "warning") toastr.warning(msg, title);
+      else toastr.info(msg, title);
+    }
+  };
+
   const context = SillyTavern.getContext();
   const settings = getEffectiveSettings();
+
+  // ============== 总开关拦截 ==============
   if (settings && settings.rag_enabled === false) {
     console.warn("[Anima RAG] 总开关已关闭，阻断检索请求。");
+    showToast("RAG 总开关已关闭，已跳过本次检索。", "warning");
     return { chat_results: [], kb_results: [] };
   }
-  // ===========================================
-  // 🛠️ ID 清洗与智能合并 (最终修复版)
-  // ===========================================
 
-  // 辅助：清洗函数 (确保空格被转为下划线)
+  // ============== 2. ID 清洗与智能合并 ==============
   const clean = (id) => {
     if (!id) return "";
     return id.replace(/[^a-zA-Z0-9@\-\._\u4e00-\u9fa5]/g, "_");
   };
 
-  // 1. 获取当前聊天的原始 ID (作为兜底)
   let rawMainId = getSmartCollectionId() || currentChatId || "";
   let cleanMainId = clean(rawMainId);
-
   let finalChatIds = [];
 
   // 🔥 核心修改：判断优先级 🔥
@@ -713,10 +731,8 @@ export async function queryDual({
     console.log(
       `[Anima RAG] 🛡️ 采用 UI 绑定列表 (${extraChatFiles.length} 个)`,
     );
-
     // 清洗列表
     let cleanExtras = extraChatFiles.map((id) => clean(id));
-
     // 去重并过滤空值
     finalChatIds = [...new Set(cleanExtras)].filter(Boolean);
   }
@@ -726,9 +742,6 @@ export async function queryDual({
     console.log(
       `[Anima RAG] ⚠️ 无 UI 配置，回退至默认当前聊天: ${cleanMainId}`,
     );
-
-    // 原有的智能晋升逻辑 (保留以防万一)
-    // 如果没有配置列表，其实也就没有 extra 可以查了，所以直接用 mainId
     finalChatIds = [cleanMainId].filter(Boolean);
   }
 
@@ -740,10 +753,17 @@ export async function queryDual({
 
   if (finalChatIds.length === 0 && finalKbFiles.length === 0) {
     console.warn("[Anima RAG] 未指定任何数据库 ID (UI列表为空)，跳过检索");
+    showToast("当前未绑定任何聊天或知识库，跳过检索。", "warning");
     return { chat_results: [], kb_results: [] };
   }
 
-  searchText = processMacros(searchText);
+  // ============== 3. 空文本拦截 (最有可能的罪魁祸首) ==============
+  searchText = processMacros(searchText || "");
+  if (!searchText || searchText.trim() === "") {
+    console.warn("[Anima RAG] 提取到的检索词为空，跳过向后端发送请求。");
+    showToast("检索文本为空 (正则可能填写错误)，已跳过 RAG。", "warning");
+    return { chat_results: [], kb_results: [] };
+  }
 
   // ============================================
   // 🧠 构建 Chat 策略 (复用原有的复杂逻辑)
@@ -985,9 +1005,10 @@ export async function queryDual({
     };
   } catch (e) {
     console.error("[Anima RAG] 双轨检索失败:", e);
-    if (window.toastr) {
-      // 为了防止频繁报错刷屏，可以加个简单的防抖，或者只报关键错误
-      toastr.error("检索失败: " + e.message, "Anima RAG");
+    // 注意：callBackend 里面如果是网络错误已经弹过窗了，这里可以加个兜底
+    // 为了防止双重弹窗，如果你觉得烦，可以把这里的 toastr 注释掉
+    if (window.toastr && !e.message.includes("请先在")) {
+      toastr.error("检索过程崩溃: " + e.message, "Anima RAG 致命错误");
     }
     return { chat_results: [], kb_results: [] };
   }

@@ -1441,7 +1441,12 @@ function bindRagEvents(settings) {
     if (r.results && r.results.length > 0) {
       contentHtml += r.results
         .map((item, idx) => {
-          const displayId = item.uniqueID || item.index || "N/A";
+          const displayId =
+            item.uniqueID ||
+            item.index ||
+            (item.chunk_index !== undefined
+              ? `Chunk_${item.chunk_index}`
+              : "N/A");
           const sourceDb = item.source || "Unknown";
 
           // 1. 知识库判断

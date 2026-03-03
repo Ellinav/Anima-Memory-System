@@ -891,13 +891,15 @@ input:checked + .slider:before {
 /* 2. 输出校验 -【测试规则】 (紫色) */
 /* 修正：直接用 ID 选择，不要加父级 ID */
 #btn_generic_merge,
-#btn-test-zod-rules {
+#btn-test-zod-rules,
+#btn-gc-execute {
   background-color: #982ac4 !important; /* 鲜艳紫 */
   color: #ffffff !important;
   border: none !important;
 }
 #btn_generic_merge:hover,
-#btn-test-zod-rules:hover {
+#btn-test-zod-rules:hover,
+#btn-gc-execute:hover {
   background-color: #6f218e !important; /* 悬停变深 */
 }
 
@@ -914,12 +916,14 @@ input:checked + .slider:before {
 
 /* 4. 提示词构建 -【预览 Payload】 (黄色) */
 /* 修正：直接用 ID 选择 */
-#btn-preview-status-prompt {
+#btn-preview-status-prompt,
+#btn-gc-manage {
   background-color: #b97f1c !important; /* 实心深黄/琥珀色 */
   color: #ffffff !important;
   border: none !important;
 }
-#btn-preview-status-prompt:hover {
+#btn-preview-status-prompt:hover,
+#btn-gc-manage:hover {
   background-color: #97691a !important; /* 悬停变深 */
 }
 
@@ -1002,13 +1006,15 @@ input:checked + .slider:before {
 }
 
 /* 转换按钮：绿色 (默认禁用状态在JS里控制透明度，这里写基础色) */
-#anima_btn_convert_json {
+#anima_btn_convert_json,
+#btn-gc-save-config {
   background-color: #10b981 !important;
   color: #ffffff !important;
   border: none;
   transition: background-color 0.2s;
 }
-#anima_btn_convert_json:hover {
+#anima_btn_convert_json:hover,
+#btn-gc-save-config:hover {
   background-color: #059669 !important;
 }
 /* 禁用时的样式覆盖 */

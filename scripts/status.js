@@ -14,6 +14,7 @@ import {
   findBaseStatus,
   triggerManualSync,
   renderAnimaTemplate,
+  executeGCProcess,
 } from "./status_logic.js";
 import { validateStatusData, createAutoNumberSchema } from "./status_zod.js";
 import {
@@ -25,6 +26,7 @@ import {
   smartFixYaml,
 } from "./utils.js";
 import { RegexListComponent, getRegexModalHTML } from "./regex_ui.js";
+import { openGCManagementModal } from "./status_gc_ui.js";
 // 全局变量缓存
 let currentSettings = null;
 
@@ -98,30 +100,14 @@ export function initStatusSettings() {
   const yamlModuleHtml = `
         <h2 class="anima-title"><i class="fa-solid fa-heart-pulse"></i> 实时状态</h2>
         <div class="anima-card">
+            
             <div class="anima-flex-row" style="justify-content: space-between; margin-bottom: 5px; align-items: center; flex-wrap: wrap; gap: 10px;">
-                
-                <div style="display:flex; flex-direction:column; min-width: 120px;">
-                    <label class="anima-label-text">状态信息 (YAML)</label>
-                    <div style="font-size: 12px; color: #aaa; display:flex; gap: 10px; margin-top:2px;">
-                        <span title="当前状态数据的来源楼层">
-                            <i class="fa-solid fa-code-branch"></i> 源: <span id="val-source-floor-id">--</span>
-                        </span>
-                        <span title="当前对话的最新楼层">
-                            <i class="fa-solid fa-clock"></i> 最新: <span id="val-current-floor-id">--</span>
-                        </span>
-                    </div>
-                </div>
+                <label class="anima-label-text" style="margin: 0;">状态信息 (YAML)</label>
                 
                 <div id="status-yaml-actions-view" style="display:flex; gap:5px; flex-shrink: 0;">
-                    <button id="btn-refresh-status" class="anima-btn secondary small" title="刷新UI显示 (不请求API)" style="white-space: nowrap;">
-                        <i class="fa-solid fa-rotate-right"></i> 刷新
-                    </button>
-                    <button id="btn-sync-status" class="anima-btn secondary small" title="请求副API进行增量更新 (Sync)" style="white-space: nowrap;">
-                        <i class="fa-solid fa-cloud-arrow-down"></i> 同步
-                    </button>
-                    <button id="anima-btn-edit-status" class="anima-btn primary small" title="手动编辑" style="white-space: nowrap;">
-                        <i class="fa-solid fa-pen-to-square"></i> 编辑
-                    </button>
+                    <button id="btn-refresh-status" class="anima-btn secondary small" title="刷新UI显示" style="white-space: nowrap;"><i class="fa-solid fa-rotate-right"></i> 刷新</button>
+                    <button id="btn-sync-status" class="anima-btn secondary small" title="请求副API进行增量更新" style="white-space: nowrap;"><i class="fa-solid fa-cloud-arrow-down"></i> 同步</button>
+                    <button id="anima-btn-edit-status" class="anima-btn primary small" title="手动编辑" style="white-space: nowrap;"><i class="fa-solid fa-pen-to-square"></i> 编辑</button>
                 </div>
                 
                 <div id="status-yaml-actions-edit" style="display:none; gap:5px; flex-shrink: 0;">
@@ -130,11 +116,243 @@ export function initStatusSettings() {
                 </div>
             </div>
 
+            <div style="font-size: 12px; color: #aaa; display:flex; flex-wrap: wrap; gap: 15px; margin-bottom: 8px; padding: 4px 8px; background: rgba(0,0,0,0.2); border-radius: 4px;">
+                <span title="当前状态数据的字符长度"><i class="fa-solid fa-calculator"></i> 字符数: <span id="val-status-char-count" style="color: #a6e3a1; font-weight: bold;">0</span></span>
+                <span title="当前状态数据的来源楼层"><i class="fa-solid fa-code-branch"></i> 源: <span id="val-source-floor-id">--</span></span>
+                <span title="当前对话的最新楼层"><i class="fa-solid fa-clock"></i> 最新: <span id="val-current-floor-id">--</span></span>
+            </div>
+
             <textarea id="status-yaml-content" class="anima-textarea" rows="6" disabled
-                style="font-family: monospace; line-height: 1.4; color: #a6e3a1; background: rgba(0,0,0,0.2); width:100%; box-sizing: border-box; margin-bottom: 5px;"
+                style="font-family: monospace; line-height: 1.4; color: #a6e3a1; background: rgba(0,0,0,0.3); width:100%; box-sizing: border-box; margin-bottom: 5px;"
             ></textarea>
+
+            <div id="status-gc-section" style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--anima-border);">
+                <div class="anima-flex-row" style="justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <label class="anima-label-text" style="margin: 0; color: var(--anima-warning, #fbbf24);">
+                        <i class="fa-solid fa-broom"></i> 状态清洗
+                    </label>
+                    
+                    <div id="gc-actions-main" style="display:flex; gap:5px;">
+                        <button id="btn-gc-manage" class="anima-btn secondary small" title="管理清洗规则"><i class="fa-solid fa-gear"></i>清洗规则</button>
+                        <button id="btn-gc-execute" class="anima-btn secondary small" title="调用高级API清洗状态"><i class="fa-solid fa-play"></i> 执行</button>
+                    </div>
+
+                    <div id="gc-actions-result" style="display:none; gap:5px;">
+                        <button id="btn-gc-edit" class="anima-btn secondary small" title="手动微调清洗结果"><i class="fa-solid fa-pen-to-square"></i> 编辑</button>
+                        <button id="btn-gc-apply" class="anima-btn success small" title="确认写入到楼层变量" style="background: #10b981; border-color: #059669; color: white;"><i class="fa-solid fa-check-double"></i> 写入</button>
+                        <button id="btn-gc-discard" class="anima-btn danger small" title="放弃结果并清空"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                </div>
+
+                <div id="gc-info-bar" style="display:none; font-size: 12px; color: #fbbf24; margin-bottom: 5px; text-align: right;">
+                    <i class="fa-solid fa-calculator"></i> 清洗后字符数: <span id="val-gc-char-count" style="font-weight: bold;">0</span>
+                </div>
+
+                <textarea id="gc-result-content" class="anima-textarea" rows="6" disabled
+                    placeholder="等待执行清洗..."
+                    style="font-family: monospace; line-height: 1.4; color: #fbbf24; background: rgba(0,0,0,0.4); border: 1px solid #fbbf24; width:100%; box-sizing: border-box; display: none;"
+                ></textarea>
+
+                <div id="gc-diff-preview" style="
+                    display: none; 
+                    font-family: monospace; 
+                    font-size: 13px;
+                    line-height: 1.5; 
+                    background: rgba(0,0,0,0.4); 
+                    border: 1px solid #fbbf24; 
+                    border-radius: 4px;
+                    width: 100%; 
+                    box-sizing: border-box; 
+                    padding: 10px; 
+                    max-height: 250px; 
+                    overflow-y: auto;
+                    white-space: pre-wrap;
+                "></div>
+
+                <div id="gc-actions-edit-confirm" style="display:none; justify-content: flex-end; gap:5px; margin-top:5px;">
+                    <button id="btn-gc-confirm-edit" class="anima-btn primary small"><i class="fa-solid fa-check"></i> 完成编辑</button>
+                </div>
+            </div>
         </div>
     `;
+
+  function initGCModule() {
+    const $btnManage = $("#btn-gc-manage");
+    const $btnExecute = $("#btn-gc-execute");
+    const $btnEdit = $("#btn-gc-edit");
+    const $btnApply = $("#btn-gc-apply");
+    const $btnDiscard = $("#btn-gc-discard");
+
+    const $actionsMain = $("#gc-actions-main");
+    const $actionsResult = $("#gc-actions-result");
+    const $actionsEditConfirm = $("#gc-actions-edit-confirm");
+    const $btnConfirmEdit = $("#btn-gc-confirm-edit");
+
+    const $textarea = $("#gc-result-content");
+    const $diffPreview = $("#gc-diff-preview");
+    const $infoBar = $("#gc-info-bar");
+    const $charCount = $("#val-gc-char-count");
+
+    let tempGCContent = "";
+
+    // 【核心】记录清洗针对的具体是哪一层
+    let currentGCTargetId = -1;
+
+    // 1. 管理按钮 -> 打开我们在独立文件写的弹窗
+    $btnManage.off("click").on("click", (e) => {
+      e.preventDefault();
+      openGCManagementModal();
+    });
+
+    let originalStateObj = {};
+
+    // 2. 执行按钮 -> 调用后端逻辑
+    $btnExecute.off("click").on("click", async (e) => {
+      e.preventDefault();
+      const originalText = $btnExecute.html();
+      $btnExecute
+        .html('<i class="fa-solid fa-spinner fa-spin"></i> 处理中...')
+        .prop("disabled", true);
+
+      try {
+        const result = await executeGCProcess();
+        currentGCTargetId = result.targetMsgId;
+        try {
+          let oldVars = window.TavernHelper.getVariables({
+            type: "message",
+            message_id: currentGCTargetId,
+          });
+          originalStateObj = oldVars ? oldVars.anima_data || oldVars : {};
+
+          const newObj = yamlToObject(result.yaml) || {};
+          const diffHtml = generateDiffHtml(originalStateObj, newObj);
+
+          // 隐藏文本框，显示高亮对比层
+          $textarea.val(result.yaml).hide();
+          $diffPreview.html(diffHtml).show();
+        } catch (diffErr) {
+          console.warn("Diff生成失败，降级显示纯文本", diffErr);
+          $textarea.val(result.yaml).show();
+          $diffPreview.hide();
+        }
+
+        updateGCCharCount();
+        $infoBar.show();
+        $actionsMain.hide();
+        $actionsResult.css("display", "flex");
+
+        if (window.toastr)
+          toastr.success(`状态清洗完成，准备覆盖楼层 #${currentGCTargetId}`);
+      } catch (err) {
+        if (window.toastr) toastr.error("清洗失败: " + err.message);
+        console.error("[Anima GC Error]:", err);
+      } finally {
+        $btnExecute.html(originalText).prop("disabled", false);
+      }
+    });
+
+    // 3. 结果编辑 (保持不变)
+    $btnEdit.off("click").on("click", (e) => {
+      e.preventDefault();
+      tempGCContent = $textarea.val();
+
+      $diffPreview.hide(); // 隐藏对比层
+      $textarea
+        .show()
+        .prop("disabled", false)
+        .addClass("anima-input-active")
+        .focus();
+
+      $actionsResult.hide();
+      $actionsEditConfirm.css("display", "flex");
+    });
+
+    $btnConfirmEdit.off("click").on("click", (e) => {
+      e.preventDefault();
+      $textarea.prop("disabled", true).removeClass("anima-input-active");
+      try {
+        const editedObj = yamlToObject($textarea.val()) || {};
+        const diffHtml = generateDiffHtml(originalStateObj, editedObj);
+        $textarea.hide();
+        $diffPreview.html(diffHtml).show();
+      } catch (e) {
+        // 如果用户把 YAML 改废了，就老老实实显示文本框
+        $textarea.show();
+        $diffPreview.hide();
+      }
+
+      updateGCCharCount();
+      $actionsEditConfirm.hide();
+      $actionsResult.css("display", "flex");
+    });
+
+    // 4. 放弃按钮 (保持不变)
+    $btnDiscard.off("click").on("click", (e) => {
+      e.preventDefault();
+      resetGCUI();
+    });
+
+    // 5. 【核心】写入按钮 -> 将结果精准覆盖回原楼层
+    $btnApply.off("click").on("click", async (e) => {
+      e.preventDefault();
+      const yamlStr = $textarea.val();
+
+      try {
+        const statusObj = yamlToObject(yamlStr);
+        if (!statusObj) throw new Error("YAML 格式无效或为空");
+
+        if (currentGCTargetId !== -1) {
+          // 如果成功捕获到了楼层ID，精准写入该楼层
+          await saveStatusToMessage(
+            currentGCTargetId,
+            { anima_data: statusObj },
+            "manual_ui",
+          );
+        } else {
+          // 兜底方案：如果因为某些原因没找到基准楼层，写入最新层
+          await saveRealtimeStatusVariables({ anima_data: statusObj });
+        }
+
+        if (window.toastr)
+          toastr.success(
+            `清洗结果已成功覆写至楼层 #${currentGCTargetId !== -1 ? currentGCTargetId : "最新"}！`,
+          );
+
+        // 保存成功后：清空结果框、隐藏底部UI
+        resetGCUI();
+
+        // 强制刷新上方的主状态输入框
+        setTimeout(() => refreshStatusPanel(), 500);
+      } catch (err) {
+        if (window.toastr) toastr.error("写入失败: " + err.message);
+      }
+    });
+
+    // 实时监听输入框变化，更新字数
+    $textarea.on("input", updateGCCharCount);
+    // 同时也帮主输入框加上实时字数监听（当用户点击上方“编辑”时生效）
+    $("#status-yaml-content").on("input", function () {
+      $("#val-status-char-count").text($(this).val().length);
+    });
+
+    function updateGCCharCount() {
+      $charCount.text($textarea.val().length);
+    }
+    function resetGCUI() {
+      $textarea
+        .val("")
+        .hide()
+        .prop("disabled", true)
+        .removeClass("anima-input-active");
+
+      $diffPreview.empty().hide(); // 关键！清空并隐藏对比层
+
+      $infoBar.hide();
+      $actionsResult.hide();
+      $actionsEditConfirm.hide();
+      $actionsMain.css("display", "flex");
+    }
+  }
 
   const updateSettings = currentSettings.update_management || {
     stop_sequence: "",
@@ -292,6 +510,17 @@ export function initStatusSettings() {
                     <input type="checkbox" id="status_panel_enabled" ${updateSettings.panel_enabled ? "checked" : ""}>
                     <span class="slider round"></span>
                 </label>
+            </div>
+
+            <div class="anima-flex-row" style="align-items: center; margin-bottom: 15px;">
+                <div class="anima-label-group" style="flex: 1;">
+                    <span class="anima-label-text">字数阈值提醒</span>
+                    <span class="anima-desc-inline">当状态字符数超过此值时，悬浮同步按钮将变红，设置为0，则永不变红。</span>
+                </div>
+                <div style="flex: 1;">
+                    <input type="number" id="status_char_threshold" class="anima-input" 
+                        placeholder="例如: 2000" value="${updateSettings.char_threshold || ""}">
+                </div>
             </div>
 
             <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid var(--anima-border);">
@@ -660,6 +889,7 @@ export function initStatusSettings() {
   initUpdateManagementModule();
   initZodModule();
   bindGlobalEvents();
+  initGCModule();
   initFloatingSyncButton();
   setTimeout(() => {
     refreshStatusPanel();
@@ -902,12 +1132,39 @@ export function refreshStatusPanel() {
         : "# 当前无任何历史状态\n# 请点击“同步”进行初始化...";
 
     $textarea.val(yamlStr);
+    $("#val-status-char-count").text(yamlStr.length);
     $currentIndicator.text(currentId);
     $sourceIndicator.text(displaySource);
 
     // 5. 【核心修复】按钮显隐控制 (加强版)
     if ($syncBtn.length > 0) {
       if (shouldShowSyncBtn) {
+        const updateConfig = currentSettings.update_management || {};
+        const threshold = parseInt(updateConfig.char_threshold, 10);
+        const isOverLimit =
+          !isNaN(threshold) && threshold > 0 && yamlStr.length > threshold;
+
+        if (isOverLimit) {
+          // 超标：变红并加一点发光特效，修改 title 提示语
+          $syncBtn.css({
+            "background-color": "#ef4444",
+            "border-color": "#dc2626",
+            "box-shadow": "0 0 10px rgba(239, 68, 68, 0.6)",
+          });
+          $syncBtn.attr(
+            "title",
+            `字数已达 ${yamlStr.length}/${threshold}！点击同步后，建议进行状态清洗 (可拖动)`,
+          );
+        } else {
+          // 正常：清空内联样式，恢复 style.css 中定义的默认黄色/蓝色
+          $syncBtn.css({
+            "background-color": "",
+            "border-color": "",
+            "box-shadow": "",
+          });
+          $syncBtn.attr("title", "检测到当前状态未同步，点击更新 (可拖动)");
+        }
+
         // 🔥【新增】强制重置图标为“云朵”
         // 防止上次点击后留下的 fa-spinner 还在转
         if ($syncBtn.find)
@@ -918,11 +1175,17 @@ export function refreshStatusPanel() {
           .removeClass("anima-spin-out")
           .addClass("anima-fade-in");
       } else {
-        // 强制隐藏，防止 ghost state
+        // 强制隐藏，防止 ghost state，并顺手重置颜色
         $syncBtn
           .removeClass("anima-fade-in")
           .addClass("anima-spin-out")
           .fadeOut(200);
+
+        $syncBtn.css({
+          "background-color": "",
+          "border-color": "",
+          "box-shadow": "",
+        });
       }
     }
   } catch (e) {
@@ -1318,7 +1581,7 @@ function renderStatusList() {
       const currentTitle = msg.title || "";
       const displayTitleHtml = currentTitle
         ? escapeHtml(currentTitle)
-        : '<span style="color:#666;">(未命名)</span>';
+        : '<span style="color:#666;">(新规则)</span>';
       const displayRole = (msg.role || "SYSTEM").toUpperCase();
 
       $item = $(`
@@ -3172,11 +3435,12 @@ async function syncStatusToVariables(statusObj) {
 }
 
 function initUpdateManagementModule() {
-  // 确保对象存在
+  // 确保对象存在 (补充 char_threshold 字段)
   if (!currentSettings.update_management) {
     currentSettings.update_management = {
       stop_sequence: "",
       panel_enabled: false,
+      char_threshold: "", // 新增初始值
     };
   }
   const settings = currentSettings.update_management;
@@ -3184,7 +3448,10 @@ function initUpdateManagementModule() {
   // 1. 文本框逻辑优化：只更新内存，不立即写盘
   $("#status_stop_sequence").on("input", function () {
     settings.stop_sequence = $(this).val();
-    // 注意：这里去掉了 saveStatusSettings，改为由下方按钮统一保存
+  });
+
+  $("#status_char_threshold").on("input", function () {
+    settings.char_threshold = $(this).val();
   });
 
   // 2. 开关逻辑：保持即时生效（因为涉及到 UI 刷新）
@@ -3807,4 +4074,87 @@ function simpleFormatHTML(html) {
   });
 
   return formatted.trim();
+}
+
+/**
+ * 递归对比新旧对象，生成带有颜色高亮的 Diff HTML (支持深度展开版)
+ */
+function generateDiffHtml(oldObj, newObj, indent = 0) {
+  let html = "";
+  const spaces = "&nbsp;&nbsp;".repeat(indent);
+
+  // 获取所有的 key (取并集)
+  const allKeys = new Set([
+    ...Object.keys(oldObj || {}),
+    ...Object.keys(newObj || {}),
+  ]);
+
+  // 格式化输出值的辅助内部函数
+  const renderVal = (val) => {
+    if (window._.isPlainObject(val))
+      return '<span style="color:#888;">{...}</span>';
+    if (Array.isArray(val))
+      return `<span style="color:#888;">[ ${escapeHtml(val.join(", "))} ]</span>`;
+    if (typeof val === "string")
+      return `<span style="color:#e2e8f0;">"${escapeHtml(val)}"</span>`;
+    return `<span style="color:#60a5fa;">${escapeHtml(String(val))}</span>`;
+  };
+
+  allKeys.forEach((key) => {
+    const oldVal = (oldObj || {})[key];
+    const newVal = (newObj || {})[key];
+    const safeKey = escapeHtml(key);
+
+    const isOldObj = window._.isPlainObject(oldVal);
+    const isNewObj = window._.isPlainObject(newVal);
+
+    if (oldVal === undefined) {
+      // 🟢 新增 (在旧数据中不存在)
+      if (isNewObj) {
+        // 如果新增的是一个对象，打印标题并递归展开里面的所有属性
+        html += `<div style="color: #4ade80;">${spaces}<span style="font-weight:bold;">${safeKey}</span>: <span style="font-size:10px; opacity:0.8;">(+新增对象)</span></div>`;
+        html += generateDiffHtml({}, newVal, indent + 1); // 巧妙递归：把旧对象视为空
+      } else {
+        html += `<div style="color: #4ade80;">${spaces}<span style="font-weight:bold;">${safeKey}</span>: ${renderVal(newVal)} <span style="font-size:10px; opacity:0.8;">(+新增)</span></div>`;
+      }
+    } else if (newVal === undefined) {
+      // 🔴 删除 (在新数据中被干掉了)
+      if (isOldObj) {
+        // 如果删除的是一个对象，打印标题并递归展开里面被删掉的属性
+        html += `<div style="color: #f87171; text-decoration: line-through; opacity: 0.8;">${spaces}<span style="font-weight:bold;">${safeKey}</span>: <span style="font-size:10px; text-decoration: none;">(-删除对象)</span></div>`;
+        html += generateDiffHtml(oldVal, {}, indent + 1); // 巧妙递归：把新对象视为空
+      } else {
+        html += `<div style="color: #f87171; text-decoration: line-through; opacity: 0.8;">${spaces}<span style="font-weight:bold;">${safeKey}</span>: ${renderVal(oldVal)} <span style="font-size:10px; text-decoration: none;">(-删除)</span></div>`;
+      }
+    } else if (isOldObj && isNewObj) {
+      // ⚪ 双方都是对象且都存在，正常向下递归深入
+      html += `<div style="color: #ccc;">${spaces}<span style="font-weight:bold;">${safeKey}</span>:</div>`;
+      html += generateDiffHtml(oldVal, newVal, indent + 1);
+    } else if (!window._.isEqual(oldVal, newVal)) {
+      // 🟡 修改 (值发生了变化)
+      if (isOldObj || isNewObj) {
+        // 数据结构发生突变 (比如原本是个文本，被模型改成了一个对象)
+        html += `<div style="color: #fbbf24;">${spaces}<span style="font-weight:bold;">${safeKey}</span>: <span style="font-size:10px; opacity:0.8;">(~类型/结构改变)</span></div>`;
+        html += generateDiffHtml(
+          isOldObj ? oldVal : { "[旧值]": oldVal },
+          isNewObj ? newVal : { "[新值]": newVal },
+          indent + 1,
+        );
+      } else {
+        // 正常的文本/数字值修改
+        html += `<div style="color: #fbbf24;">${spaces}<span style="font-weight:bold;">${safeKey}</span>: ${renderVal(newVal)} <span style="font-size:10px; opacity:0.8;">(~修改, 原: ${renderVal(oldVal)})</span></div>`;
+      }
+    } else {
+      // ⚪ 无变化 (仅限基本类型和数组，因为 isOldObj && isNewObj 已经被上面拦截了)
+      html += `<div style="color: #888;">${spaces}<span style="font-weight:bold;">${safeKey}</span>: ${renderVal(newVal)}</div>`;
+    }
+  });
+
+  if (html === "") {
+    // 防止空对象引起排版诡异
+    return indent === 0
+      ? `<div style="color: #888; text-align: center;">(状态无任何变化)</div>`
+      : `<div style="color: #888;">${spaces}<span style="color:#666;">(空)</span></div>`;
+  }
+  return html;
 }

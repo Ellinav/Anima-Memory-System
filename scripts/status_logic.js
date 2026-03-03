@@ -106,6 +106,20 @@ export function getStatusSettings() {
       );
     }
 
+    const cardGC = getSettingsFromCharacterCard("anima_gc_settings");
+    if (cardGC) {
+      finalSettings.gc_settings = cardGC;
+    } else {
+      // 如果角色卡没存过，给一套默认值
+      finalSettings.gc_settings = {
+        reuse_regex: true, // 默认开启复用全局正则
+        skip_layer_zero: true,
+        regex_skip_user: false,
+        exclude_user: false,
+        regex_list: [],
+      };
+    }
+
     // --- 读取 美化配置 ---
     const cardBeautify = getSettingsFromCharacterCard(
       "anima_beautify_template",
@@ -144,6 +158,14 @@ export function getStatusSettings() {
       DEFAULT_STATUS_SETTINGS.prompt_rules,
     );
 
+    finalSettings.gc_settings = {
+      reuse_regex: true,
+      skip_layer_zero: true,
+      regex_skip_user: false,
+      exclude_user: false,
+      regex_list: [],
+    };
+
     // 3. 强制重置 美化配置 为代码默认值
     // 这一步会把你代码里写的空字符串 (或你删改后的默认值) 覆盖掉全局里的那一大串脏数据
     finalSettings.beautify_settings = structuredClone(
@@ -155,6 +177,62 @@ export function getStatusSettings() {
   }
 
   return finalSettings;
+}
+
+// ==========================================
+// 状态清洗 (GC) 专属配置读取
+// ==========================================
+export const DEFAULT_GC_SETTINGS = {
+  reuse_regex: true,
+  skip_layer_zero: true,
+  regex_skip_user: false,
+  exclude_user: false,
+  regex_list: [],
+};
+
+export const DEFAULT_GC_PROMPTS = [
+  { type: "char_info", enabled: true, content: "系统自动提取角色卡信息..." },
+  { type: "user_info", enabled: true, content: "系统自动提取用户设定..." },
+  {
+    type: "status_placeholder",
+    content: "系统将在此处插入需要清洗的臃肿状态...",
+  },
+  {
+    type: "chat_context_placeholder",
+    floors: 30,
+    content: "系统将在此处插入清洗后的聊天记录摘要/正文...",
+  },
+  {
+    type: "normal",
+    role: "system",
+    title: "清洗指令",
+    content: "请根据以上信息，清理并输出当前最新状态...",
+  },
+];
+
+export function getGCSettings() {
+  let finalGC = structuredClone(DEFAULT_GC_SETTINGS);
+  let finalPrompts = structuredClone(DEFAULT_GC_PROMPTS);
+
+  const context =
+    typeof SillyTavern !== "undefined" ? SillyTavern.getContext() : null;
+  const charId = context ? context.characterId : null;
+
+  if (charId) {
+    // 1. 读取专属清洗正则与开关
+    const cardGC = getSettingsFromCharacterCard("anima_gc_settings");
+    if (cardGC) {
+      Object.assign(finalGC, cardGC);
+    }
+
+    // 2. 读取专属清洗提示词 (与状态更新提示词完全隔离)
+    const cardPrompts = getSettingsFromCharacterCard("anima_gc_prompts");
+    if (cardPrompts && Array.isArray(cardPrompts) && cardPrompts.length > 0) {
+      finalPrompts = cardPrompts;
+    }
+  }
+
+  return { gcConfig: finalGC, gcPrompts: finalPrompts };
 }
 
 export function saveStatusSettings(settings) {
@@ -1962,4 +2040,218 @@ export function renderAnimaTemplate(template, contextData) {
   });
 
   return output;
+}
+
+// ==========================================
+// 状态清洗 (GC) 核心执行逻辑
+// ==========================================
+
+/**
+ * 1. 提取并清洗 GC 专属上下文 (严格复刻 status_gc_ui.js 逻辑)
+ */
+export function getCleanedContextForGC(floors, gcConfig) {
+  if (!window.TavernHelper) return [];
+  const allMsgs = window.TavernHelper.getChatMessages("0-{{lastMessageId}}", {
+    include_swipes: false,
+  });
+  if (!allMsgs || allMsgs.length === 0) return [];
+
+  const msgs = allMsgs.slice(-Math.abs(floors));
+  if (msgs.length === 0) return [];
+
+  let processedMsgs = [];
+  let activeRegexList = [];
+  let activeSkipZero = false;
+  let activeSkipUser = false;
+  let activeExcludeUser = false;
+
+  if (gcConfig.reuse_regex) {
+    const globalSettings = getStatusSettings();
+    const globalRegexConfig = globalSettings.regex_settings || {};
+    activeRegexList = globalRegexConfig.regex_list || [];
+    activeSkipZero = globalRegexConfig.skip_layer_zero || false;
+    activeSkipUser = globalRegexConfig.regex_skip_user || false;
+    activeExcludeUser = globalRegexConfig.exclude_user || false;
+  } else {
+    activeRegexList = gcConfig.regex_list || [];
+    activeSkipZero = gcConfig.skip_layer_zero || false;
+    activeSkipUser = gcConfig.regex_skip_user || false;
+    activeExcludeUser = gcConfig.exclude_user || false;
+  }
+
+  const validRegexes = [];
+  activeRegexList.forEach((r) => {
+    if (!r) return;
+    let val =
+      r.regex || r.content || r.pattern || (typeof r === "string" ? r : "");
+    let type = r.type || "extract";
+    if (val) validRegexes.push({ type: type, regex: String(val) });
+  });
+
+  msgs.forEach((msg) => {
+    const isUser = msg.is_user || msg.role === "user";
+    if (activeExcludeUser && isUser) return;
+
+    let content = msg.message || "";
+    if (content && typeof processMacros !== "undefined") {
+      content = processMacros(content);
+    }
+
+    const cleanRegex = /^[\s\r\n]*(&gt;|>)[\s\r\n]*/i;
+    while (cleanRegex.test(content)) {
+      content = content.replace(cleanRegex, "");
+    }
+    content = content.trim();
+    if (!content) return;
+
+    let isSkipped = false;
+    if (activeSkipZero && String(msg.message_id) === "0") isSkipped = true;
+    if (activeSkipUser && isUser) isSkipped = true;
+
+    if (!isSkipped && validRegexes.length > 0) {
+      if (typeof applyRegexRules !== "undefined") {
+        content = applyRegexRules(content, validRegexes);
+      }
+      content = content.trim();
+    }
+
+    if (content) {
+      processedMsgs.push({
+        role: msg.role || (isUser ? "user" : "assistant"),
+        displayContent: content,
+      });
+    }
+  });
+
+  return processedMsgs;
+}
+
+/**
+ * 2. 组装发送给 LLM 的 Messages 数组与获取基准楼层
+ */
+export async function buildGCPayload() {
+  const { gcConfig, gcPrompts } = getGCSettings();
+  const messages = [];
+
+  // 1. 获取基准楼层与状态
+  let baseStatus = { id: -1, data: {} };
+  const allMsgs = window.TavernHelper.getChatMessages("0-{{lastMessageId}}", {
+    include_swipes: false,
+  });
+  if (allMsgs && allMsgs.length > 0) {
+    const lastMsg = allMsgs[allMsgs.length - 1];
+    const vars = window.TavernHelper.getVariables({
+      type: "message",
+      message_id: lastMsg.message_id,
+    });
+
+    if (vars && vars.anima_data && Object.keys(vars.anima_data).length > 0) {
+      baseStatus = { id: lastMsg.message_id, data: vars.anima_data };
+    } else {
+      baseStatus = findBaseStatus(lastMsg.message_id);
+    }
+  }
+
+  let currentStatusYaml =
+    baseStatus.id !== -1 ? objectToYaml(baseStatus.data) : "# 初始状态 (Init)";
+
+  // 2. 精准获取角色与用户数据
+  const { charDesc, userPersona } = getContextData();
+
+  // 3. 严格按照 GC UI 显示的内容组装
+  for (const rule of gcPrompts) {
+    if (rule.enabled === false) continue;
+
+    let finalContent = "";
+
+    // 🌟 默认读取 rule.role（适用于用户手动添加的自定义 Prompt），兜底为 "system"
+    let role = rule.role || "system";
+
+    if (rule.type === "char_info") {
+      role = "system";
+      if (charDesc) finalContent = processMacros(charDesc);
+    } else if (rule.type === "user_info") {
+      role = "system";
+      if (userPersona) finalContent = processMacros(userPersona);
+    } else if (rule.type === "status_placeholder") {
+      role = "system";
+      finalContent = currentStatusYaml;
+    } else if (rule.type === "chat_context_placeholder") {
+      role = "user";
+      const contextArray = getCleanedContextForGC(rule.floors || 30, gcConfig);
+      if (contextArray.length > 0) {
+        finalContent = contextArray
+          .map((m) => {
+            const roleName = m.role ? m.role.toUpperCase() : "UNKNOWN";
+            return `[${roleName}]\n${m.displayContent}`;
+          })
+          .join("\n\n");
+      } else {
+        finalContent = "⚠️ 无增量消息 (或已被正则完全过滤)";
+      }
+    } else {
+      finalContent = processMacros(rule.content || "");
+    }
+
+    if (finalContent) {
+      // 这里的逻辑会自动把相邻且 role 相同的块合并，如果 role 变了，就会断开推入新的 message
+      if (messages.length > 0 && messages[messages.length - 1].role === role) {
+        messages[messages.length - 1].content += `\n\n${finalContent}`;
+      } else {
+        messages.push({ role, content: finalContent });
+      }
+    }
+  }
+
+  return { messages, baseStatus };
+}
+
+/**
+ * 3. 供前端 UI 调用的主执行函数
+ */
+export async function executeGCProcess() {
+  const { messages, baseStatus } = await buildGCPayload();
+
+  if (!messages || messages.length === 0) {
+    throw new Error("生成的清洗提示词为空");
+  }
+
+  // 0. 严格调用 llm API (总结模型)
+  const responseText = await generateText(messages, "llm");
+
+  if (!responseText) {
+    throw new Error("模型返回内容为空");
+  }
+
+  console.log("[Anima GC] LLM 原始返回:", responseText);
+
+  // 1. 提取 JSON 增量更新
+  const rawResult = extractJsonResult(responseText);
+  let updates = {};
+  if (rawResult) {
+    const payload =
+      Array.isArray(rawResult) && rawResult.length > 0
+        ? rawResult[0]
+        : rawResult;
+    // 兼容 LLM 直接返回增量 或 返回 { updates: {...} } 格式
+    updates = payload.updates || payload;
+  } else {
+    throw new Error("未能从 LLM 回复中解析出有效的 JSON");
+  }
+
+  console.log("[Anima GC] 提取到的增量更新 JSON:", updates);
+
+  // 2. 将增量 JSON 与旧状态合并 (形成新的 60 楼状态)
+  const mergedData = deepMergeUpdates(
+    structuredClone(baseStatus.data || {}),
+    updates,
+  );
+
+  // 3. 转换为 YAML 以便 UI 显示
+  const cleanYaml = objectToYaml(mergedData);
+
+  return {
+    yaml: cleanYaml,
+    targetMsgId: baseStatus.id, // 【核心】将旧状态的所在楼层 ID (比如 60) 返回给 UI
+  };
 }

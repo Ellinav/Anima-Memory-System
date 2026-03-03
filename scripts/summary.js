@@ -491,7 +491,7 @@ function bindSummaryEvents() {
       // === 1. 角色卡信息 & 用户信息 (保持不变) ===
       if (msg.type === "char_info" || msg.type === "user_info") {
         const isChar = msg.type === "char_info";
-        const title = isChar ? "👾 角色卡信息" : "👩🏻 用户设定";
+        const title = isChar ? "👾 角色卡信息" : "👑 用户设定";
         // 角色卡使用紫色，用户设定使用粉色
         const colorClass = isChar ? "color:#a855f7" : "color:#ec4899";
         const borderColor = isChar ? "#a855f7" : "#ec4899";

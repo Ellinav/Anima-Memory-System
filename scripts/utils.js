@@ -216,15 +216,24 @@ export function processMacros(text) {
 // ========================================================
 
 export function parseRegex(str) {
+  // 🔥 修复：将 text 改为 str
   if (!str) return null;
+
+  // 去掉首尾空格，防止用户复制粘贴时带入不可见字符
+  const trimmedStr = str.trim();
+
   try {
-    const match = str.match(/^\/(.+)\/([a-z]*)$/);
+    const match = trimmedStr.match(/^\/(.+)\/([a-z]*)$/);
     if (match) {
-      return new RegExp(match[1], match[2]);
+      let flags = match[2];
+      // 强制补全 g 标志，因为 matchAll 必须要求全局匹配
+      if (!flags.includes("g")) flags += "g";
+      return new RegExp(match[1], flags);
     }
-    return new RegExp(str, "g");
+    // 如果用户没写斜杠，直接当做普通全局正则处理
+    return new RegExp(trimmedStr, "g");
   } catch (e) {
-    console.error("[Anima] Invalid Regex:", str, e);
+    console.error("[Anima] Invalid Regex:", trimmedStr, e);
     return null;
   }
 }
@@ -420,15 +429,20 @@ function isObject(item) {
 
 export function deepMergeUpdates(original, updates) {
   if (!original) original = {};
+
   for (const key in updates) {
     if (!Object.hasOwn(updates, key)) continue;
+
     const updateValue = updates[key];
     const currentValue = original[key];
 
+    // 1. 处理 null (直接删除当前层级的 key)
     if (updateValue === null) {
       delete original[key];
       continue;
     }
+
+    // 2. 处理数值增减 (例如 "+10", "-5")
     if (typeof currentValue === "number" && typeof updateValue === "string") {
       const trimmed = updateValue.trim();
       if (trimmed.startsWith("+") || trimmed.startsWith("-")) {
@@ -439,12 +453,29 @@ export function deepMergeUpdates(original, updates) {
         }
       }
     }
-    if (isObject(currentValue) && isObject(updateValue)) {
-      deepMergeUpdates(currentValue, updateValue);
+
+    // 3. 处理嵌套对象 (🔥 修复的核心位置)
+    if (isObject(updateValue)) {
+      // 如果原状态中没有这个节点，或者它原本不是对象，我们就初始化一个空对象供其递归
+      if (!isObject(currentValue)) {
+        original[key] = {};
+      }
+
+      // 强制深入内部进行合并和清理
+      deepMergeUpdates(original[key], updateValue);
+
+      // 🔥 (可选优化) 如果递归清理完 null 之后，这个对象变成了空壳 {}，顺手把它也删掉
+      // 避免状态面板里留下一堆诸如 "物品栏: {}" 的废话
+      if (Object.keys(original[key]).length === 0) {
+        delete original[key];
+      }
       continue;
     }
+
+    // 4. 其他基础类型情况，直接覆盖
     original[key] = updateValue;
   }
+
   return original;
 }
 

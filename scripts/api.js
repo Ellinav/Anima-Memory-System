@@ -959,19 +959,36 @@ export async function generateText(
     const headers = { "Content-Type": "application/json" };
     const isCustomUrl = url && !url.includes("googleapis.com");
 
-    const googleContents = messages.map((msg) => {
+    // 第一步：将所有角色映射为 user 或 model
+    const rawGoogleContents = messages.map((msg) => {
       let gRole = "user";
       if (msg.role === "assistant") {
         gRole = "model"; // AI 回复映射为 model
       } else if (msg.role === "system") {
-        gRole = "user";
+        gRole = "user"; // System 映射为 user
       } else {
-        gRole = "user"; // user 保持 user
+        gRole = "user"; // User 保持 user
       }
       return {
         role: gRole,
         parts: [{ text: msg.content }],
       };
+    });
+
+    // 🔥【关键修改 2】第二步：强制合并相邻的同角色消息 (满足 Gemini 强制交替规则)
+    const googleContents = [];
+    rawGoogleContents.forEach((curr) => {
+      if (
+        googleContents.length > 0 &&
+        googleContents[googleContents.length - 1].role === curr.role
+      ) {
+        // 如果当前角色和上一个角色相同，直接把文本用双换行拼接在一起
+        googleContents[googleContents.length - 1].parts[0].text +=
+          "\n\n" + curr.parts[0].text;
+      } else {
+        // 否则作为一个新的消息块推入数组
+        googleContents.push(curr);
+      }
     });
 
     // 构造请求体

@@ -108,9 +108,9 @@ export function openGCManagementModal() {
                         <div class="anima-flex-row" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
                             <div class="anima-label-text"><i class="fa-solid fa-list-ol"></i> 状态清洗提示词预设</div>
                             <div style="display: flex; gap: 5px;">
-                                <button id="btn-gc-import" class="anima-btn small secondary" title="导入"><i class="fa-solid fa-file-import"></i> 导入</button>
-                                <button id="btn-gc-export" class="anima-btn small secondary" title="导出"><i class="fa-solid fa-file-export"></i> 导出</button>
-                                <button id="btn-gc-add-prompt" class="anima-btn small primary"><i class="fa-solid fa-plus"></i> 添加</button>
+                                <button id="btn-gc-import" class="anima-btn small secondary" title="导入"><i class="fa-solid fa-file-import"></i> </button>
+                                <button id="btn-gc-export" class="anima-btn small secondary" title="导出"><i class="fa-solid fa-file-export"></i> </button>
+                                <button id="btn-gc-add-prompt" class="anima-btn small primary"><i class="fa-solid fa-plus"></i></button>
                             </div>
                         </div>
 
@@ -385,7 +385,7 @@ export function openGCManagementModal() {
         borderColor = "#3b82f6";
 
         headerHtml = `
-                    <span style="font-weight:bold; color:#93c5fd; flex:1;"><i class="fa-solid fa-layer-group"></i> 提取剧情上下文</span>
+                    <span style="font-weight:bold; color:#93c5fd; flex:1;"><i class="fa-solid fa-layer-group"></i> 上下文</span>
                     <div style="display:flex; align-items:center; gap:5px; margin-right: 15px;" class="stop-propagation">
                         <span style="font-size:12px; color:#aaa;">最新</span>
                         <div class="anima-compact-input" style="margin: 0;">

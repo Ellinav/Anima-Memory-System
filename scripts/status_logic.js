@@ -2135,20 +2135,54 @@ export async function buildGCPayload() {
 
   // 1. 获取基准楼层与状态
   let baseStatus = { id: -1, data: {} };
+  let targetWriteId = -1; // 【新增】专门用于记录最终要写入的目标楼层
+
   const allMsgs = window.TavernHelper.getChatMessages("0-{{lastMessageId}}", {
     include_swipes: false,
   });
+
   if (allMsgs && allMsgs.length > 0) {
-    const lastMsg = allMsgs[allMsgs.length - 1];
+    // 【新增】智能寻找最近的 AI 楼层作为写入目标，防止触发你的 User 楼层禁写锁
+    let targetMsg = allMsgs[allMsgs.length - 1];
+    const context = SillyTavern.getContext();
+    const currentUserName = context.userName;
+
+    // 判定最新楼层是否为 User
+    let isUser =
+      targetMsg.is_user === true ||
+      targetMsg.role === "user" ||
+      (targetMsg.name && targetMsg.name === currentUserName) ||
+      (targetMsg.name && String(targetMsg.name).toLowerCase() === "you");
+
+    if (isUser) {
+      // 如果最新是 User (比如玩家刚发完话就点清洗)，往上找一层 AI
+      for (let i = allMsgs.length - 2; i >= 0; i--) {
+        const m = allMsgs[i];
+        const mIsUser =
+          m.is_user === true ||
+          m.role === "user" ||
+          m.name === currentUserName ||
+          String(m.name).toLowerCase() === "you";
+        if (!mIsUser) {
+          targetMsg = m;
+          break;
+        }
+      }
+    }
+
+    targetWriteId = targetMsg.message_id;
+
+    // 查找状态数据 (以 targetWriteId 为起点回溯)
     const vars = window.TavernHelper.getVariables({
       type: "message",
-      message_id: lastMsg.message_id,
+      message_id: targetWriteId,
     });
 
     if (vars && vars.anima_data && Object.keys(vars.anima_data).length > 0) {
-      baseStatus = { id: lastMsg.message_id, data: vars.anima_data };
+      baseStatus = { id: targetWriteId, data: vars.anima_data };
     } else {
-      baseStatus = findBaseStatus(lastMsg.message_id);
+      // 找不到就往上回溯，比如回溯到了 30 楼
+      baseStatus = findBaseStatus(targetWriteId);
     }
   }
 
@@ -2163,8 +2197,6 @@ export async function buildGCPayload() {
     if (rule.enabled === false) continue;
 
     let finalContent = "";
-
-    // 🌟 默认读取 rule.role（适用于用户手动添加的自定义 Prompt），兜底为 "system"
     let role = rule.role || "system";
 
     if (rule.type === "char_info") {
@@ -2178,6 +2210,7 @@ export async function buildGCPayload() {
       finalContent = currentStatusYaml;
     } else if (rule.type === "chat_context_placeholder") {
       role = "user";
+      // 这里的逻辑不用改，它本身就是截取最底部的最新 N 楼
       const contextArray = getCleanedContextForGC(rule.floors || 30, gcConfig);
       if (contextArray.length > 0) {
         finalContent = contextArray
@@ -2194,7 +2227,6 @@ export async function buildGCPayload() {
     }
 
     if (finalContent) {
-      // 这里的逻辑会自动把相邻且 role 相同的块合并，如果 role 变了，就会断开推入新的 message
       if (messages.length > 0 && messages[messages.length - 1].role === role) {
         messages[messages.length - 1].content += `\n\n${finalContent}`;
       } else {
@@ -2203,14 +2235,16 @@ export async function buildGCPayload() {
     }
   }
 
-  return { messages, baseStatus };
+  // 【修改】将 targetWriteId 一起返回给执行函数
+  return { messages, baseStatus, targetWriteId };
 }
 
 /**
  * 3. 供前端 UI 调用的主执行函数
  */
 export async function executeGCProcess() {
-  const { messages, baseStatus } = await buildGCPayload();
+  // 【修改】接收 targetWriteId
+  const { messages, baseStatus, targetWriteId } = await buildGCPayload();
 
   if (!messages || messages.length === 0) {
     throw new Error("生成的清洗提示词为空");
@@ -2233,7 +2267,6 @@ export async function executeGCProcess() {
       Array.isArray(rawResult) && rawResult.length > 0
         ? rawResult[0]
         : rawResult;
-    // 兼容 LLM 直接返回增量 或 返回 { updates: {...} } 格式
     updates = payload.updates || payload;
   } else {
     throw new Error("未能从 LLM 回复中解析出有效的 JSON");
@@ -2241,7 +2274,7 @@ export async function executeGCProcess() {
 
   console.log("[Anima GC] 提取到的增量更新 JSON:", updates);
 
-  // 2. 将增量 JSON 与旧状态合并 (形成新的 60 楼状态)
+  // 2. 将增量 JSON 与旧状态合并
   const mergedData = deepMergeUpdates(
     structuredClone(baseStatus.data || {}),
     updates,
@@ -2252,6 +2285,7 @@ export async function executeGCProcess() {
 
   return {
     yaml: cleanYaml,
-    targetMsgId: baseStatus.id, // 【核心】将旧状态的所在楼层 ID (比如 60) 返回给 UI
+    // 【核心修改】将写入目标指向最新层 (如 32)，如果没找到最新层才兜底用旧层
+    targetMsgId: targetWriteId !== -1 ? targetWriteId : baseStatus.id,
   };
 }

@@ -1642,15 +1642,13 @@ function bindRagEvents(settings) {
 
     // B. 定义 isSelf 判断函数 (完全复刻 rag_ui_components.js 的逻辑)
     const isSelf = (dbId) => {
-      if (!currentChatId || !dbId) return false;
-      // 去掉后缀
-      const rawChatId = currentChatId.replace(/\.jsonl?$/i, "");
+      if (!dbId) return false;
 
-      const normDb = normalizeId(dbId);
-      const normChat = normalizeId(rawChatId);
+      // 直接调用你的智能 ID 算法，获取当前聊天绝对正确的数据库名
+      const expectedDbName = getSmartCollectionId();
 
-      // 核心匹配：相等 或 数据库名包含了聊天文件名作为后缀 (例如 "角色_时间" endsWith "时间")
-      return normDb === normChat || normDb.endsWith(normChat);
+      // 精准匹配
+      return dbId === expectedDbName;
     };
 
     const allLinkedSet = new Set([

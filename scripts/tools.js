@@ -342,6 +342,15 @@ let isConsoleProxied = false;
 // 缓存日志，防止切换 Tab 时丢失（可选，视需求而定，这里为了简单直接写 DOM）
 const MAX_LOG_LINES = 50;
 
+function escapeHtml(unsafeStr) {
+  return String(unsafeStr)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function setupLogInterceptor() {
   if (isConsoleProxied) return;
 
@@ -352,62 +361,73 @@ function setupLogInterceptor() {
 
   // 通用处理函数
   function processLog(type, args) {
-    // 1. 将参数转换为字符串以便检查
-    const msgStr = args
-      .map((arg) => {
-        if (typeof arg === "object") {
-          try {
-            return JSON.stringify(arg);
-          } catch (e) {
-            return "[Circular/Object]";
+    // 🛡️ 护盾 1：加上 Try-Catch，绝不把任何错误抛给 SillyTavern 核心
+    try {
+      // 1. 将参数转换为字符串以便检查
+      const msgStr = args
+        .map((arg) => {
+          if (typeof arg === "object") {
+            try {
+              return JSON.stringify(arg);
+            } catch (e) {
+              return "[Circular/Object]";
+            }
+          }
+          return String(arg);
+        })
+        .join(" ");
+
+      // 2. 筛选关键词 (大小写不敏感)
+      if (msgStr.toLowerCase().includes("anima")) {
+        const outputDiv = $("#anima-log-output");
+        if (outputDiv.length > 0) {
+          const time = new Date().toLocaleTimeString();
+          let color = "#a3e635"; // 默认绿色
+          if (type === "warn") color = "#facc15";
+          if (type === "error") color = "#f87171";
+
+          // 🛡️ 护盾 2：转义危险字符，防止 jQuery 解析 HTML 报错
+          const safeMsgStr = escapeHtml(msgStr);
+
+          // 构造 HTML
+          const logHtml =
+            `<div style="border-bottom: 1px solid #333; padding: 2px 0;">` +
+            `<span style="opacity:0.5; font-size:0.9em;">[${time}]</span> ` +
+            `<span style="color:${color};">[${type.toUpperCase()}]</span> ` +
+            `${safeMsgStr}` + // <--- 使用转义后的安全字符串
+            `</div>`;
+
+          if (
+            outputDiv.children().length === 0 &&
+            outputDiv.text().includes("等待日志流接入")
+          ) {
+            outputDiv.empty();
+          }
+
+          outputDiv.append(logHtml);
+
+          // 限制行数防止卡顿
+          if (outputDiv.children().length > MAX_LOG_LINES) {
+            outputDiv.children().first().remove();
+          }
+
+          // 自动滚动
+          if (
+            $("#anima_log_autoscroll").is(":checked") &&
+            $("#anima-console-container").is(":visible")
+          ) {
+            const container = $("#anima-console-container");
+            // 使用 setTimeout 宏任务，确保 DOM 渲染更新完成再获取高度
+            setTimeout(() => {
+              container.scrollTop(container[0].scrollHeight);
+            }, 0);
           }
         }
-        return String(arg);
-      })
-      .join(" ");
-
-    // 2. 筛选关键词 (大小写不敏感)
-    if (msgStr.toLowerCase().includes("anima")) {
-      const outputDiv = $("#anima-log-output");
-      if (outputDiv.length > 0) {
-        // 构造 HTML
-        const time = new Date().toLocaleTimeString();
-        let color = "#a3e635"; // 默认绿色
-        if (type === "warn") color = "#facc15";
-        if (type === "error") color = "#f87171";
-
-        const logHtml =
-          `<div style="border-bottom: 1px solid #333; padding: 2px 0;">` +
-          `<span style="opacity:0.5; font-size:0.9em;">[${time}]</span> ` +
-          `<span style="color:${color};">[${type.toUpperCase()}]</span> ` +
-          `${msgStr}` +
-          `</div>`;
-
-        if (
-          outputDiv.children().length === 0 &&
-          outputDiv.text().includes("等待日志流接入")
-        ) {
-          outputDiv.empty();
-        }
-        outputDiv.append(logHtml);
-
-        // 限制行数防止卡顿
-        if (outputDiv.children().length > MAX_LOG_LINES) {
-          outputDiv.children().first().remove();
-        }
-
-        // 自动滚动
-        if (
-          $("#anima_log_autoscroll").is(":checked") &&
-          $("#anima-console-container").is(":visible")
-        ) {
-          const container = $("#anima-console-container");
-          // 使用 setTimeout 宏任务，确保 DOM 渲染更新完成再获取高度
-          setTimeout(() => {
-            container.scrollTop(container[0].scrollHeight);
-          }, 0);
-        }
       }
+    } catch (e) {
+      // 🛑 绝对防御区：
+      // 这里如果报错，什么都别做！千万不要在此处调用 console.error(e)
+      // 否则拦截器会再次拦截自己的报错，导致无限堆栈溢出死机！
     }
   }
 
@@ -430,5 +450,5 @@ function setupLogInterceptor() {
   };
 
   isConsoleProxied = true;
-  console.log("[Anima] Log Interceptor Attached.");
+  console.log("[Anima] Log Interceptor Attached & Secured.");
 }

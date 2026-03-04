@@ -657,13 +657,7 @@ export function openGCManagementModal() {
     console.log("即将保存的 GC 配置: ", gcSettings);
 
     try {
-      // 1. 保存【清洗提示词】到角色卡 (使用新字段 anima_gc_prompts，与原提示词互不干扰)
-      await saveSettingsToCharacterCard(
-        "anima_gc_prompts",
-        gcSettings.prompt_rules,
-      );
-
-      // 2. 保存【清洗专属正则及开关】到角色卡 (使用新字段 anima_gc_settings)
+      // 1. 准备专属正则及开关的数据
       const regexConfigToSave = {
         reuse_regex: gcSettings.reuse_regex,
         skip_layer_zero: gcSettings.skip_layer_zero,
@@ -671,11 +665,15 @@ export function openGCManagementModal() {
         exclude_user: gcSettings.exclude_user,
         regex_list: gcSettings.regex_list,
       };
-      await saveSettingsToCharacterCard("anima_gc_settings", regexConfigToSave);
 
-      if (window.toastr) {
-        window.toastr.success("状态清洗配置已成功保存到角色卡！", "Anima");
-      }
+      // 2. 将两部分数据打包成一个 Payload 对象
+      const payload = {
+        anima_gc_prompts: gcSettings.prompt_rules,
+        anima_gc_settings: regexConfigToSave,
+      };
+
+      // 3. 触发一次批量保存
+      await saveSettingsToCharacterCard(payload);
     } catch (error) {
       console.error("[Anima] 保存清洗配置失败:", error);
       if (window.toastr) {

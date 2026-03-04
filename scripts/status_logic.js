@@ -728,16 +728,27 @@ export function getContext() {
   return SillyTavern.getContext();
 }
 
-export async function saveSettingsToCharacterCard(key, data) {
+export async function saveSettingsToCharacterCard(keyOrObj, data = null) {
   const context = getContext();
   const characterId = context.characterId;
+
   if (characterId === undefined || characterId === null) {
-    toastr.warning("未检测到当前角色，无法保存到角色卡。");
+    if (window.toastr) toastr.warning("未检测到当前角色，无法保存到角色卡。");
     return false;
   }
+
   try {
-    await context.writeExtensionField(characterId, key, data);
-    toastr.success("配置已成功保存到角色卡！");
+    // 如果传入的是对象（批量保存模式）
+    if (typeof keyOrObj === "object" && keyOrObj !== null) {
+      for (const [k, v] of Object.entries(keyOrObj)) {
+        await context.writeExtensionField(characterId, k, v);
+      }
+    } else {
+      // 如果传入的是单个 Key（兼容旧模式）
+      await context.writeExtensionField(characterId, keyOrObj, data);
+    }
+
+    if (window.toastr) toastr.success("配置已成功保存到角色卡！");
     return true;
   } catch (e) {
     console.error("Save to card failed:", e);

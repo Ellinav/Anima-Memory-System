@@ -710,7 +710,6 @@ export async function queryDual({
   // ============== 总开关拦截 ==============
   if (settings && settings.rag_enabled === false) {
     console.warn("[Anima RAG] 总开关已关闭，阻断检索请求。");
-    showToast("RAG 总开关已关闭，已跳过本次检索。", "warning");
     return { chat_results: [], kb_results: [] };
   }
 
@@ -753,7 +752,7 @@ export async function queryDual({
 
   if (finalChatIds.length === 0 && finalKbFiles.length === 0) {
     console.warn("[Anima RAG] 未指定任何数据库 ID (UI列表为空)，跳过检索");
-    showToast("当前未绑定任何聊天或知识库，跳过检索。", "warning");
+    showToast("当前未绑定任何聊天或知识库，跳过检索。", "info");
     return { chat_results: [], kb_results: [] };
   }
 
@@ -761,7 +760,7 @@ export async function queryDual({
   searchText = processMacros(searchText || "");
   if (!searchText || searchText.trim() === "") {
     console.warn("[Anima RAG] 提取到的检索词为空，跳过向后端发送请求。");
-    showToast("检索文本为空 (正则可能填写错误)，已跳过 RAG。", "warning");
+    showToast("检索文本为空 (正则可能填写错误)，跳过检索。", "warning");
     return { chat_results: [], kb_results: [] };
   }
 

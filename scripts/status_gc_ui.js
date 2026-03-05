@@ -409,14 +409,14 @@ export function openGCManagementModal() {
                         </div>
                     </div>
                     
-                    <div class="gc-prompt-edit" style="display:none; align-items:center; flex:1; gap:8px; margin-right:10px;" class="stop-propagation">
-                        <select class="anima-select gc-prompt-role" style="width:90px; height:28px; margin: 0; padding: 0 5px; box-sizing: border-box; background: rgba(0,0,0,0.3); color: #ddd; border: 1px solid #555; border-radius: 4px; outline: none;">
+                    <div class="gc-prompt-edit stop-propagation" style="display:none; align-items:center; flex:1; gap:8px; margin-right:10px; min-width:0;">
+                        <select class="anima-select gc-prompt-role" style="width:80px; flex-shrink:0; height:28px; margin: 0; padding: 0 5px; box-sizing: border-box; background: rgba(0,0,0,0.3); color: #ddd; border: 1px solid #555; border-radius: 4px; outline: none;">
                             <option value="system" ${rule.role === "system" ? "selected" : ""}>System</option>
                             <option value="user" ${rule.role === "user" ? "selected" : ""}>User</option>
                             <option value="assistant" ${rule.role === "assistant" ? "selected" : ""}>Assistant</option>
                         </select>
-                        <input type="text" class="anima-input gc-prompt-title" value="${escapeHtml(rule.title || "")}" style="flex:1; height:28px; margin: 0; padding: 0 8px; box-sizing: border-box; background: rgba(0,0,0,0.3); color: #ddd; border: 1px solid #555; border-radius: 4px; outline: none;">
-                        <div style="display:flex; gap:5px; align-items: center;">
+                        <input type="text" class="anima-input gc-prompt-title" value="${escapeHtml(rule.title || "")}" style="flex:1; min-width:0; height:28px; margin: 0; padding: 0 8px; box-sizing: border-box; background: rgba(0,0,0,0.3); color: #ddd; border: 1px solid #555; border-radius: 4px; outline: none;">
+                        <div style="display:flex; gap:5px; align-items: center; flex-shrink:0;">
                             <button class="anima-btn primary small gc-prompt-confirm-btn" style="display:flex; align-items:center; justify-content:center; width:28px; height:28px; margin: 0; padding:0; box-sizing: border-box; background: #10b981; border: none; color: white; cursor:pointer;"><i class="fa-solid fa-check"></i></button>
                             <button class="anima-btn danger small gc-prompt-cancel-btn" style="display:flex; align-items:center; justify-content:center; width:28px; height:28px; margin: 0; padding:0; box-sizing: border-box; background: #ef4444; border: none; color: white; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
                         </div>

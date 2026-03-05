@@ -742,29 +742,27 @@ export function initStatusSettings() {
 
             <div id="beautify-editor-area" style="${currentSettings.beautify_settings?.enabled ? "" : "display:none;"}; border-top: 1px solid var(--anima-border); padding-top: 10px; margin-top: 10px;">
                 
-                <div style="display: flex; align-items: center; width: 100%; margin-bottom: 8px;">
-                    <span class="anima-desc-inline" style="white-space: nowrap;">支持 HTML/CSS。使用 <code>{{status}}</code> 引用。</span>
+                <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; width: 100%; margin-bottom: 8px;">
+                    <span class="anima-desc-inline">支持 HTML/CSS。使用 <code>{{status}}</code> 引用。</span>
                     
-                    <div style="margin-left: auto; display: flex; align-items: center;">
+                    <div style="margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 5px;">
                         <div id="beautify-actions-edit" style="display:none; gap:5px;">
                             <button id="btn-beautify-confirm" class="anima-btn primary small" title="保存"><i class="fa-solid fa-check"></i> 确认</button>
                             <button id="btn-beautify-cancel" class="anima-btn danger small" title="取消"><i class="fa-solid fa-xmark"></i> 取消</button>
                         </div>
                         
-                        <div id="beautify-actions-view" style="display:flex; gap:5px; align-items: center;">
+                        <div id="beautify-actions-view" style="display:flex; gap:5px; align-items: center; flex-wrap: wrap;">
                             <input type="file" id="beautify_import_file" accept=".json" style="display: none;" />
                             
                             <button id="btn-import-beautify" class="anima-btn secondary small" title="导入模板 (JSON)">
-                                <i class="fa-solid fa-file-import"></i> 导入
-                            </button>
+                                <i class="fa-solid fa-file-import"></i> </button>
                             <button id="btn-export-beautify" class="anima-btn secondary small" title="导出模板 (JSON)">
-                                <i class="fa-solid fa-file-export"></i> 导出
-                            </button>
+                                <i class="fa-solid fa-file-export"></i> </button>
 
                             <div style="width: 1px; height: 16px; background: var(--anima-border); margin: 0 4px;"></div>
 
-                            <button id="btn-beautify-edit" class="anima-btn secondary small"><i class="fa-solid fa-pen-to-square"></i> 编辑</button>
-                            <button id="btn-beautify-preview" class="anima-btn primary small"><i class="fa-solid fa-eye"></i> 预览</button>
+                            <button id="btn-beautify-edit" class="anima-btn secondary small"><i class="fa-solid fa-pen-to-square"></i> </button>
+                            <button id="btn-beautify-preview" class="anima-btn primary small"><i class="fa-solid fa-eye"></i> </button>
                         </div>
                     </div>
                 </div>

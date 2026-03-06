@@ -330,8 +330,8 @@ function getApiCardHtml(type, title) {
   // 为 Rerank 提供更明确的 URL 提示
   let urlLabel =
     type === "rerank"
-      ? "Endpoint URL (需包含 /rerank 结尾)"
-      : "Endpoint URL (Base URL)";
+      ? "自定义端点 (需包含 /rerank 结尾)"
+      : "自定义端点（基础 URL）";
   let urlPlaceholder =
     type === "rerank"
       ? "例如: https://api.siliconflow.cn/v1/rerank"

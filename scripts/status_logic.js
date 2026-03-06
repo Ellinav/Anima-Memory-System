@@ -301,6 +301,37 @@ export function findBaseStatus(targetMsgId) {
   return { id: -1, data: {} };
 }
 
+/**
+ * 核心寻址函数：从最新楼层开始往上回溯，找到最近的一个 AI/模型 楼层
+ * @returns {Object|null} 返回消息对象，找不到则返回 null
+ */
+export function getTargetAIFloor() {
+  if (!window.TavernHelper) return null;
+  const allMsgs = window.TavernHelper.getChatMessages("0-{{lastMessageId}}", {
+    include_swipes: false,
+  });
+  if (!allMsgs || allMsgs.length === 0) return null;
+
+  const context = SillyTavern.getContext();
+  const currentUserName = context.userName;
+
+  for (let i = allMsgs.length - 1; i >= 0; i--) {
+    const msg = allMsgs[i];
+    const isUser =
+      msg.is_user === true ||
+      msg.role === "user" ||
+      (msg.name && msg.name === currentUserName) ||
+      (msg.name && String(msg.name).toLowerCase() === "you") ||
+      (msg.name && msg.name === "User");
+
+    // 只要不是 User，就是我们要找的 AI 楼层
+    if (!isUser) {
+      return msg;
+    }
+  }
+  return null;
+}
+
 // ==========================================
 // 核心逻辑 2: 增量上下文构建
 // ==========================================
@@ -698,26 +729,19 @@ export async function triggerStatusUpdate(targetMsgId) {
  * 逻辑：找到当前最新楼层，强制执行一次 update
  */
 export async function triggerManualSync() {
-  // 1. 获取上下文中的聊天列表
-  // 使用 getChatMessages("0-{{lastMessageId}}") 是最稳健的方法，因为它会处理 swipes 和当前上下文
-  const msgs = window.TavernHelper.getChatMessages("0-{{lastMessageId}}", {
-    include_swipes: false,
-  });
+  const targetMsg = getTargetAIFloor();
 
-  if (!msgs || msgs.length === 0) {
-    if (window.toastr) window.toastr.warning("无聊天记录，无法同步");
-    return;
+  if (!targetMsg) {
+    if (window.toastr) window.toastr.warning("未找到有效的 AI 回复，无法同步");
+    return false;
   }
 
-  // 2. 锁定目标：最新的一条消息
-  const lastMsg = msgs[msgs.length - 1];
-  const targetId = lastMsg.message_id;
+  const targetId = targetMsg.message_id;
 
   if (window.toastr)
     window.toastr.info(`正在同步状态... (Target: #${targetId})`);
 
-  // 3. 触发更新 (透传返回值)
-  return await triggerStatusUpdate(targetId); // 🟢 改动：加了 return
+  return await triggerStatusUpdate(targetId);
 }
 
 // ==========================================
@@ -1121,12 +1145,12 @@ export async function syncStatusToWorldBook(
 
 export async function previewStatusPayload() {
   const contextData = getContextData();
-  const allChat = window.TavernHelper.getChatMessages("0-{{lastMessageId}}", {
-    include_swipes: false,
-  });
-  if (!allChat || allChat.length === 0) throw new Error("无聊天记录");
 
-  const targetMsg = allChat[allChat.length - 1];
+  // 🌟 核心修复：使用统一的寻址函数，确保预览和实际发送的目标锚点完全一致
+  const targetMsg = getTargetAIFloor();
+
+  if (!targetMsg) throw new Error("未找到有效的 AI 楼层，无法生成预览");
+
   const settings = getStatusSettings();
 
   const { messages, incResult, baseStatus } = await constructStatusPrompt(
@@ -1656,15 +1680,14 @@ export async function saveRealtimeStatusVariables(statusObj) {
   try {
     if (!window.TavernHelper) throw new Error("TavernHelper not ready");
     const context = SillyTavern.getContext();
-    // 1. 获取目标楼层 (最新一条)
-    const msgs = window.TavernHelper.getChatMessages(-1);
 
-    if (!msgs || msgs.length === 0) {
-      throw new Error("当前无聊天记录，无法写入");
+    // 使用新的寻址函数
+    const targetMsg = getTargetAIFloor();
+    if (!targetMsg) {
+      throw new Error("未找到有效的 AI 楼层，无法写入状态");
     }
 
-    // TavernHelper 返回的数组即便是一条，也是 Array
-    const targetId = msgs[0].message_id;
+    const targetId = targetMsg.message_id;
 
     // ============================================================
     // 🔥 恢复步骤 A: 获取旧数据 (Old Data)

@@ -6,8 +6,6 @@ import {
   scanChatForStatus,
   getStatusFromMessage,
   saveStatusToMessage,
-  injectStatusToChat,
-  getRealtimeStatusVariables,
   saveRealtimeStatusVariables,
   syncStatusToWorldBook,
   previewStatusPayload,
@@ -15,6 +13,7 @@ import {
   triggerManualSync,
   renderAnimaTemplate,
   executeGCProcess,
+  getTargetAIFloor,
 } from "./status_logic.js";
 import { validateStatusData, createAutoNumberSchema } from "./status_zod.js";
 import {
@@ -121,9 +120,12 @@ export function initStatusSettings() {
                 <span title="当前状态数据的来源楼层"><i class="fa-solid fa-code-branch"></i> 源: <span id="val-source-floor-id">--</span></span>
                 <span title="当前对话的最新楼层"><i class="fa-solid fa-clock"></i> 最新: <span id="val-current-floor-id">--</span></span>
             </div>
+            <div id="status-diff-render-view" class="anima-textarea" 
+                style="font-family: monospace; line-height: 1.5; background: rgba(0,0,0,0.3); width: 100%; box-sizing: border-box; margin-bottom: 5px; overflow-y: auto; height: 250px; padding: 10px; border: 1px solid var(--anima-border); border-radius: 4px;">
+            </div>
 
-            <textarea id="status-yaml-content" class="anima-textarea" rows="6" disabled
-                style="font-family: monospace; line-height: 1.4; color: #a6e3a1; background: rgba(0,0,0,0.3); width:100%; box-sizing: border-box; margin-bottom: 5px;"
+            <textarea id="status-yaml-content" class="anima-textarea" 
+                style="font-family: monospace; line-height: 1.4; color: #a6e3a1; background: rgba(0,0,0,0.3); width:100%; box-sizing: border-box; margin-bottom: 5px; display: none; height: 250px; resize: vertical;"
             ></textarea>
 
             <div id="status-gc-section" style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--anima-border);">
@@ -1060,79 +1062,109 @@ export function refreshStatusPanel() {
     let displaySource = "None";
     let finalStatusObj = {};
 
-    // 标记：是否应该显示同步按钮
+    // 👇 新增：用于追踪当前展示状态的真实来源楼层，以及对比的旧状态
+    let oldStatusObj = {};
+    let sourceFloorIdForDiff = -1;
+
     let shouldShowSyncBtn = false;
 
     if (allMsgs && allMsgs.length > 0) {
-      const lastMsg = allMsgs[allMsgs.length - 1];
-      currentId = lastMsg.message_id;
+      // 1. 获取绝对的最新楼层（只用于顶部 UI 的 #val-current-floor-id 显示）
+      const absoluteLastMsg = allMsgs[allMsgs.length - 1];
+      currentId = absoluteLastMsg.message_id;
 
-      // 判断是否为 AI 消息 (Layer 0 通常被视为 AI，除非手动改成 User)
-      // 增加 role 判断以增强稳定性
-      const isAi = !lastMsg.is_user || lastMsg.role === "assistant";
+      // 2. 获取真正的目标 AI 楼层（用于判定按钮显隐、数据溯源）
+      const targetAiMsg = getTargetAIFloor();
 
-      // 2. 尝试获取当前楼层的实际数据
-      // 注意：对于 Layer 0，必须精确指定 message_id，防止 latest 指向错误
-      const currentVars = window.TavernHelper.getVariables({
-        type: "message",
-        message_id: currentId,
-      });
+      if (targetAiMsg) {
+        const targetAiId = targetAiMsg.message_id;
 
-      // 3. 核心判断逻辑
-      // 检查当前楼层是否有自己的数据 (Own Data)
-      const hasOwnData =
-        currentVars &&
-        currentVars.anima_data &&
-        Object.keys(currentVars.anima_data).length > 0;
+        const currentVars = window.TavernHelper.getVariables({
+          type: "message",
+          message_id: targetAiId,
+        });
 
-      if (hasOwnData) {
-        // A. 当前楼层有数据 -> 已同步
-        finalStatusObj = currentVars.anima_data;
-        displaySource = `${currentId} (本层)`;
+        const hasOwnData =
+          currentVars &&
+          currentVars.anima_data &&
+          Object.keys(currentVars.anima_data).length > 0;
 
-        // 【核心修复】只要有数据，绝对不显示同步按钮
-        shouldShowSyncBtn = false;
-      } else {
-        // B. 当前楼层无数据 -> 回溯找基准 (继承)
-        const base = findBaseStatus(currentId);
-
-        // 数据显示逻辑
-        if (base.id !== -1) {
-          finalStatusObj = base.data;
-          displaySource = `${base.id} (继承)`;
+        if (hasOwnData) {
+          // A. 目标 AI 层有数据 -> 已同步
+          finalStatusObj = currentVars.anima_data;
+          displaySource = `${targetAiId} (本层)`;
+          shouldShowSyncBtn = false;
+          sourceFloorIdForDiff = targetAiId;
         } else {
-          displaySource = "Init (无数据)";
+          // B. 目标 AI 层无数据 -> 回溯找基准 (继承)
+          const base = findBaseStatus(targetAiId);
+
+          if (base.id !== -1) {
+            finalStatusObj = base.data;
+            displaySource = `${base.id} (继承)`;
+            sourceFloorIdForDiff = base.id;
+          } else {
+            displaySource = "Init (无数据)";
+          }
+
+          const updateConfig = currentSettings.update_management || {
+            panel_enabled: false,
+          };
+
+          // 注意：这里不需要再判断 isAi，因为 targetAiMsg 已经保证了它是 AI 层
+          if (updateConfig.panel_enabled && currentSettings.status_enabled) {
+            shouldShowSyncBtn = true;
+          }
         }
 
-        // 按钮显示逻辑：
-        // 只有当是 AI 回复，且确实没数据时，才提示同步
-        // 【额外过滤】如果当前是 Layer 0 且没有配置预设，通常也不建议弹同步按钮（太干扰），除非你希望 Layer 0 也可以跑 LLM 生成状态
-        // 这里我们保持原样，但你可以根据喜好决定是否加 && currentId !== 0
-        const updateConfig = currentSettings.update_management || {
-          panel_enabled: false,
-        };
+        // --- 下方的 diff 溯源逻辑完全保持原样 ---
+        if (sourceFloorIdForDiff !== -1) {
+          const validFloors = scanChatForStatus();
+          const currentIndex = validFloors.findIndex(
+            (f) => String(f.id) === String(sourceFloorIdForDiff),
+          );
 
-        // 2. 增加开关判断 (修改: 只有当 isAi 为真 且 开关开启时，才显示)
-        if (
-          isAi &&
-          updateConfig.panel_enabled &&
-          currentSettings.status_enabled
-        ) {
-          shouldShowSyncBtn = true;
+          if (currentIndex !== -1 && currentIndex + 1 < validFloors.length) {
+            const prevFloorId = validFloors[currentIndex + 1].id;
+            const prevVars = window.TavernHelper.getVariables({
+              type: "message",
+              message_id: prevFloorId,
+            });
+            oldStatusObj =
+              prevVars && prevVars.anima_data ? prevVars.anima_data : {};
+          }
         }
+      } else {
+        // 极端情况：没有任何 AI 楼层（比如刚开局只有 User 的一句话）
+        displaySource = "等待AI回复...";
+        shouldShowSyncBtn = false;
       }
     }
 
     // 4. 渲染文本框
     const yamlStr =
       Object.keys(finalStatusObj).length > 0
-        ? objectToYaml(finalStatusObj)
+        ? objectToYaml(finalStatusObj).trim()
         : "# 当前无任何历史状态\n# 请点击“同步”进行初始化...";
 
     $textarea.val(yamlStr);
     $("#val-status-char-count").text(yamlStr.length);
     $currentIndicator.text(currentId);
     $sourceIndicator.text(displaySource);
+
+    const $diffView = $("#status-diff-render-view");
+    if ($diffView.length > 0) {
+      if (Object.keys(finalStatusObj).length > 0) {
+        // 将新旧状态丢进你写好的函数中
+        const diffHtml = generateDiffHtml(oldStatusObj, finalStatusObj);
+        $diffView.html(diffHtml);
+      } else {
+        // 兜底显示
+        $diffView.html(
+          `<div style="color: #888; text-align: center;">等待初始化...</div>`,
+        );
+      }
+    }
 
     // 5. 【核心修复】按钮显隐控制 (加强版)
     if ($syncBtn.length > 0) {
@@ -1323,7 +1355,6 @@ function initYamlEditor() {
     e.preventDefault();
     let currentContent = $textarea.val();
 
-    // 如果是默认提示文本，清空以便输入
     if (currentContent.startsWith("# 当前最新楼层")) {
       currentContent = "";
       $textarea.val("");
@@ -1332,7 +1363,17 @@ function initYamlEditor() {
     $textarea.data("original", currentContent); // 缓存原始值
     $viewContainer.hide();
     $editContainer.css("display", "flex");
-    $textarea.prop("disabled", false).focus().addClass("anima-input-active");
+
+    $("#status-diff-render-view").hide();
+    $textarea
+      .show()
+      .prop("disabled", false)
+      .focus()
+      .addClass("anima-input-active");
+
+    // 👇 【新增】：强制将光标移到第 0 个字符，并将滚动条拉到最顶端
+    $textarea[0].setSelectionRange(0, 0);
+    $textarea[0].scrollTop = 0;
   });
 
   // 4. 绑定“取消”按钮
@@ -1436,8 +1477,8 @@ function initYamlEditor() {
   function exitEditMode() {
     $editContainer.hide();
     $viewContainer.css("display", "flex");
-    $textarea.prop("disabled", true);
-    $textarea.removeClass("anima-input-active");
+    $textarea.hide().prop("disabled", true).removeClass("anima-input-active");
+    $("#status-diff-render-view").show();
   }
 }
 
@@ -2820,6 +2861,7 @@ function initHistoryModule() {
 
   const $textarea = $("#hist-yaml-content");
   const $indicator = $("#hist-current-floor-indicator");
+  $btnOpenModal;
 
   // 按钮组
   const $viewGroup = $("#hist-actions-view");

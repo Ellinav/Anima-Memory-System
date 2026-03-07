@@ -2004,7 +2004,7 @@ export function checkInitialGreetingStatus() {
 }
 
 /**
- * 增强型模板渲染器 (支持 {{#each path}}...{{/each}} 循环)
+ * 增强型模板渲染器 (支持 {{#each}} 和 {{#if}} 条件判断)
  * @param {string} template - 原始模板字符串
  * @param {object} contextData - 完整的数据上下文 (root)
  */
@@ -2012,70 +2012,143 @@ export function renderAnimaTemplate(template, contextData) {
   if (!template) return "";
   let output = template;
 
+  // ========================================================
+  // 🌟 核心辅助：动态路径转换引擎
+  // 完美复刻你的逻辑：自动把 _char 替换为当前真实的 {{char}} 名字
+  // ========================================================
+  const resolveDynamicPath = (rawPath) => {
+    let p = rawPath.trim();
+    if (p.startsWith("_char.") && typeof processMacros !== "undefined") {
+      const charName = processMacros("{{char}}");
+      if (charName && charName !== "{{char}}") {
+        p = p.replace("_char.", charName + ".");
+      }
+    } else if (p.startsWith("_user.") && typeof processMacros !== "undefined") {
+      const userName = processMacros("{{user}}");
+      if (userName && userName !== "{{user}}") {
+        p = p.replace("_user.", userName + ".");
+      }
+    }
+    return p;
+  };
+
+  // ========================================================
   // 1. 处理 {{#each path}} ... {{/each}} 循环
-  // 正则捕获: Group 1 = 路径, Group 2 = 循环体内容
-  const eachRegex = /\{\{#each\s+([^\}]+)\}\}([\s\S]*?)\{\{\/each\}\}/g;
+  // ========================================================
+  // 究极正则：无视内部空格
+  const eachRegex =
+    /\{\{\s*#each\s+([^}]+?)\s*\}\}([\s\S]*?)\{\{\s*\/each\s*\}\}/g;
 
   output = output.replace(eachRegex, (match, path, content) => {
-    // 获取目标对象 (例如: 欧阳玥.物品栏)
+    const cleanPath = resolveDynamicPath(path);
+
     let targetData = undefined;
     if (window["_"] && window["_"].get) {
-      targetData = window["_"].get(contextData, path.trim());
+      targetData = window["_"].get(contextData, cleanPath);
     } else {
-      targetData = path
-        .trim()
+      targetData = cleanPath
         .split(".")
         .reduce((o, k) => (o || {})[k], contextData);
     }
 
-    if (!targetData || typeof targetData !== "object") {
-      return ""; // 如果路径不存在或是空的，这就渲染为空
-    }
+    if (!targetData || typeof targetData !== "object") return "";
 
-    // 开始遍历
     let loopResult = "";
     const keys = Object.keys(targetData);
 
     keys.forEach((key) => {
-      const itemData = targetData[key]; // 例如: 手机的具体数据对象
+      const itemData = targetData[key];
       let itemHtml = content;
 
-      // A. 替换 {{@key}} -> "手机"
       itemHtml = itemHtml.replace(/\{\{@key\}\}/g, key);
-
-      // B. 替换 {{this}} -> 如果 itemData 是纯字符串/数字
       if (typeof itemData !== "object") {
         itemHtml = itemHtml.replace(/\{\{this\}\}/g, itemData);
       }
-
-      // C. 替换内部属性 {{描述}} -> itemData["描述"]
-      // 这是一个简单的贪婪替换，只替换当前作用域下的属性
       itemHtml = itemHtml.replace(/\{\{\s*([^\s}]+)\s*\}\}/g, (m, propPath) => {
         if (propPath === "@key") return key;
-
         let val = undefined;
         if (typeof itemData === "object" && itemData !== null) {
-          // 利用全局的 lodash 支持深层点号路径解析
           if (window["_"] && window["_"].get) {
             val = window["_"].get(itemData, propPath);
           } else {
-            // 兜底方案：原生 reduce 解析
             val = propPath.split(".").reduce((o, k) => (o || {})[k], itemData);
           }
         }
-
         return val !== undefined ? val : m;
       });
-
       loopResult += itemHtml;
     });
-
     return loopResult;
+  });
+
+  // ========================================================
+  // 2. 处理 {{#if path}} ... {{else}} ... {{/if}}
+  // ========================================================
+  // 究极正则：无视标签内的任何换行和空格
+  const ifRegex = /\{\{#if\s+([^\}]+)\}\}([\s\S]*?)\{\{\/if\}\}/g;
+
+  output = output.replace(ifRegex, (match, condition, innerContent) => {
+    // 1. 解析条件表达式 (支持 == 判断)
+    let targetPath = condition.trim();
+    let expectedValue = undefined;
+
+    if (targetPath.includes("==")) {
+      const parts = targetPath.split("==");
+      targetPath = parts[0].trim();
+      expectedValue = parts[1].trim();
+      // 容错处理：允许用户习惯性地加引号，比如 == "开心" 或 == '开心'，自动剥离引号
+      expectedValue = expectedValue.replace(/^["']|["']$/g, "");
+    }
+
+    // 2. 手动拆分 true 块和 false 块
+    let trueContent = innerContent;
+    let falseContent = "";
+    const elseIndex = innerContent.indexOf("{{else}}");
+    if (elseIndex !== -1) {
+      trueContent = innerContent.substring(0, elseIndex);
+      falseContent = innerContent.substring(elseIndex + 8);
+    }
+
+    // 3. 获取变量真实值
+    let targetData = undefined;
+    if (window["_"] && window["_"].get) {
+      targetData = window["_"].get(contextData, targetPath);
+    } else {
+      targetData = targetPath
+        .split(".")
+        .reduce((o, k) => (o || {})[k], contextData);
+    }
+
+    // 4. 核心判断逻辑
+    let isTruthy = false;
+
+    if (expectedValue !== undefined) {
+      // 【精准匹配模式】：判断值是否等于设定值
+      if (targetData !== undefined && targetData !== null) {
+        // 统一下转成字符串比较，这样可以兼容布尔值 true 和 字符串 "true"
+        isTruthy = String(targetData).trim() === expectedValue;
+      }
+    } else {
+      // 【存在性模式】：过滤掉各种意义上的空值
+      isTruthy =
+        targetData !== undefined &&
+        targetData !== null &&
+        targetData !== "" &&
+        targetData !== "null" &&
+        targetData !== "false" &&
+        targetData !== "N/A";
+    }
+
+    // 5. 返回对应结果
+    if (isTruthy) {
+      return trueContent;
+    } else {
+      return falseContent;
+    }
   });
 
   return output;
 }
-
 // ==========================================
 // 状态清洗 (GC) 核心执行逻辑
 // ==========================================

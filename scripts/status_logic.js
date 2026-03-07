@@ -2088,22 +2088,7 @@ export function renderAnimaTemplate(template, contextData) {
   const ifRegex = /\{\{#if\s+([^\}]+)\}\}([\s\S]*?)\{\{\/if\}\}/g;
 
   output = output.replace(ifRegex, (match, condition, innerContent) => {
-    // 1. 解析条件表达式 (支持 ==, !=, >=, <=, >, <)
-    let targetPath = condition.trim();
-    let expectedValue = undefined;
-    let operator = null;
-
-    // 匹配操作符 (优先匹配双字符 >=, <=, ==, !=，再匹配单字符)
-    const opMatch = targetPath.match(/(==|!=|>=|<=|>|<)/);
-    if (opMatch) {
-      operator = opMatch[0];
-      const parts = targetPath.split(operator);
-      targetPath = parts[0].trim();
-      // 自动剥离用户可能顺手加的引号
-      expectedValue = parts[1].trim().replace(/^["']|["']$/g, "");
-    }
-
-    // 2. 手动拆分 true 块和 false 块
+    // 1. 手动拆分 true 块和 false 块
     let trueContent = innerContent;
     let falseContent = "";
     const elseIndex = innerContent.indexOf("{{else}}");
@@ -2112,80 +2097,115 @@ export function renderAnimaTemplate(template, contextData) {
       falseContent = innerContent.substring(elseIndex + 8);
     }
 
-    // 3. 获取变量真实值
-    let targetData = undefined;
-    if (window["_"] && window["_"].get) {
-      targetData = window["_"].get(contextData, targetPath);
-    } else {
-      targetData = targetPath
-        .split(".")
-        .reduce((o, k) => (o || {})[k], contextData);
-    }
+    // --- 内部辅助函数：处理单一基础条件 (如 A >= B) ---
+    const evaluateSingle = (singleCond) => {
+      let targetPath = singleCond.trim();
+      let expectedValue = undefined;
+      let operator = null;
 
-    // 4. 核心逻辑与数学判断
-    let isTruthy = false;
+      // 匹配操作符
+      const opMatch = targetPath.match(/(==|!=|>=|<=|>|<)/);
+      if (opMatch) {
+        operator = opMatch[0];
+        const parts = targetPath.split(operator);
+        targetPath = parts[0].trim();
+        expectedValue = parts[1].trim().replace(/^["']|["']$/g, "");
+      }
 
-    if (operator) {
-      // 【精准匹配/大小比较模式】
-      if (targetData !== undefined && targetData !== null) {
-        let left = targetData;
-        let right = expectedValue;
+      // 获取变量真实值
+      let targetData = undefined;
+      if (window["_"] && window["_"].get) {
+        targetData = window["_"].get(contextData, targetPath);
+      } else {
+        targetData = targetPath
+          .split(".")
+          .reduce((o, k) => (o || {})[k], contextData);
+      }
 
-        // 尝试转换为纯数字进行数学比较
-        const numLeft = Number(left);
-        const numRight = Number(right);
+      let isTruthy = false;
 
-        // 只有当两边都能成功转为数字，且不是空字符串时，才走数学比较
-        if (!isNaN(numLeft) && !isNaN(numRight) && right !== "") {
-          left = numLeft;
-          right = numRight;
-        } else {
-          // 否则作为字符串或布尔值进行文本比较
-          left = String(left).trim();
-          right = String(right).trim();
+      if (operator) {
+        if (targetData !== undefined && targetData !== null) {
+          let left = targetData;
+          let right = expectedValue;
 
-          // 兼容布尔值的真假判定
-          if (right === "true") right = true;
-          if (right === "false") right = false;
-          if (left === "true") left = true;
-          if (left === "false") left = false;
+          const numLeft = Number(left);
+          const numRight = Number(right);
+
+          if (!isNaN(numLeft) && !isNaN(numRight) && right !== "") {
+            left = numLeft;
+            right = numRight;
+          } else {
+            left = String(left).trim();
+            right = String(right).trim();
+            if (right === "true") right = true;
+            if (right === "false") right = false;
+            if (left === "true") left = true;
+            if (left === "false") left = false;
+          }
+
+          switch (operator) {
+            case "==":
+              isTruthy = left == right;
+              break;
+            case "!=":
+              isTruthy = left != right;
+              break;
+            case ">":
+              isTruthy = left > right;
+              break;
+            case "<":
+              isTruthy = left < right;
+              break;
+            case ">=":
+              isTruthy = left >= right;
+              break;
+            case "<=":
+              isTruthy = left <= right;
+              break;
+          }
         }
+      } else {
+        isTruthy =
+          targetData !== undefined &&
+          targetData !== null &&
+          targetData !== "" &&
+          targetData !== "null" &&
+          targetData !== "false" &&
+          targetData !== "N/A";
+      }
+      return isTruthy;
+    };
 
-        // 终极运算分支
-        switch (operator) {
-          case "==":
-            isTruthy = left == right;
-            break;
-          case "!=":
-            isTruthy = left != right;
-            break;
-          case ">":
-            isTruthy = left > right;
-            break;
-          case "<":
-            isTruthy = left < right;
-            break;
-          case ">=":
-            isTruthy = left >= right;
-            break;
-          case "<=":
-            isTruthy = left <= right;
-            break;
+    // --- 核心逻辑：处理 && 和 || 运算符 ---
+    // 先按 || 切分，再按 && 切分，天然实现了 && 优先级高于 || 的特性
+    let finalResult = false;
+
+    // 1. 按 || 切分为多个大组
+    const orGroups = condition.split("||");
+
+    for (const orGroup of orGroups) {
+      // 2. 按 && 切分每个大组里的独立条件
+      const andConditions = orGroup.split("&&");
+      let groupResult = true; // 假设这个大组默认通过
+
+      for (const andCond of andConditions) {
+        // 只要其中一个 AND 条件不满足，整个大组就失败
+        if (!evaluateSingle(andCond)) {
+          groupResult = false;
+          break; // 短路机制：后面的 AND 不用算了
         }
       }
-    } else {
-      // 【存在性模式】：仅仅判断这个变量有没有内容
-      isTruthy =
-        targetData !== undefined &&
-        targetData !== null &&
-        targetData !== "" &&
-        targetData !== "null" &&
-        targetData !== "false" &&
-        targetData !== "N/A";
+
+      // 如果这个大组所有 AND 都通过了，那整个语句就是 true！
+      if (groupResult) {
+        finalResult = true;
+        break; // 短路机制：后面的 OR 大组不用算了
+      }
     }
 
-    // 5. 根据结果返回对应代码块
-    if (isTruthy) {
+    // 返回对应代码块
+    if (finalResult) {
       return trueContent;
     } else {
       return falseContent;

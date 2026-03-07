@@ -2088,16 +2088,19 @@ export function renderAnimaTemplate(template, contextData) {
   const ifRegex = /\{\{#if\s+([^\}]+)\}\}([\s\S]*?)\{\{\/if\}\}/g;
 
   output = output.replace(ifRegex, (match, condition, innerContent) => {
-    // 1. 解析条件表达式 (支持 == 判断)
+    // 1. 解析条件表达式 (支持 ==, !=, >=, <=, >, <)
     let targetPath = condition.trim();
     let expectedValue = undefined;
+    let operator = null;
 
-    if (targetPath.includes("==")) {
-      const parts = targetPath.split("==");
+    // 匹配操作符 (优先匹配双字符 >=, <=, ==, !=，再匹配单字符)
+    const opMatch = targetPath.match(/(==|!=|>=|<=|>|<)/);
+    if (opMatch) {
+      operator = opMatch[0];
+      const parts = targetPath.split(operator);
       targetPath = parts[0].trim();
-      expectedValue = parts[1].trim();
-      // 容错处理：允许用户习惯性地加引号，比如 == "开心" 或 == '开心'，自动剥离引号
-      expectedValue = expectedValue.replace(/^["']|["']$/g, "");
+      // 自动剥离用户可能顺手加的引号
+      expectedValue = parts[1].trim().replace(/^["']|["']$/g, "");
     }
 
     // 2. 手动拆分 true 块和 false 块
@@ -2119,17 +2122,59 @@ export function renderAnimaTemplate(template, contextData) {
         .reduce((o, k) => (o || {})[k], contextData);
     }
 
-    // 4. 核心判断逻辑
+    // 4. 核心逻辑与数学判断
     let isTruthy = false;
 
-    if (expectedValue !== undefined) {
-      // 【精准匹配模式】：判断值是否等于设定值
+    if (operator) {
+      // 【精准匹配/大小比较模式】
       if (targetData !== undefined && targetData !== null) {
-        // 统一下转成字符串比较，这样可以兼容布尔值 true 和 字符串 "true"
-        isTruthy = String(targetData).trim() === expectedValue;
+        let left = targetData;
+        let right = expectedValue;
+
+        // 尝试转换为纯数字进行数学比较
+        const numLeft = Number(left);
+        const numRight = Number(right);
+
+        // 只有当两边都能成功转为数字，且不是空字符串时，才走数学比较
+        if (!isNaN(numLeft) && !isNaN(numRight) && right !== "") {
+          left = numLeft;
+          right = numRight;
+        } else {
+          // 否则作为字符串或布尔值进行文本比较
+          left = String(left).trim();
+          right = String(right).trim();
+
+          // 兼容布尔值的真假判定
+          if (right === "true") right = true;
+          if (right === "false") right = false;
+          if (left === "true") left = true;
+          if (left === "false") left = false;
+        }
+
+        // 终极运算分支
+        switch (operator) {
+          case "==":
+            isTruthy = left == right;
+            break;
+          case "!=":
+            isTruthy = left != right;
+            break;
+          case ">":
+            isTruthy = left > right;
+            break;
+          case "<":
+            isTruthy = left < right;
+            break;
+          case ">=":
+            isTruthy = left >= right;
+            break;
+          case "<=":
+            isTruthy = left <= right;
+            break;
+        }
       }
     } else {
-      // 【存在性模式】：过滤掉各种意义上的空值
+      // 【存在性模式】：仅仅判断这个变量有没有内容
       isTruthy =
         targetData !== undefined &&
         targetData !== null &&
@@ -2139,7 +2184,7 @@ export function renderAnimaTemplate(template, contextData) {
         targetData !== "N/A";
     }
 
-    // 5. 返回对应结果
+    // 5. 根据结果返回对应代码块
     if (isTruthy) {
       return trueContent;
     } else {

@@ -61,7 +61,7 @@ export function openGCManagementModal() {
                 
                 <div class="anima-modal-header" style="background: rgba(0,0,0,0.2); border-bottom: 1px solid var(--anima-border);">
                     <h3 style="margin:0; font-size:1.1em; display:flex; align-items:center; gap:10px; color: var(--anima-warning, #fbbf24);">
-                        <i class="fa-solid fa-broom"></i> 状态清洗配置管理
+                        <i class="fa-solid fa-broom"></i> 状态校准配置管理
                     </h3>
                     <span class="anima-close-gc-modal" style="cursor: pointer; opacity:0.7; font-size: 1.5em;">&times;</span>
                 </div>
@@ -82,7 +82,7 @@ export function openGCManagementModal() {
 
                     <div id="gc_custom_regex_section" class="anima-card" style="${gcSettings.reuse_regex ? "display:none;" : ""} margin-bottom: 20px; border-color: #4b5563;">
                         <div class="anima-flex-row" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <div class="anima-label-text"><i class="fa-solid fa-filter"></i> 专属清洗正则</div>
+                            <div class="anima-label-text"><i class="fa-solid fa-filter"></i> 专属校准正则</div>
                             <button id="btn-gc-add-regex" class="anima-btn small secondary"><i class="fa-solid fa-plus"></i> 添加</button>
                         </div>
                         
@@ -106,7 +106,7 @@ export function openGCManagementModal() {
 
                     <div class="anima-card" style="margin-bottom: 20px; border-color: #4b5563;">
                         <div class="anima-flex-row" style="justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                            <div class="anima-label-text"><i class="fa-solid fa-list-ol"></i> 状态清洗提示词预设</div>
+                            <div class="anima-label-text"><i class="fa-solid fa-list-ol"></i> 状态校准提示词预设</div>
                             <div style="display: flex; gap: 5px;">
                                 <button id="btn-gc-import" class="anima-btn small secondary" title="导入"><i class="fa-solid fa-file-import"></i> </button>
                                 <button id="btn-gc-export" class="anima-btn small secondary" title="导出"><i class="fa-solid fa-file-export"></i> </button>
@@ -675,9 +675,9 @@ export function openGCManagementModal() {
       // 3. 触发一次批量保存
       await saveSettingsToCharacterCard(payload);
     } catch (error) {
-      console.error("[Anima] 保存清洗配置失败:", error);
+      console.error("[Anima] 保存校准配置失败:", error);
       if (window.toastr) {
-        window.toastr.error("保存清洗配置失败，请查看控制台。", "Anima");
+        window.toastr.error("保存校准配置失败，请查看控制台。", "Anima");
       }
     }
   });

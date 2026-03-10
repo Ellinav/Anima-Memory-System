@@ -131,27 +131,27 @@ export function initStatusSettings() {
             <div id="status-gc-section" style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--anima-border);">
                 <div class="anima-flex-row" style="justify-content: space-between; align-items: center; margin-bottom: 8px;">
                     <label class="anima-label-text" style="margin: 0; color: var(--anima-warning, #fbbf24);">
-                        <i class="fa-solid fa-broom"></i> 状态清洗
+                        <i class="fa-solid fa-broom"></i> 状态校准
                     </label>
                     
                     <div id="gc-actions-main" style="display:flex; gap:5px;">
-                        <button id="btn-gc-manage" class="anima-btn secondary small" title="管理清洗规则"><i class="fa-solid fa-gear"></i>清洗规则</button>
-                        <button id="btn-gc-execute" class="anima-btn secondary small" title="调用高级API清洗状态"><i class="fa-solid fa-play"></i> 执行</button>
+                        <button id="btn-gc-manage" class="anima-btn secondary small" title="管理校准规则"><i class="fa-solid fa-gear"></i>校准规则</button>
+                        <button id="btn-gc-execute" class="anima-btn secondary small" title="调用总结API校准状态"><i class="fa-solid fa-play"></i> 执行</button>
                     </div>
 
                     <div id="gc-actions-result" style="display:none; gap:5px;">
-                        <button id="btn-gc-edit" class="anima-btn secondary small" title="手动微调清洗结果"><i class="fa-solid fa-pen-to-square"></i> 编辑</button>
+                        <button id="btn-gc-edit" class="anima-btn secondary small" title="手动微调校准结果"><i class="fa-solid fa-pen-to-square"></i> 编辑</button>
                         <button id="btn-gc-apply" class="anima-btn success small" title="确认写入到楼层变量" style="background: #10b981; border-color: #059669; color: white;"><i class="fa-solid fa-check-double"></i> 写入</button>
                         <button id="btn-gc-discard" class="anima-btn danger small" title="放弃结果并清空"><i class="fa-solid fa-trash"></i></button>
                     </div>
                 </div>
 
                 <div id="gc-info-bar" style="display:none; font-size: 12px; color: #fbbf24; margin-bottom: 5px; text-align: right;">
-                    <i class="fa-solid fa-calculator"></i> 清洗后字符数: <span id="val-gc-char-count" style="font-weight: bold;">0</span>
+                    <i class="fa-solid fa-calculator"></i> 校准后字符数: <span id="val-gc-char-count" style="font-weight: bold;">0</span>
                 </div>
 
                 <textarea id="gc-result-content" class="anima-textarea" rows="6" disabled
-                    placeholder="等待执行清洗..."
+                    placeholder="等待执行校准..."
                     style="font-family: monospace; line-height: 1.4; color: #fbbf24; background: rgba(0,0,0,0.4); border: 1px solid #fbbf24; width:100%; box-sizing: border-box; display: none;"
                 ></textarea>
 
@@ -244,9 +244,9 @@ export function initStatusSettings() {
         $actionsResult.css("display", "flex");
 
         if (window.toastr)
-          toastr.success(`状态清洗完成，准备覆盖楼层 #${currentGCTargetId}`);
+          toastr.success(`状态校准完成，准备覆盖楼层 #${currentGCTargetId}`);
       } catch (err) {
-        if (window.toastr) toastr.error("清洗失败: " + err.message);
+        if (window.toastr) toastr.error("校准失败: " + err.message);
         console.error("[Anima GC Error]:", err);
       } finally {
         $btnExecute.html(originalText).prop("disabled", false);
@@ -317,7 +317,7 @@ export function initStatusSettings() {
 
         if (window.toastr)
           toastr.success(
-            `清洗结果已成功覆写至楼层 #${currentGCTargetId !== -1 ? currentGCTargetId : "最新"}！`,
+            `校准结果已成功覆写至楼层 #${currentGCTargetId !== -1 ? currentGCTargetId : "最新"}！`,
           );
 
         // 保存成功后：清空结果框、隐藏底部UI
@@ -1183,7 +1183,7 @@ export function refreshStatusPanel() {
           });
           $syncBtn.attr(
             "title",
-            `字数已达 ${yamlStr.length}/${threshold}！点击同步后，建议进行状态清洗 (可拖动)`,
+            `字数已达 ${yamlStr.length}/${threshold}！点击同步后，建议进行状态校准 (可拖动)`,
           );
         } else {
           // 正常：清空内联样式，恢复 style.css 中定义的默认黄色/蓝色

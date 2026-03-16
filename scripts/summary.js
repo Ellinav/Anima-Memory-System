@@ -1236,14 +1236,51 @@ async function showSummaryHistoryModal() {
   }
 
   const entries = await window.TavernHelper.getWorldbook(wbName);
-  const animaEntries = entries.filter(
-    (e) =>
-      e.extra &&
-      e.extra.createdBy === "anima_summary" &&
-      e.extra.source_file === currentChatId, // <--- 新增这行，严防串台
+  
+  // 1. 先找出所有 Anima 生成的条目（忽略 Chat ID）
+  const allAnimaEntries = entries.filter(
+    (e) => e.extra && e.extra.createdBy === "anima_summary"
   );
 
+  // 2. 再找出严格匹配当前 Chat ID 的条目（严防串台）
+  const animaEntries = allAnimaEntries.filter(
+    (e) => e.extra.source_file === currentChatId
+  );
+
+  // 3. 智能迁移逻辑 (处理分支拷贝情况)
   if (animaEntries.length === 0) {
+    // 如果没有严格匹配的，但世界书里确实有 Anima 数据，说明是复制或分支过来的
+    if (allAnimaEntries.length > 0) {
+      const oldChatId = allAnimaEntries[0].extra.source_file || "未知旧分支";
+      
+      if (confirm(`检测到世界书 [${wbName}] 中的总结属于旧分支 (${oldChatId})。\n\n这通常是因为使用了 ST 的分支或拷贝功能。\n是否将其一键迁移绑定到当前新分支，并重置同步状态？`)) {
+        
+        // 执行自动迁移
+        await window.TavernHelper.updateWorldbookWith(wbName, (currEntries) => {
+          currEntries.forEach(entry => {
+            if (entry.extra && entry.extra.createdBy === "anima_summary") {
+              // 修正条目的 source_file 绑定到新分支
+              entry.extra.source_file = currentChatId;
+              
+              if (Array.isArray(entry.extra.history)) {
+                entry.extra.history.forEach(h => {
+                  h.source_file = currentChatId;
+                  // ⚠️ 关键：重置同步状态，让它们能重新打入新分支的向量库和BM25
+                  h.vectorized = false; 
+                  h.is_bm25_synced = false;
+                });
+              }
+            }
+          });
+          return currEntries;
+        });
+        
+        toastr.success("分支数据迁移成功！请重新点击按钮打开历史记录。");
+        return; // 终止当前执行，强制用户重新点开以加载新数据
+      }
+    }
+
+    // 如果真的一条都没有，或者用户点击了取消
     toastr.info(`世界书 [${wbName}] 中暂无 Anima 插件生成的总结。`);
     return;
   }

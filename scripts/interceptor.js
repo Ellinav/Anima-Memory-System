@@ -53,19 +53,26 @@ function constructRagQuery(chat, settings) {
   const promptConfig = settings.vector_prompt || [];
   let finalQueryParts = [];
 
-  // 🔥 核心修复：抛弃被污染的 chat 参数，使用底层真实源
+  // 🟢 黄金修复方案：先拿到原生 chat 兜底，并动态计算长度
+  const nativeChat = SillyTavern.getContext().chat || chat || [];
   let allMsgs = [];
+
   try {
     if (window.TavernHelper && window.TavernHelper.getChatMessages) {
+      // 动态获取最后一条消息的 ID，而不是传宏字符串
+      const lastId = nativeChat.length > 0 ? nativeChat.length - 1 : 0;
       allMsgs =
-        window.TavernHelper.getChatMessages("0-{{lastMessageId}}", {
+        window.TavernHelper.getChatMessages(`0-${lastId}`, {
           include_swipes: false,
         }) || [];
-    } else {
-      allMsgs = SillyTavern.getContext().chat || [];
     }
   } catch (e) {
-    allMsgs = SillyTavern.getContext().chat || chat || [];
+    console.warn("[Anima] TavernHelper 提取失败，准备回退");
+  }
+
+  // 🚨 最核心的兜底：就算没报错，只要是空数组，一律强制回退到原生 chat！
+  if (!allMsgs || allMsgs.length === 0) {
+    allMsgs = nativeChat;
   }
 
   for (const item of promptConfig) {
@@ -148,18 +155,25 @@ async function constructBm25Query(chat, bm25Settings, ragSettings) {
   const promptConfig = cSettings.prompt_items || [];
 
   // 1. 获取底层最真实的聊天数组
+  const nativeChat = SillyTavern.getContext().chat || chat || [];
   let allMsgs = [];
+
   try {
     if (window.TavernHelper && window.TavernHelper.getChatMessages) {
+      // 动态获取最后一条消息的 ID，而不是传宏字符串
+      const lastId = nativeChat.length > 0 ? nativeChat.length - 1 : 0;
       allMsgs =
-        window.TavernHelper.getChatMessages("0-{{lastMessageId}}", {
+        window.TavernHelper.getChatMessages(`0-${lastId}`, {
           include_swipes: false,
         }) || [];
-    } else {
-      allMsgs = SillyTavern.getContext().chat || [];
     }
   } catch (e) {
-    allMsgs = SillyTavern.getContext().chat || chat || [];
+    console.warn("[Anima] TavernHelper 提取失败，准备回退");
+  }
+
+  // 🚨 最核心的兜底：就算没报错，只要是空数组，一律强制回退到原生 chat！
+  if (!allMsgs || allMsgs.length === 0) {
+    allMsgs = nativeChat;
   }
 
   for (const item of promptConfig) {

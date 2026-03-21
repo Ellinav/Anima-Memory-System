@@ -48,42 +48,23 @@ function formatMergedKb(mergedList) {
   return finalString;
 }
 
-// ✨ 终极修复版：构建 RAG 查询
+// ✨ 终极修复版：完美适配 Swipe 的 RAG 查询
 function constructRagQuery(chat, settings) {
   const promptConfig = settings.vector_prompt || [];
   let finalQueryParts = [];
 
-  // 1. 获取底层最真实的聊天数组
-  const nativeChat = SillyTavern.getContext().chat || chat || [];
-  let allMsgs = [];
+  // 🔴 核心修复：彻底抛弃 getContext() 和 TavernHelper！
+  // 绝对信任拦截器传进来的 chat 数组，因为 ST 在 Swipe 时已经自动弹出了废弃楼层！
+  let allMsgs = Array.isArray(chat) ? chat : [];
 
-  try {
-    if (window.TavernHelper && window.TavernHelper.getChatMessages) {
-      const lastId = nativeChat.length > 0 ? nativeChat.length - 1 : 0;
-      allMsgs =
-        window.TavernHelper.getChatMessages(`0-${lastId}`, {
-          include_swipes: false,
-        }) || [];
-    }
-  } catch (e) {
-    console.warn("[Anima] TavernHelper 提取失败，准备回退");
-  }
-
-  if (!allMsgs || allMsgs.length === 0) {
-    allMsgs = nativeChat;
-  }
-
-  // 🔴 核心修复：必须先过滤掉系统隐藏消息和空消息，然后再切片！
+  // 先过滤出“纯净的聊天记录”
   let filteredChat = allMsgs.filter((msg, idx) => {
-    // 剔除纯系统消息 (防止截取到 Author's Note 等临时注入块)
     if (msg.is_system && !msg.role) return false;
-    // 剔除开场白
     if (
       settings.skip_layer_zero &&
       (String(msg.message_id) === "0" || idx === 0)
     )
       return false;
-    // 剔除当前正在生成/Swipe的空消息
     if (!msg.mes && !msg.message) return false;
     return true;
   });
@@ -92,10 +73,9 @@ function constructRagQuery(chat, settings) {
     if (item.type === "context") {
       const count = parseInt(item.count) || 5;
 
-      // A. 从【全是干货】的数组中安全截取最后 N 条
+      // 安全截取最后 N 条
       const slicedChat = filteredChat.slice(-count);
 
-      // B. 格式化 & 正则清洗
       const textBlock = slicedChat
         .map((msg) => {
           let content = msg.message || msg.mes;
@@ -136,7 +116,7 @@ function constructRagQuery(chat, settings) {
   return finalQueryParts.join("\n\n").trim();
 }
 
-// ✨ 终极修复版：构建 BM25 查询
+// ✨ 终极修复版：完美适配 Swipe 的 BM25 查询
 async function constructBm25Query(chat, bm25Settings, ragSettings) {
   if (!bm25Settings || !bm25Settings.content_settings) return "";
 
@@ -157,34 +137,15 @@ async function constructBm25Query(chat, bm25Settings, ragSettings) {
   let finalQueryParts = [];
   const promptConfig = cSettings.prompt_items || [];
 
-  // 1. 获取底层最真实的聊天数组
-  const nativeChat = SillyTavern.getContext().chat || chat || [];
-  let allMsgs = [];
+  // 🔴 核心修复：同样只信任拦截器参数
+  let allMsgs = Array.isArray(chat) ? chat : [];
 
-  try {
-    if (window.TavernHelper && window.TavernHelper.getChatMessages) {
-      const lastId = nativeChat.length > 0 ? nativeChat.length - 1 : 0;
-      allMsgs =
-        window.TavernHelper.getChatMessages(`0-${lastId}`, {
-          include_swipes: false,
-        }) || [];
-    }
-  } catch (e) {
-    console.warn("[Anima] TavernHelper 提取失败，准备回退");
-  }
-
-  if (!allMsgs || allMsgs.length === 0) {
-    allMsgs = nativeChat;
-  }
-
-  // 🔴 核心修复：提前过滤系统消息和空消息
   let filteredChat = allMsgs.filter((msg, idx) => {
     if (msg.is_system && !msg.role) return false;
     if (skipZero && (String(msg.message_id) === "0" || idx === 0)) return false;
 
     const isUser = msg.role === "user" || msg.is_user === true;
     if (excludeUser && isUser) return false;
-    // 剔除正在生成的空消息
     if (!msg.mes && !msg.message) return false;
     return true;
   });
@@ -192,8 +153,6 @@ async function constructBm25Query(chat, bm25Settings, ragSettings) {
   for (const item of promptConfig) {
     if (item.id === "floor_content") {
       const count = parseInt(item.count) || 1;
-
-      // 安全切片
       const slicedChat = filteredChat.slice(-count);
       let processedChat = [];
 

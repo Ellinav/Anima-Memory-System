@@ -34,6 +34,7 @@ function getGlobalBm25Settings() {
     extensionSettings.anima_memory_system = {};
   }
 
+  // 1. 确保基础对象存在
   if (!extensionSettings.anima_memory_system.bm25) {
     extensionSettings.anima_memory_system.bm25 = {
       bm25_enabled: true,
@@ -41,22 +42,29 @@ function getGlobalBm25Settings() {
       search_top_k: 3,
       custom_dicts: {
         default_dict: {
-          words: [], // 🗑️ 移除了 blacklist
+          words: [],
         },
-      },
-      content_settings: {
-        reuse_rag_regex: true,
-        regex_list: [],
-        skip_layer_zero: true,
-        regex_skip_user: false,
-        exclude_user: false,
-        prompt_items: [{ type: "core", id: "floor_content", count: 2 }],
       },
     };
   }
+
+  // 2. 🚨 核心修复：单独检查并初始化 content_settings，兼容旧版本配置文件
+  if (!extensionSettings.anima_memory_system.bm25.content_settings) {
+    extensionSettings.anima_memory_system.bm25.content_settings = {
+      reuse_rag_regex: true,
+      regex_list: [],
+      skip_layer_zero: true,
+      regex_skip_user: false,
+      exclude_user: false,
+      prompt_items: [{ type: "core", id: "floor_content", count: 2 }],
+    };
+  }
+
+  // 3. 字典映射初始化
   if (!extensionSettings.anima_memory_system.bm25.dict_mapping) {
     extensionSettings.anima_memory_system.bm25.dict_mapping = {};
   }
+
   return extensionSettings.anima_memory_system.bm25;
 }
 

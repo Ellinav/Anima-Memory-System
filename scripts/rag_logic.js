@@ -1,8 +1,16 @@
 import { getAnimaConfig } from "./api.js"; // 引用你在 api.js 写的配置获取函数
 import { processMacros, createRenderContext } from "./utils.js";
+import { callBackend } from "./db_api.js";
+import { getSmartCollectionId } from "./utils.js";
+import { getBm25BackendConfig } from "./bm25_logic.js";
 
 // 🟢 [新增] 全局状态：当前是否为重绘 (Swipe)
 let _isSwipeMode = false;
+let _lastRetrievalPayload = null;
+
+export function getLastRetrievalPayload() {
+  return _lastRetrievalPayload;
+}
 
 // 🟢 [新增] 供 index.js 调用的设置函数
 export function setSwipeState(isSwipe) {
@@ -378,197 +386,7 @@ function detectActiveStatus(labels, chatHistory) {
   return activeTags;
 }
 
-/**
- * 获取标准化的数据库集合 ID
- * 解决中文角色文件名只显示日期的问题 (2025-7-29...) -> (角色名_2025-7-29...)
- */
-export function getSmartCollectionId() {
-  const context = SillyTavern.getContext();
-  let filename = context.chatId; // 获取当前文件名 (e.g. "2025-1-1.jsonl")
-
-  if (!filename) return null;
-
-  // 去掉 .json 或 .jsonl 后缀
-  filename = filename.replace(/\.jsonl?$/i, "");
-
-  // 定义清洗函数（必须与后端逻辑保持一致：空格转下划线）
-  const sanitizeName = (str) => {
-    if (!str) return "";
-    // 将所有非中文、非字母数字、非@.-的字符（包括空格）都替换为下划线
-    return str.replace(/[^a-zA-Z0-9@\-\._\u4e00-\u9fa5]/g, "_");
-  };
-
-  // 尝试获取当前角色数据
-  let charName = null;
-  try {
-    // 优先尝试 TavernHelper
-    const charData = window.TavernHelper?.RawCharacter?.find({
-      name: "current",
-    });
-    if (charData && charData.name) {
-      charName = charData.name;
-    }
-    // 兜底：如果 TavernHelper 没拿到，尝试从 Context 直接读
-    else if (
-      context.characterId &&
-      context.characters &&
-      context.characters[context.characterId]
-    ) {
-      charName = context.characters[context.characterId].name;
-    }
-  } catch (e) {
-    console.warn("[Anima ID] 获取角色名失败:", e);
-  }
-
-  // 1. 先把文件名清洗一遍，确保没有空格干扰正则判断
-  const cleanFilename = sanitizeName(filename);
-
-  // 2. 如果拿到了角色名
-  if (charName) {
-    const cleanCharName = sanitizeName(charName);
-
-    // 情况 A: 文件名已经包含了角色名 (ST有时会自动带上)
-    if (cleanFilename.startsWith(cleanCharName)) {
-      return cleanFilename;
-    }
-
-    // 情况 B: 文件名看起来像纯时间戳 (数字开头) -> 手动拼接
-    // 使用更严格的正则，确保是日期格式 (例如 2025...)
-    if (/^\d{4}/.test(cleanFilename)) {
-      return `${cleanCharName}_${cleanFilename}`;
-    }
-  }
-
-  // 3. 兜底：直接返回清洗后的文件名
-  return cleanFilename;
-}
-
-// 定义后端插件的路由前缀 (SillyTavern 标准)
-const PLUGIN_API_URL = "/api/plugins/anima-rag";
-
-// 🟢 新增：获取后端可用向量库列表
-export async function getAvailableCollections() {
-  const settings = getEffectiveSettings();
-  if (settings && settings.rag_enabled === false) {
-    return []; // 直接返回空数组
-  }
-  try {
-    return await callBackend("/list", {}, "GET");
-    // 注意：如果你之前的 callBackend 只支持 POST，
-    // 你可能需要简单修改 callBackend 支持 GET，或者这里直接用 $.get
-    // 下面是直接用 $.ajax 的写法，或者你修改 callBackend
-  } catch (e) {
-    console.error("获取列表失败", e);
-    return [];
-  }
-}
-
-/**
- * 通用函数：调用后端向量插件 (jQuery 版 - 自动处理 CSRF)
- * @param {string} endpoint - 后端路由，例如 "/insert" 或 "/query"
- * @param {object} payload - 发送的数据
- */
-async function callBackend(endpoint, payload, method = "POST") {
-  const settings = getAnimaConfig();
-  const apiCredentials = settings?.api?.rag || settings?.rag || {};
-
-  // 🔍 调试日志：看看它到底读到了哪里 (修复后可注释掉)
-  // console.log("[Anima Debug] Config Source:", settings?.api?.rag ? "New (api.rag)" : "Old (rag)", apiCredentials);
-
-  if (method === "POST" && (!apiCredentials.key || !apiCredentials.model)) {
-    const errMsg = "缺少 API Key 或 Model 配置，请先在设置面板填写！";
-    console.error(`[Anima Debug] ❌ 前端拦截: ${errMsg}`, apiCredentials);
-    // 强制弹窗
-    if (window.toastr) toastr.error(errMsg, "Anima API 拦截");
-    throw new Error(errMsg);
-  }
-
-  const requestBody = {
-    ...payload,
-    apiConfig: {
-      source: apiCredentials.source,
-      url: apiCredentials.url,
-      key: apiCredentials.key,
-      model: apiCredentials.model,
-    },
-  };
-
-  return new Promise((resolve, reject) => {
-    $.ajax({
-      url: `${PLUGIN_API_URL}${endpoint}`,
-      type: method,
-      contentType: "application/json",
-      data: JSON.stringify(requestBody),
-      timeout: 30000, // 🟢 新增：30秒超时机制，防止请求死锁挂起
-      success: (data) => {
-        resolve(data);
-      },
-      error: (jqXHR, textStatus, errorThrown) => {
-        let errMsg = "未知错误";
-
-        // 🟢 新增：细化网络层面的报错
-        if (jqXHR.status === 0) {
-          errMsg = "无法连接到后端服务器 (请检查 Node.js 后端是否启动)。";
-        } else if (textStatus === "timeout") {
-          errMsg = "向量 API 请求超时 (超过30秒)，请检查代理或网络。";
-        } else {
-          try {
-            const errData = JSON.parse(jqXHR.responseText);
-            errMsg = errData.message || errData.error || errMsg;
-          } catch (e) {
-            const rawText = jqXHR.responseText || jqXHR.statusText || "";
-            errMsg = rawText
-              .replace(/<[^>]*>?/gm, "")
-              .trim()
-              .replace(/\s+/g, " ")
-              .substring(0, 150);
-            if (!errMsg) errMsg = `HTTP Error ${jqXHR.status}`;
-          }
-        }
-
-        console.error(`[Anima Debug] ❌ Backend Error:`, errMsg);
-        // 失败直接弹窗
-        if (window.toastr) toastr.error(errMsg, "Anima 向量接口报错");
-        reject(new Error(errMsg));
-      },
-    });
-  });
-}
-
-// 🟢 [新增] 上传知识库文件
-export async function uploadKnowledgeBase(file, settings) {
-  if (settings && settings.rag_enabled === false) {
-    console.warn("[Anima RAG] 总开关已关闭，拦截知识库上传。");
-    // 这里 reject 一个错误，或者 resolve 一个提示，取决于你希望 UI 怎么反应
-    return Promise.reject(new Error("RAG 总开关已关闭，无法上传文件。"));
-  }
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const content = e.target.result;
-      try {
-        // 调用后端
-        const response = await callBackend("/import_knowledge", {
-          fileName: file.name,
-          fileContent: content,
-          settings: {
-            delimiter: settings.knowledge_base?.delimiter,
-            chunk_size: settings.knowledge_base?.chunk_size,
-          },
-        });
-        if (window.toastr) {
-          toastr.success(`文件 ${file.name} 导入成功！`, "Anima RAG");
-        }
-        resolve(response);
-      } catch (err) {
-        reject(err);
-      }
-    };
-    reader.onerror = (err) => reject(err);
-    reader.readAsText(file); // 此时仅支持文本读取，PDF/Docx 需要额外库
-  });
-}
-
+// 获取后端可用向量库列表
 // 1. 存入向量
 export async function insertMemory(
   text,
@@ -613,6 +431,8 @@ export async function insertMemory(
       `[Anima Debug] 🚀 发起写入请求: ID=${index}, Collection=${collectionId}`,
     );
 
+    const bm25ConfigPackage = getBm25BackendConfig(collectionId);
+
     const response = await callBackend("/insert", {
       text,
       tags,
@@ -621,6 +441,7 @@ export async function insertMemory(
       uuid: oldUuid,
       index: index,
       batch_id: batchId,
+      bm25Config: bm25ConfigPackage,
     });
 
     if (response && response.vectorId) {
@@ -690,11 +511,13 @@ function sanitizeId(id) {
 // 2. 查询向量 (双轨并发版：Chat + KB)
 export async function queryDual({
   searchText,
+  bm25SearchText,
   currentChatId,
   extraChatFiles,
-  kbFiles,
   excludeIds,
   isSilent = false,
+  bm25Configs,
+  kbPayload, // ✨ 确保这一行加上了！
 }) {
   const showToast = (msg, type = "info", title = "Anima RAG") => {
     if (!isSilent && window.toastr) {
@@ -748,9 +571,9 @@ export async function queryDual({
   console.log(`[Anima] 🟢 最终检索列表: [${finalChatIds.join(", ")}]`);
 
   // KB 清洗 (保持不变)
-  const finalKbFiles = (kbFiles || []).map((id) => clean(id));
+  const finalKbContext = kbPayload?.kbContext || { ids: [], strategy: {} };
 
-  if (finalChatIds.length === 0 && finalKbFiles.length === 0) {
+  if (finalChatIds.length === 0 && finalKbContext.ids.length === 0) {
     console.warn("[Anima RAG] 未指定任何数据库 ID (UI列表为空)，跳过检索");
     showToast("当前未绑定任何聊天或知识库，跳过检索。", "info");
     return { chat_results: [], kb_results: [] };
@@ -758,9 +581,13 @@ export async function queryDual({
 
   // ============== 3. 空文本拦截 (最有可能的罪魁祸首) ==============
   searchText = processMacros(searchText || "");
-  if (!searchText || searchText.trim() === "") {
-    console.warn("[Anima RAG] 提取到的检索词为空，跳过向后端发送请求。");
-    showToast("检索文本为空 (正则可能填写错误)，跳过检索。", "warning");
+  let finalBm25Text = bm25SearchText || "";
+  if (
+    (!searchText || searchText.trim() === "") &&
+    (!finalBm25Text || finalBm25Text.trim() === "")
+  ) {
+    console.warn("[Anima RAG] 提取到的检索词全部为空，跳过向后端发送请求。");
+    showToast("检索文本全部为空 (正则可能填写错误)，跳过检索。", "warning");
     return { chat_results: [], kb_results: [] };
   }
 
@@ -892,27 +719,20 @@ export async function queryDual({
   };
 
   // ============================================
-  // 📚 构建 KB 策略 (简单模式)
-  // ============================================
-  const kbConfig = settings?.knowledge_base || {};
-  const kbStrategyPayload = {
-    search_top_k: kbConfig.search_top_k || 3,
-    min_score: kbConfig.min_score || 0.5,
-  };
-
-  // ============================================
   // 🚀 发送请求
   // ============================================
   try {
-    // 🟢 [修复] 引入正确的 API 配置路径
     const fullConfig = getAnimaConfig(); // 获取包含 api 的总配置
-    const rerankApiConfig = fullConfig?.api?.rerank || {}; // 读取实际保存的 url, key, model
+    const embedApiConfig = fullConfig?.api?.rag || {};
+    const rerankApiConfig = fullConfig?.api?.rerank || {}; // 提取重排 API 配置
 
     const isRerankEnabled = settings?.rerank_enabled === true;
     const rerankCount = settings?.rerank_count || 30;
 
     const response = await callBackend("/query", {
       searchText,
+      bm25SearchText: finalBm25Text,
+      apiConfig: embedApiConfig,
       ignore_ids: excludeIds || [],
       sessionId: cleanMainId,
       is_swipe: _isSwipeMode,
@@ -931,11 +751,14 @@ export async function queryDual({
         ids: finalChatIds,
         strategy: chatStrategyPayload,
       },
-      kbContext: {
-        ids: finalKbFiles,
-        strategy: kbStrategyPayload,
-      },
+      kbContext: finalKbContext, // ✨ 直接透传完整配置，包含所有检索数量设定
+      bm25Configs: bm25Configs,
     });
+    _lastRetrievalPayload = {
+      query: searchText,
+      bm25Query: finalBm25Text,
+      ...response,
+    };
     if (
       response &&
       response._debug_logs &&
@@ -946,10 +769,10 @@ export async function queryDual({
         (response.chat_results?.length || 0) +
         (response.kb_results?.length || 0);
 
-      console.groupCollapsed(
+      /* console.groupCollapsed(
         `%c[Anima RAG] 🕵️ 检索报告 | 命中: ${totalCount} | 日志: ${logs.length} 条`,
         "color: #22d3ee; font-weight: bold; background: #0f172a; padding: 2px 6px; border-radius: 4px;",
-      );
+      ); */
 
       logs.forEach((log) => {
         // 🎨 样式区分：Echo 系统用紫色，普通检索用青色
@@ -986,12 +809,7 @@ export async function queryDual({
           if (uiModule.updateLastRetrievalResult) {
             uiModule.updateLastRetrievalResult({
               query: searchText,
-              // 在结果预览里，我们将 chat 和 kb 合并展示，方便用户看
-              results: [
-                ...(response.chat_results || []),
-                ...(response.kb_results || []),
-              ],
-              strategy_log: response._debug_logs,
+              ...response, // 🟢 [修改] 展开所有后端返回的字段（包含 vector_chat_results, _debug_logs 等）
             });
           }
         })
@@ -1001,6 +819,10 @@ export async function queryDual({
     return {
       chat_results: response.chat_results || [],
       kb_results: response.kb_results || [],
+      bm25_chat_results: response.bm25_chat_results || [],
+      bm25_kb_results: response.bm25_kb_results || [],
+      merged_chat_results: response.merged_chat_results || [],
+      merged_kb_results: response.merged_kb_results || [],
     };
   } catch (e) {
     console.error("[Anima RAG] 双轨检索失败:", e);
@@ -1009,7 +831,12 @@ export async function queryDual({
     if (window.toastr && !e.message.includes("请先在")) {
       toastr.error("检索过程崩溃: " + e.message, "Anima RAG 致命错误");
     }
-    return { chat_results: [], kb_results: [] };
+    return {
+      chat_results: [],
+      kb_results: [],
+      bm25_chat_results: [],
+      bm25_kb_results: [],
+    };
   }
 }
 
@@ -1065,30 +892,6 @@ export async function deleteBatchMemory(collectionId, batchId) {
     if (window.toastr) {
       toastr.warning("后端批量清理失败: " + err.message);
     }
-  }
-}
-
-// 🟢 新增：物理删除整个 Collection 文件夹
-export async function deleteCollection(collectionId) {
-  const settings = getEffectiveSettings(); // 获取当前配置
-  if (settings && settings.rag_enabled === false) {
-    console.warn("[Anima RAG] 总开关已关闭，拦截数据库删除。");
-    return { success: false, message: "RAG Disabled" };
-  }
-  if (!collectionId) return;
-
-  try {
-    const response = await callBackend("/delete_collection", {
-      collectionId: collectionId,
-    });
-    console.log(`[Anima Client] 数据库删除响应:`, response);
-    return response;
-  } catch (err) {
-    console.error("[Anima Client] 数据库删除失败:", err);
-    if (window.toastr) {
-      toastr.error("后端删除失败: " + err.message);
-    }
-    return { success: false };
   }
 }
 

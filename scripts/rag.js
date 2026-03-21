@@ -1,10 +1,9 @@
-import { getAnimaConfig } from "./api.js";
 import {
   toggleAllSummariesState,
   syncRagSettingsToWorldbook,
 } from "./worldbook_api.js"; // 🟢 引入 updateSummaryContent
 
-import { getAvailableCollections, getSmartCollectionId } from "./rag_logic.js";
+import { getSmartCollectionId, escapeHtml } from "./utils.js";
 import { RegexListComponent, getRegexModalHTML } from "./regex_ui.js";
 import {
   renderStrategyTable,
@@ -20,6 +19,7 @@ import {
   showVectorStatusModal,
   checkAndSyncDirtyVectors,
 } from "./rag_status.js";
+import { getAvailableCollections } from "./db_api.js";
 
 let regexComponent = null;
 // ==========================================
@@ -57,13 +57,6 @@ export const DEFAULT_RAG_SETTINGS = {
   echo_max_count: 10, // 最大总量
   rerank_enabled: false, // 默认关闭重排
   rerank_count: 5, // 重排后最终保留的数量
-
-  knowledge_base: {
-    delimiter: "", // 切片自定义分隔符 (如 "###")
-    chunk_size: 500, // 切片字符数 (delimiter为空时生效)
-    search_top_k: 3, // 每个文档检索数量
-    min_score: 0.5, // 知识库最低相关度
-  },
 
   // === 1. 基础区域 (通用) ===
   min_score: 0.2,
@@ -117,15 +110,7 @@ export const DEFAULT_RAG_SETTINGS = {
     order: 100,
     recent_count: 2,
     template:
-      "<recalledMemories>[IMPORTANT: The following are retrieved HISTORICAL memories. Use them ONLY to enrich internal monologues, add nostalgia, or reference the past. They are STRICTLY THE PAST. You MUST NOT treat them as current events.]\n{{rag}}\n</recalledMemories>\n<immediateHistory>\n{{recent_history}}\n</immediateHistory>",
-  },
-  knowledge_injection: {
-    enabled: true,
-    strategy: "constant",
-    position: "before_character_definition",
-    role: "system",
-    depth: 0,
-    template: "<knowledge>\n{{knowledge}}\n</knowledge>", // 默认模板
+      "<recalledMemories>[IMPORTANT: The following are retrieved HISTORICAL memories. Use them ONLY to enrich internal monologues, add nostalgia, or reference the past. They are STRICTLY THE PAST. You MUST NOT treat them as current events.]\n{{chatHistory}}\n</recalledMemories>\n<immediateHistory>\n{{recent_history}}\n</immediateHistory>",
   },
 };
 
@@ -213,23 +198,6 @@ export async function saveRagSettings(settings) {
   }
 }
 
-// 🟢 [新增] 获取当前聊天关联的知识库文件
-export function getChatKbFiles() {
-  const context = SillyTavern.getContext();
-  if (!context.chatId || !context.chatMetadata) return [];
-  return context.chatMetadata["anima_kb_active_files"] || [];
-}
-
-// 🟢 [新增] 保存知识库关联
-export async function saveChatKbFiles(files) {
-  const context = SillyTavern.getContext();
-  if (!context.chatId) return;
-  const uniqueFiles = [...new Set(files)].filter(Boolean);
-  context.chatMetadata["anima_kb_active_files"] = uniqueFiles;
-  await context.saveMetadata();
-  console.log("[Anima KB] Metadata saved:", uniqueFiles);
-}
-
 export function getChatRagFiles() {
   const context = SillyTavern.getContext();
   if (!context.chatId || !context.chatMetadata) return [];
@@ -248,16 +216,6 @@ export async function saveChatRagFiles(files) {
   context.chatMetadata["anima_rag_active_files"] = uniqueFiles;
   await context.saveMetadata();
   console.log("[Anima RAG] Metadata saved:", uniqueFiles);
-}
-
-export function escapeHtml(text) {
-  if (!text) return text;
-  return text
-    .toString()
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 // ==========================================
@@ -425,7 +383,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                              <i class="fa-solid fa-list-check"></i> 当前聊天向量
                          </button>
                          <button id="rag_btn_last_result" class="anima-btn secondary small" title="查看最近一次生成的检索详情" style="white-space:nowrap;">
-                             <i class="fa-solid fa-magnifying-glass"></i> 查看最近检索
+                             <i class="fa-solid fa-magnifying-glass-chart"></i> 查看最近检索
                          </button>
                     </div>
                 </div>
@@ -445,7 +403,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                                 <i class="fa-solid fa-file-export"></i> 导出
                             </button>
                             <button id="rag_btn_import" class="anima-btn primary small" title="将已存在的数据库关联到当前聊天">
-                                <i class="fa-solid fa-link"></i> 管理
+                                <i class="fa-solid fa-bars-progress"></i> 管理
                             </button>
                         </div>
                     </div>
@@ -466,77 +424,6 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                     <div style="margin-top: 10px;">
                         <button id="rag_btn_save_settings_top" class="anima-btn primary" style="width:100%">
                             <i class="fa-solid fa-floppy-disk"></i> 保存配置
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="anima-setting-group">
-                <h2 class="anima-title"><i class="fa-solid fa-book-open"></i> 知识库</h2>
-                <div class="anima-card">
-                    <input type="file" id="rag_input_knowledge_file" accept=".txt,.md,.json" multiple style="display:none;" />
-
-                    <div class="anima-flex-row">
-                        <div class="anima-label-group">
-                            <span class="anima-label-text">知识库构建</span>
-                            <span class="anima-desc-inline">仅支持上传 txt 和 markdown 格式</span>
-                        </div>
-                        <div style="display:flex; gap:5px;">
-                             <button id="rag_btn_kb_import" class="anima-btn primary small">
-                                <i class="fa-solid fa-upload"></i> 上传
-                            </button>
-                            <button id="rag_btn_kb_view" class="anima-btn secondary small">
-                                <i class="fa-solid fa-eye"></i> 查看
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="anima-divider"></div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px;">
-                        <div class="anima-compact-input">
-                            <div class="anima-label-small">切片依据 (自定义标签)</div>
-                            <input type="text" id="rag_kb_delimiter" class="anima-input" 
-                                   value="${escapeHtml(settings.knowledge_base?.delimiter || "")}" 
-                                   placeholder="为空则按字数">
-                        </div>
-                        <div class="anima-compact-input">
-                            <div class="anima-label-small">切片字符数</div>
-                            <input type="number" id="rag_kb_chunk_size" class="anima-input" 
-                                   value="${settings.knowledge_base?.chunk_size || 500}" min="50" step="50">
-                        </div>
-                    </div>
-                    <div class="anima-desc-inline" style="margin-bottom: 15px; font-size:11px; color:#888;">
-                        <i class="fa-solid fa-circle-info"></i> 若填写了"切片依据"，则优先按标签切分；否则按字符数切分（并自动寻找句号/换行符截断）。
-                    </div>
-
-                    <div class="anima-flex-row">
-                         <div class="anima-label-group">
-                            <span class="anima-label-text">检索数量</span>
-                            <span class="anima-desc-inline">每个文档检索的切片数</span>
-                        </div>
-                        <div class="anima-input-wrapper">
-                             <input type="number" id="rag_kb_search_top_k" class="anima-input" 
-                                    style="width:80px; text-align:center;"
-                                    value="${settings.knowledge_base?.search_top_k || 3}" min="1" max="20">
-                        </div>
-                    </div>
-                    
-                     <div class="anima-flex-row">
-                         <div class="anima-label-group">
-                            <span class="anima-label-text">最低相关性</span>
-                            <span class="anima-desc-inline">知识库检索的最低门槛</span>
-                        </div>
-                        <div class="anima-input-wrapper">
-                             <input type="number" id="rag_kb_min_score" class="anima-input" 
-                                    style="width:80px; text-align:center;"
-                                    value="${settings.knowledge_base?.min_score || 0.5}" step="0.05" min="0" max="1">
-                        </div>
-                    </div>
-
-                    <div style="margin-top: 10px;">
-                        <button id="rag_btn_save_kb_settings" class="anima-btn primary" style="width:100%">
-                            <i class="fa-solid fa-floppy-disk"></i> 保存知识库配置
                         </button>
                     </div>
                 </div>
@@ -617,7 +504,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
 
             <div class="anima-setting-group">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 5px;">
-                    <h2 class="anima-title" style="margin:0;"><i class="fa-solid fa-sliders"></i> 检索策略 (聊天数据库)</h2>
+                    <h2 class="anima-title" style="margin:0;"><i class="fa-solid fa-sliders"></i> 检索策略</h2>
                     <div style="display:flex; gap:5px;">
                         <input type="file" id="rag_input_strategy_json" accept=".json" style="display:none;" />
                         <button id="rag_strategy_import" class="anima-btn secondary small" title="导入策略配置">
@@ -722,8 +609,9 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                                    value="${settings.recent_weight !== undefined ? settings.recent_weight : 0.05}" step="0.01" min="0">
                         </div>
                     </div>
+                    <div class="anima-divider"></div>
                     <div style="margin-bottom: 10px; padding-bottom: 10px;">
-                        <div style="font-size:14px; font-weight:bold; color: #a020dc; margin-bottom:15px; display:flex; align-items:center;">
+                        <div style="font-size:16px; font-weight:bold; color: #a020dc; margin-bottom:15px; display:flex; align-items:center;">
                             <i class="fa-solid fa-bullhorn" style="margin-right:8px;"></i> 记忆回响
                         </div>
 
@@ -763,9 +651,9 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                             </div>
                         </div>
                     </div>
-
+                    <div class="anima-divider"></div>
                     <div>
-                        <div style="font-size:14px; font-weight:bold; color: #eab308; margin-bottom:15px; display:flex; align-items:center;">
+                        <div style="font-size:16px; font-weight:bold; color: #eab308; margin-bottom:15px; display:flex; align-items:center;">
                             <i class="fa-solid fa-scale-balanced" style="margin-right:8px;"></i> 结果重排
                         </div>
                         
@@ -809,20 +697,16 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                 <div class="anima-card">
                     
                     <div style="margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 20px;">
-                        <div style="font-size:14px; font-weight:bold; color:var(--anima-primary); margin-bottom:10px;">
-                            <i class="fa-solid fa-comment-dots"></i> 聊天数据检索结果注入
-                        </div>
-
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 12px;">
                             <div class="anima-compact-input">
-                                <div class="anima-label-small">触发策略</div>
+                                <div class="anima-label-text">触发策略</div>
                                 <select id="rag_inject_strategy" class="anima-select rag-inject-control">
                                     <option value="constant" ${settings.injection_settings?.strategy === "constant" ? "selected" : ""}>🔵 常驻 (Constant)</option>
                                     <option value="selective" ${settings.injection_settings?.strategy === "selective" ? "selected" : ""}>🟢 按需 (Selective)</option>
                                 </select>
                             </div>
                             <div class="anima-compact-input">
-                                <div class="anima-label-small">插入位置</div>
+                                <div class="anima-label-text">插入位置</div>
                                 <select id="rag_inject_position" class="anima-select rag-inject-control">
                                     <option value="at_depth" ${settings.injection_settings?.position === "at_depth" ? "selected" : ""}>@D (指定深度)</option>
                                     <option value="before_character_definition" ${settings.injection_settings?.position === "before_character_definition" ? "selected" : ""}>⬆️ 角色定义之前</option>
@@ -833,7 +717,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
 
                         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px;">
                             <div class="anima-compact-input">
-                                <div class="anima-label-small">角色归属</div>
+                                <div class="anima-label-text">角色归属</div>
                                 <select id="rag_inject_role" class="anima-select rag-inject-control">
                                     <option value="system" ${settings.injection_settings?.role === "system" ? "selected" : ""}>System</option>
                                     <option value="user" ${settings.injection_settings?.role === "user" ? "selected" : ""}>User</option>
@@ -841,12 +725,12 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                                 </select>
                             </div>
                             <div class="anima-compact-input" id="rag_inject_depth_wrapper">
-                                <div class="anima-label-small">深度</div>
+                                <div class="anima-label-text">深度</div>
                                 <input type="number" id="rag_inject_depth" class="anima-input rag-inject-control" 
                                     value="${settings.injection_settings?.depth ?? 2}" step="1" min="0" placeholder="0">
                             </div>
                             <div class="anima-compact-input">
-                                <div class="anima-label-small">顺序</div>
+                                <div class="anima-label-text">顺序</div>
                                 <input type="number" id="rag_inject_order" class="anima-input rag-inject-control" 
                                     value="${settings.injection_settings?.order ?? 100}" step="1">
                             </div>
@@ -870,69 +754,10 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                         <div style="margin-bottom: 5px;">
                             <div class="anima-label-group" style="margin-bottom: 5px;">
                                 <span class="anima-label-text">提示词构建模板</span>
-                                <span class="anima-desc-inline">使用 <code>{{rag}}</code> 作为占位符。</span>
+                                <span class="anima-desc-inline">使用 <code>{{chatHistory}}</code> 作为占位符。</span>
                             </div>
                             <textarea id="rag_inject_template" class="anima-textarea" rows="4" 
-                                placeholder="例如：以下是相关记忆...\n{{rag}}">${escapeHtml(settings.injection_settings?.template || "以下是相关的记忆内容：\n{{rag}}")}</textarea>
-                        </div>
-                    </div>
-
-                    <div>
-                        <div style="font-size:14px; font-weight:bold; color:#48ecd1; margin-bottom:10px;">
-                            <i class="fa-solid fa-book"></i> 知识库注入
-                        </div>
-
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 12px;">
-                             <div class="anima-compact-input">
-                                <div class="anima-label-small">触发策略</div>
-                                <select id="rag_k_inject_strategy" class="anima-select rag-inject-control">
-                                    <option value="constant" ${settings.knowledge_injection?.strategy === "constant" ? "selected" : ""}>🔵 常驻 (Constant)</option>
-                                    <option value="selective" ${settings.knowledge_injection?.strategy === "selective" ? "selected" : ""}>🟢 按需 (Selective)</option>
-                                </select>
-                            </div>
-
-                             <div class="anima-compact-input">
-                                <div class="anima-label-small">插入位置</div>
-                                <select id="rag_k_inject_position" class="anima-select rag-inject-control">
-                                    <option value="at_depth" ${settings.knowledge_injection?.position === "at_depth" ? "selected" : ""}>@D (指定深度)</option>
-                                    <option value="before_character_definition" ${settings.knowledge_injection?.position === "before_character_definition" ? "selected" : ""}>⬆️ 角色定义之前</option>
-                                    <option value="after_character_definition" ${settings.knowledge_injection?.position === "after_character_definition" ? "selected" : ""}>⬇️ 角色定义之后</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px;">
-                             <div class="anima-compact-input">
-                                <div class="anima-label-small">角色归属</div>
-                                <select id="rag_k_inject_role" class="anima-select rag-inject-control">
-                                    <option value="system" ${settings.knowledge_injection?.role === "system" ? "selected" : ""}>System</option>
-                                    <option value="user" ${settings.knowledge_injection?.role === "user" ? "selected" : ""}>User</option>
-                                    <option value="assistant" ${settings.knowledge_injection?.role === "assistant" ? "selected" : ""}>Assistant</option>
-                                </select>
-                            </div>
-
-                            <div class="anima-compact-input">
-                                <div class="anima-label-small">深度</div>
-                                <input type="number" id="rag_k_inject_depth" class="anima-input rag-inject-control" 
-                                    value="${settings.knowledge_injection?.depth ?? 0}" step="1" min="0">
-                            </div>
-
-                            <div class="anima-compact-input">
-                                <div class="anima-label-small">顺序</div>
-                                <input type="number" id="rag_k_inject_order" class="anima-input rag-inject-control" 
-                                    value="${settings.knowledge_injection?.order ?? 100}" step="1">
-                            </div>
-                        </div>
-
-                        <div style="margin-bottom: 15px;">
-                            <div class="anima-label-group" style="margin-bottom: 5px;">
-                                <span class="anima-label-text">知识库模板</span>
-                            </div>
-                            <div class="anima-desc-inline" style="margin-bottom:12px;">
-                            将写入独立的世界书条目。使用 <code>{{knowledge}}</code> 作为占位符。
-                            </div>
-                            <textarea id="rag_k_inject_template" class="anima-textarea" rows="4" 
-                                placeholder="例如：以下是相关设定\n{{knowledge}}">${escapeHtml(settings.knowledge_injection?.template || "以下是相关设定：\n{{knowledge}}")}</textarea>
+                                placeholder="例如：以下是相关记忆...\n{{chatHistory}}">${escapeHtml(settings.injection_settings?.template || "以下是相关的记忆内容：\n{{chatHistory}}")}</textarea>
                         </div>
                     </div>
 
@@ -1140,13 +965,6 @@ function bindRagEvents(settings) {
       const newSettings = {
         ...currentSettings,
 
-        knowledge_base: {
-          delimiter: $("#rag_kb_delimiter").val() || "",
-          chunk_size: parseInt($("#rag_kb_chunk_size").val()) || 500,
-          search_top_k: parseInt($("#rag_kb_search_top_k").val()) || 3,
-          min_score: parseFloat($("#rag_kb_min_score").val()) || 0.5,
-        },
-
         // 全局项
         base_count: parseInt($("#rag_base_count").val()) || 2,
         min_score: parseFloat($("#rag_min_score").val()) || 0.2,
@@ -1209,7 +1027,6 @@ function bindRagEvents(settings) {
     "#rag_btn_save_settings_top",
     "#rag_btn_save_settings_bottom",
     "#rag_btn_save_simple",
-    "#rag_btn_save_kb_settings",
     "#rag_btn_save_dist",
     "#rag_btn_save_prompt_cfg",
     "#rag_btn_save_prompt_bottom",
@@ -1234,20 +1051,8 @@ function bindRagEvents(settings) {
         template: $("#rag_inject_template").val(),
       };
 
-      // 2. 获取 Knowledge Base 注入配置 (新增)
-      const newKnowledgeInjection = {
-        enabled: true, // 默认强制开启
-        strategy: $("#rag_k_inject_strategy").val(),
-        position: $("#rag_k_inject_position").val(),
-        role: $("#rag_k_inject_role").val(),
-        depth: parseInt($("#rag_k_inject_depth").val()) || 0,
-        order: parseInt($("#rag_k_inject_order").val()) || 100,
-        template: $("#rag_k_inject_template").val(),
-      };
-
       // 3. 更新内存对象
       settings.injection_settings = newInjectionSettings;
-      settings.knowledge_injection = newKnowledgeInjection;
 
       // 4. 持久化
       saveRagSettings(settings);
@@ -1407,7 +1212,7 @@ function bindRagEvents(settings) {
   });
 
   $("#rag_btn_last_result").on("click", () => {
-    $(this).removeClass("glow-effect");
+    $("#rag_btn_last_result").removeClass("glow-effect"); // 修复原代码中的 $(this) 问题
 
     if (!_lastRetrievalResult) {
       toastr.info("暂无检索记录 (请先进行一次对话)");
@@ -1416,30 +1221,37 @@ function bindRagEvents(settings) {
 
     const r = _lastRetrievalResult;
 
-    const queryLen = r.query ? r.query.length : 0;
-    // 累加所有结果的 text 长度
-    const totalResultLen = r.results
-      ? r.results.reduce((acc, item) => acc + (item.text || "").length, 0)
-      : 0;
+    // 🟢 核心修改：适配后端新字段，只取聊天向量结果
+    const vectorChatResults = r.vector_chat_results || [];
+    const debugLogs = r._debug_logs || [];
+
+    const queryText = r.query || "";
+    const queryLen = queryText.length;
+    // 累加聊天向量结果的 text 长度
+    const totalResultLen = vectorChatResults.reduce(
+      (acc, item) => acc + (item.text || "").length,
+      0,
+    );
     const headerStyle = "font-size:12px; color:#aaa; font-weight:bold;";
+
     // --- 1. 构建主结果区域 ---
     let contentHtml = `
             <div style="margin-bottom:10px; padding:10px; background:rgba(0,0,0,0.2); border-radius:4px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                    <div style="${headerStyle}">Query</div>
+                    <div style="${headerStyle}">Query (检索词)</div>
                     <div style="${headerStyle}; font-family:monospace;">Length: ${queryLen} 字符数</div>
                 </div>
-                <div style="color:#eee; font-size:13px; white-space: pre-wrap;">${escapeHtml(r.query)}</div>
+                <div style="color:#eee; font-size:13px; white-space: pre-wrap;">${escapeHtml(queryText)}</div>
             </div>
             
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-                <div style="${headerStyle}">检索到的切片 (${r.results ? r.results.length : 0})</div>
+                <div style="${headerStyle}">聊天向量切片 (${vectorChatResults.length})</div>
                 <div style="${headerStyle}; font-family:monospace;">总字数：${totalResultLen}</div>
             </div>
         `;
 
-    if (r.results && r.results.length > 0) {
-      contentHtml += r.results
+    if (vectorChatResults.length > 0) {
+      contentHtml += vectorChatResults
         .map((item, idx) => {
           const displayId =
             item.uniqueID ||
@@ -1448,25 +1260,12 @@ function bindRagEvents(settings) {
               ? `Chunk_${item.chunk_index}`
               : "N/A");
           const sourceDb = item.source || "Unknown";
-
-          // 1. 知识库判断
-          const isKb = sourceDb.startsWith("kb_");
-
-          // 2. 回响判断 (现在后端修好了，可以直接用 is_echo)
           const isEcho = item.is_echo === true;
-
           const isReranked = item.rerank_score !== undefined;
 
-          // 3. 样式三选一
+          // 样式区分：回响 / 重排 / 普通
           let theme = {};
-          if (isKb) {
-            theme = {
-              borderColor: "#eab308",
-              headerBg: "rgba(234, 179, 8, 0.15)",
-              countColor: "#facc15",
-              icon: "fa-book",
-            };
-          } else if (isEcho) {
+          if (isEcho) {
             theme = {
               borderColor: "#a855f7",
               headerBg: "rgba(168, 85, 247, 0.15)",
@@ -1474,7 +1273,6 @@ function bindRagEvents(settings) {
               icon: "fa-bullhorn",
             };
           } else if (isReranked) {
-            // 🟢 重排结果：青色/薄荷绿
             theme = {
               borderColor: "#14b8a6", // Teal-500
               headerBg: "rgba(20, 184, 166, 0.15)",
@@ -1483,7 +1281,7 @@ function bindRagEvents(settings) {
             };
           } else {
             theme = {
-              borderColor: "#444",
+              borderColor: "#3b82f6", // 蓝色主题（代表普通向量检索）
               headerBg: "rgba(59, 130, 246, 0.15)",
               countColor: "#60a5fa",
               icon: "fa-database",
@@ -1492,7 +1290,7 @@ function bindRagEvents(settings) {
 
           let displayScore = `Score: ${typeof item.score === "number" ? item.score.toFixed(4) : item.score}`;
           if (isReranked) {
-            displayScore = `Rerank: ${item.rerank_score.toFixed(4)}`;
+            displayScore = `Rerank: ${item.rerank_score.toFixed(4)} (粗排: ${item.score.toFixed(4)})`;
           }
 
           return `
@@ -1513,11 +1311,11 @@ function bindRagEvents(settings) {
         })
         .join("");
     } else {
-      contentHtml += `<div style="padding:20px; text-align:center; color:#666;">本次未检索到相关内容 (Score Too Low)</div>`;
+      contentHtml += `<div style="padding:20px; text-align:center; color:#666;">本次未命中任何聊天向量切片</div>`;
     }
 
     // --- 2. 构建策略追踪日志 ---
-    if (r.strategy_log && r.strategy_log.length > 0) {
+    if (debugLogs && debugLogs.length > 0) {
       const renderLogCard = (logItem) => {
         let data = logItem;
         if (typeof logItem === "string") {
@@ -1537,22 +1335,17 @@ function bindRagEvents(settings) {
         if (stepName.includes("BASE")) stepColor = "#3b82f6";
         else if (stepName.includes("IMPORTANT")) stepColor = "#eab308";
         else if (stepName.includes("STATUS")) stepColor = "#ef4444";
-        else if (stepName.includes("ECHO"))
-          stepColor = "#d946ef"; // Echo 亮紫色
+        else if (stepName.includes("ECHO")) stepColor = "#d946ef";
         else if (stepName.includes("HOLIDAY") || stepName.includes("SPECIAL"))
           stepColor = "#a855f7";
         else if (stepName.includes("PERIOD")) stepColor = "#48ecd1";
         else if (stepName.includes("DIVERSITY")) stepColor = "#59e451";
 
         const libraryName = data.library || "Unknown DB";
-
-        // 2. ✨ 核心修复：样式调整
-        // 如果是 Echo，使用 normal (自动换行) + break-word (长词折行)
-        // 不要用 pre-wrap，否则会把 HTML 代码里的缩进也显示出来
         const isEcho = stepName.includes("ECHO");
         const tagsStyle = isEcho
-          ? "color: #888; white-space: normal; word-break: break-word; line-height: 1.3;" // Echo: 紧凑换行
-          : "color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"; // 普通: 单行省略
+          ? "color: #888; white-space: normal; word-break: break-word; line-height: 1.3;"
+          : "color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;";
 
         return `
             <div class="anima-log-card" style="
@@ -1561,12 +1354,11 @@ function bindRagEvents(settings) {
                 border-left: 3px solid ${stepColor}; 
                 border-radius: 4px; 
                 margin-bottom: 6px; 
-                padding: 6px 10px; /* 稍微减小 padding 让它更紧凑 */
+                padding: 6px 10px;
                 font-size: 11px;
             ">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                    <div style="font-weight: bold; color: ${stepColor}; font-size: 12px;"> ${escapeHtml(data.step)}
-                    </div>
+                    <div style="font-weight: bold; color: ${stepColor}; font-size: 12px;"> ${escapeHtml(data.step)}</div>
                     <div style="text-align: right;">
                         <div style="color: #eee; font-family: monospace; font-weight: bold; font-size: 11px;">
                             ${typeof data.score === "number" ? data.score.toFixed(4) : escapeHtml(String(data.score))}
@@ -1585,18 +1377,17 @@ function bindRagEvents(settings) {
             </div>`;
       };
 
-      // ✅ 修改点：移除了 border-top:1px solid #444
       contentHtml += `
             <div style="margin-top:15px;">
                 <details style="cursor: pointer;">
                     <summary style="font-size:14px; color:#ddd; font-weight:bold; outline:none; list-style:none; display:flex; align-items:center;">
                         <i class="fa-solid fa-caret-right" style="margin-right:8px; transition: transform 0.2s;"></i>
                         🔎 策略执行追踪
-                        <span style="margin-left:auto; font-size:12px; color:#666; font-weight:normal;">${r.strategy_log.length} 条</span>
+                        <span style="margin-left:auto; font-size:12px; color:#666; font-weight:normal;">${debugLogs.length} 条</span>
                     </summary>
                     
                     <div style="margin-top: 10px; padding-right: 5px;" class="anima-scroll">
-                        ${r.strategy_log.map((item) => renderLogCard(item)).join("")}
+                        ${debugLogs.map((item) => renderLogCard(item)).join("")}
                     </div>
                 </details>
                 <style>
@@ -1606,7 +1397,7 @@ function bindRagEvents(settings) {
     }
 
     showRagModal(
-      "本次检索结果",
+      "聊天向量检索分析",
       `<div style="padding:10px;">${contentHtml}</div>`,
     );
   });
@@ -1633,7 +1424,6 @@ function bindRagEvents(settings) {
     const context = SillyTavern.getContext();
     // const smartCurrentId = getSmartCollectionId();
     const currentChatFiles = getChatRagFiles() || [];
-    const currentKbFiles = getChatKbFiles() || [];
     const currentChatId = context ? context.chatId : null;
 
     // 归一化处理 (仅用于 Linked 判定，Current 判定改用新逻辑)
@@ -1651,15 +1441,9 @@ function bindRagEvents(settings) {
       return dbId === expectedDbName;
     };
 
-    const allLinkedSet = new Set([
-      ...currentChatFiles.map(normalizeId),
-      ...currentKbFiles.map(normalizeId),
-    ]);
+    const allLinkedSet = new Set([...currentChatFiles.map(normalizeId)]);
 
-    const normCurrentFilesSet = new Set([
-      ...currentChatFiles.map(normalizeId),
-      ...currentKbFiles.map(normalizeId),
-    ]);
+    const normCurrentFilesSet = new Set([...currentChatFiles.map(normalizeId)]);
 
     // 3. 构建列表 HTML
     const listItems = allCollections.map((backendName) => {
@@ -1723,7 +1507,7 @@ function bindRagEvents(settings) {
     let orphanItems = [];
     if (!filterOrphans) {
       // 合并所有关联文件列表进行遍历
-      const allActiveFiles = [...currentChatFiles, ...currentKbFiles];
+      const allActiveFiles = [...currentChatFiles];
 
       orphanItems = allActiveFiles
         .filter((f) => normCurrentFilesSet.has(normalizeId(f))) // 剩下的就是孤儿
@@ -2018,7 +1802,7 @@ function bindRagEvents(settings) {
 
         try {
           // 动态导入删除逻辑
-          const { deleteCollection } = await import("./rag_logic.js");
+          const { deleteCollection } = await import("./db_api.js");
           const res = await deleteCollection(dbId);
 
           if (res && res.success) {
@@ -2063,34 +1847,18 @@ function bindRagEvents(settings) {
     .off("click")
     .on("click", () => {
       openDatabaseSelector({
-        title: "管理数据库",
+        title: "管理聊天数据库",
         confirmText: "关联",
-        filterOrphans: false, // 显示孤儿以便解绑
+        filterOrphans: false,
         onConfirm: async (selectedIds) => {
-          // 🟢 核心修改：分流保存逻辑
-          const newKbFiles = [];
-          const newChatFiles = [];
-
-          selectedIds.forEach((id) => {
-            if (id.startsWith("kb_")) {
-              newKbFiles.push(id);
-            } else {
-              newChatFiles.push(id);
-            }
-          });
-
-          // 分别保存
-          await saveChatKbFiles(newKbFiles);
-          await saveChatRagFiles(newChatFiles);
-
-          // 刷新界面
-          const ctx = SillyTavern.getContext();
-          // 注意：此时不需要传参数，因为 renderUnifiedFileList 会自己读 Metadata
-          renderUnifiedFileList();
-
-          toastr.success(
-            `关联已更新: ${newChatFiles.length} 个记录, ${newKbFiles.length} 个知识库`,
+          // 过滤掉知识库，只保留普通聊天数据库
+          const newChatFiles = selectedIds.filter(
+            (id) => !id.startsWith("kb_"),
           );
+
+          await saveChatRagFiles(newChatFiles);
+          renderUnifiedFileList();
+          toastr.success(`关联已更新: ${newChatFiles.length} 个记录`);
         },
       });
     });
@@ -2281,216 +2049,6 @@ function bindRagEvents(settings) {
     };
     reader.readAsDataURL(file);
   }
-  $("#rag_btn_kb_import").on("click", () => {
-    $("#rag_input_knowledge_file").click();
-  });
-
-  // 监听文件选择
-  // 🟢 [新增] 知识库文件上传处理
-  $("#rag_input_knowledge_file")
-    .off("change")
-    .on("change", async function () {
-      const files = this.files;
-      if (!files || files.length === 0) return;
-
-      // 获取当前配置 (切片参数)
-      const currentSettings = getRagSettings(); // 确保你导出了这个或在作用域内
-
-      const safeToastr = /** @type {any} */ (toastr);
-      safeToastr.info(`正在处理 ${files.length} 个文档，请稍候...`, "", {
-        timeOut: 0,
-      });
-
-      const newKbIds = [];
-
-      // 引入 rag_logic 中的上传函数
-      const { uploadKnowledgeBase } = await import("./rag_logic.js");
-
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        try {
-          // 1. 上传
-          const result = await uploadKnowledgeBase(file, currentSettings);
-
-          if (result.success) {
-            // 后端返回的 collectionId 是 "kb_xxx"
-            newKbIds.push(result.collectionId);
-            toastr.success(`导入成功: ${file.name}`);
-          }
-        } catch (err) {
-          toastr.error(`导入失败 ${file.name}: ${err.message}`);
-        }
-      }
-
-      // 2. 自动关联到当前聊天
-      if (newKbIds.length > 0) {
-        toastr.info("文档已存入数据库。请在下方列表中手动勾选以启用。");
-        renderUnifiedFileList();
-      }
-
-      // 清空 input 允许重复上传同名文件
-      $(this).val("");
-      safeToastr.clear();
-    });
-
-  // 查看按钮
-  $("#rag_btn_kb_view").on("click", async () => {
-    // 1. 获取所有可用数据库
-    let allCollections = [];
-    try {
-      const { getAvailableCollections } = await import("./rag_logic.js");
-      allCollections = await getAvailableCollections();
-    } catch (e) {
-      toastr.error("无法获取数据库列表");
-      return;
-    }
-
-    // 2. 筛选 kb_ 开头的
-    const kbCollections = allCollections.filter((id) => id.startsWith("kb_"));
-
-    if (kbCollections.length === 0) {
-      toastr.info("暂无知识库文件");
-      return;
-    }
-
-    // 🟢 [UI修复] 添加样式覆盖，强制对齐
-    // 关键点：height: 32px (与按钮一致), vertical-align: middle, box-sizing: border-box
-    const inputFixStyle =
-      "height:32px !important; min-height:32px; line-height:30px; box-sizing:border-box; padding: 0 5px; vertical-align:middle; font-size:13px;";
-
-    // 3. 构建弹窗 HTML 骨架
-    const modalHtml = `
-            <div style="display:flex; gap:10px; align-items:center; margin-bottom:15px; background:rgba(0,0,0,0.2); padding:10px; border-radius:6px;">
-                <div style="flex-shrink:0; font-weight:bold; color:#ddd; height:32px; line-height:32px;">选择知识库:</div>
-                <select id="rag_kb_viewer_select" class="anima-select" style="flex:1; ${inputFixStyle} margin:0;">
-                    <option value="" disabled selected>-- 请选择 --</option>
-                    ${kbCollections.map((id) => `<option value="${id}">${id}</option>`).join("")}
-                </select>
-                <button id="rag_kb_viewer_refresh" class="anima-btn secondary small" style="height:32px; width:32px; padding:0; display:flex; align-items:center; justify-content:center;" title="刷新">
-                    <i class="fa-solid fa-rotate"></i>
-                </button>
-            </div>
-            
-            <div id="rag_kb_viewer_content" class="anima-scroll" style="min-height:200px; padding-right:5px;">
-                <div style="text-align:center; color:#666; margin-top:50px;">
-                    <i class="fa-solid fa-book-open" style="font-size:30px; margin-bottom:10px; opacity:0.5;"></i><br>
-                    请选择左上方数据库以查看内容
-                </div>
-            </div>
-            <style>
-                .kb-slice-item { border:1px solid #444; background:rgba(255,255,255,0.02); margin-bottom:8px; border-radius:4px; }
-                .kb-slice-header { padding:8px 10px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); }
-                .kb-slice-header:hover { background:rgba(255,255,255,0.08); }
-                .kb-slice-body { padding:10px; border-top:1px solid #444; display:none; white-space:pre-wrap; font-size:12px; color:#ccc; line-height:1.5; }
-            </style>
-        `;
-
-    showRagModal("📚 知识库查看器", modalHtml);
-
-    // 4. 定义加载内容的函数
-    const loadKbContent = async (collectionId) => {
-      const $container = $("#rag_kb_viewer_content");
-      $container.html(
-        '<div style="text-align:center; padding:20px;"><i class="fa-solid fa-spinner fa-spin"></i> 加载切片中...</div>',
-      );
-
-      try {
-        // 🟢 [网络修复] 将 fetch 替换为 $.ajax 以复用 ST 的 Token 和 Cookie
-        const data = await new Promise((resolve, reject) => {
-          $.ajax({
-            type: "POST",
-            url: "/api/plugins/anima-rag/view_collection",
-            data: JSON.stringify({ collectionId }),
-            contentType: "application/json",
-            success: (resp) => resolve(resp),
-            error: (xhr) =>
-              reject(
-                new Error(
-                  xhr.responseText || xhr.statusText || "Request failed",
-                ),
-              ),
-          });
-        });
-
-        if (!data.items || data.items.length === 0) {
-          $container.html(
-            '<div style="text-align:center; color:#aaa; padding:20px;">此数据库为空</div>',
-          );
-          return;
-        }
-
-        // 排序逻辑：按 chunk_index 排序
-        data.items.sort((a, b) => {
-          const idxA = a.metadata?.chunk_index ?? 999999;
-          const idxB = b.metadata?.chunk_index ?? 999999;
-          return idxA - idxB;
-        });
-
-        // 渲染列表
-        const listHtml = data.items
-          .map((item, idx) => {
-            const meta = item.metadata || {};
-            const chunkIndex =
-              meta.chunk_index !== undefined ? meta.chunk_index : "N/A";
-            // 截取前50个字符作为标题预览
-            const preview =
-              (item.text || "").slice(0, 50).replace(/\n/g, " ") + "...";
-
-            return `
-                    <div class="kb-slice-item">
-                        <div class="kb-slice-header">
-                            <div style="display:flex; align-items:center; gap:10px; overflow:hidden;">
-                                <span style="font-family:monospace; color:#facc15; font-weight:bold; font-size:11px; flex-shrink:0;">#${chunkIndex}</span>
-                                <span style="color:#ddd; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(preview)}</span>
-                            </div>
-                            <i class="fa-solid fa-chevron-down" style="color:#666; font-size:10px;"></i>
-                        </div>
-                        <div class="kb-slice-body">${escapeHtml(item.text)}</div>
-                    </div>`;
-          })
-          .join("");
-
-        $container.html(`
-                    <div style="margin-bottom:10px; font-size:12px; color:#aaa;">
-                        共找到 ${data.items.length} 个切片 (按 Index 排序)
-                    </div>
-                    ${listHtml}
-                `);
-
-        // 绑定折叠/展开
-        $container.find(".kb-slice-header").on("click", function () {
-          const $body = $(this).next(".kb-slice-body");
-          const $icon = $(this).find(".fa-chevron-down");
-          if ($body.is(":visible")) {
-            $body.slideUp(100);
-            $icon.css("transform", "rotate(0deg)");
-          } else {
-            $body.slideDown(100);
-            $icon.css("transform", "rotate(180deg)");
-          }
-        });
-      } catch (err) {
-        console.error(err);
-        $container.html(
-          `<div style="text-align:center; color:#ef4444; padding:20px;">加载失败: ${err.message}</div>`,
-        );
-      }
-    };
-
-    // ... (后续绑定事件代码不变)
-    // 5. 绑定下拉框事件
-    $("#rag_kb_viewer_select").on("change", function () {
-      const val = $(this).val();
-      if (val) loadKbContent(val);
-    });
-
-    // 刷新按钮
-    $("#rag_kb_viewer_refresh").on("click", () => {
-      const val = $("#rag_kb_viewer_select").val();
-      if (val) loadKbContent(val);
-    });
-  });
-  // --- 策略导入/导出逻辑 ---
 
   // 1. 导出策略
   $("#rag_strategy_export")

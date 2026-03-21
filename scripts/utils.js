@@ -1,3 +1,13 @@
+export function escapeHtml(text) {
+  if (!text) return text;
+  return text
+    .toString()
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 /**
  * 获取当前的上下文数据 (User, Char, Persona 等)
  * 集中管理，方便所有模块调用
@@ -83,6 +93,8 @@ export function createRenderContext(rawData) {
   return context;
 }
 
+export const customMacroReplacers = [];
+
 /**
  * 宏替换核心函数 - 修复版 (支持 YAML/JSON 区分)
  * @param {string} text - 原始文本
@@ -95,6 +107,13 @@ export function processMacros(text) {
     /\{\{(status|anima_data|ANIMA_STATUS)\}\}/gi,
     "{{format_message_variable::anima_data}}",
   );
+  // ============================================================
+  // ✨ 阶段 1.5: 执行 Anima 插件内部动态注册的自定义宏
+  // ============================================================
+  customMacroReplacers.forEach((rule) => {
+    result = result.replace(rule.regex, rule.replacer);
+  });
+
   // ============================================================
 
   // 阶段 1: 拦截并处理 TavernHelper 变量宏
@@ -545,4 +564,69 @@ export function smartFixYaml(rawYaml) {
   }
 
   return { success: false, error: new Error("无法安全修复") };
+}
+
+/**
+ * 获取标准化的数据库集合 ID
+ * 解决中文角色文件名只显示日期的问题 (2025-7-29...) -> (角色名_2025-7-29...)
+ */
+export function getSmartCollectionId() {
+  const context = SillyTavern.getContext();
+  let filename = context.chatId; // 获取当前文件名 (e.g. "2025-1-1.jsonl")
+
+  if (!filename) return null;
+
+  // 去掉 .json 或 .jsonl 后缀
+  filename = filename.replace(/\.jsonl?$/i, "");
+
+  // 定义清洗函数（必须与后端逻辑保持一致：空格转下划线）
+  const sanitizeName = (str) => {
+    if (!str) return "";
+    // 将所有非中文、非字母数字、非@.-的字符（包括空格）都替换为下划线
+    return str.replace(/[^a-zA-Z0-9@\-\._\u4e00-\u9fa5]/g, "_");
+  };
+
+  // 尝试获取当前角色数据
+  let charName = null;
+  try {
+    // 优先尝试 TavernHelper
+    const charData = window.TavernHelper?.RawCharacter?.find({
+      name: "current",
+    });
+    if (charData && charData.name) {
+      charName = charData.name;
+    }
+    // 兜底：如果 TavernHelper 没拿到，尝试从 Context 直接读
+    else if (
+      context.characterId &&
+      context.characters &&
+      context.characters[context.characterId]
+    ) {
+      charName = context.characters[context.characterId].name;
+    }
+  } catch (e) {
+    console.warn("[Anima ID] 获取角色名失败:", e);
+  }
+
+  // 1. 先把文件名清洗一遍，确保没有空格干扰正则判断
+  const cleanFilename = sanitizeName(filename);
+
+  // 2. 如果拿到了角色名
+  if (charName) {
+    const cleanCharName = sanitizeName(charName);
+
+    // 情况 A: 文件名已经包含了角色名 (ST有时会自动带上)
+    if (cleanFilename.startsWith(cleanCharName)) {
+      return cleanFilename;
+    }
+
+    // 情况 B: 文件名看起来像纯时间戳 (数字开头) -> 手动拼接
+    // 使用更严格的正则，确保是日期格式 (例如 2025...)
+    if (/^\d{4}/.test(cleanFilename)) {
+      return `${cleanCharName}_${cleanFilename}`;
+    }
+  }
+
+  // 3. 兜底：直接返回清洗后的文件名
+  return cleanFilename;
 }

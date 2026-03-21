@@ -1,11 +1,7 @@
 import { getOrInitNarrativeTime } from "./summary_logic.js";
-import { applyRegexRules } from "./utils.js";
-import {
-  insertMemory,
-  deleteMemory,
-  deleteBatchMemory,
-  getSmartCollectionId,
-} from "./rag_logic.js";
+import { getSmartCollectionId } from "./utils.js";
+import { insertMemory, deleteMemory, deleteBatchMemory } from "./rag_logic.js";
+import { triggerBm25BuildSingle } from "./bm25_logic.js";
 
 /**
  * 安全获取当前聊天的世界书名称
@@ -212,6 +208,7 @@ export async function saveSummaryBatchToWorldbook(
       tags: item.tags || [],
       source_file: targetChatId,
       vectorized: false,
+      is_bm25_synced: false,
     });
   });
 
@@ -305,7 +302,7 @@ export async function saveSummaryBatchToWorldbook(
   }
 
   // ============================================================
-  // ⚡ 触发向量更新 (Trigger Vectorization)
+  // ⚡ 触发向量 & BM25 更新 (Trigger Vector & BM25)
   // ============================================================
   const settingsOld = context.extensionSettings?.anima_rag || {};
   const settingsNew =
@@ -317,21 +314,35 @@ export async function saveSummaryBatchToWorldbook(
   const isRagEnabled = ragGlobalSettings.rag_enabled !== false;
   const isAutoVectorize = ragGlobalSettings.auto_vectorize !== false;
 
-  // 执行拦截：如果 总开关关闭 或 自动向量化关闭
+  // ✨ 获取 BM25 全局配置，判断是否需要同步构建 BM25
+  const bm25GlobalSettings =
+    context.extensionSettings?.anima_memory_system?.bm25 || {};
+  const isBm25Auto =
+    bm25GlobalSettings.bm25_enabled !== false &&
+    bm25GlobalSettings.auto_build !== false;
+
+  // 执行拦截：如果向量总开关关闭 或 自动向量化关闭
   if (!isRagEnabled || !isAutoVectorize) {
     console.log(
       `[Anima] 自动向量化已跳过 (总开关: ${isRagEnabled}, 自动: ${isAutoVectorize})`,
     );
     if (window.toastr) toastr.info("总结已保存 (未向量化)");
-    // 这里不需要做任何额外操作，UI 默认就是红色的 (vectorized: false)
     return;
   }
-  // 对新生成的每个切片，分别触发向量化
-  // 这里不需要防抖了，因为通常这是 API 刚刚生成完，直接写入向量库即可
+
+  // ✨ 为了给 BM25 提供准确的 entryUid，我们在数据落盘后重新查询一次当前分卷
+  const entriesAfter = await window.TavernHelper.getWorldbook(wbName);
+  const savedEntry = entriesAfter.find(
+    (e) =>
+      e.name === entryName && e.extra && e.extra.createdBy === "anima_summary",
+  );
+  const entryUid = savedEntry ? savedEntry.uid : null;
+
+  // 对新生成的每个切片，分别触发向量化和 BM25 索引
   const successIds = [];
   for (const item of newHistoryItems) {
     try {
-      // 注意：这里也需要补上 batchId 参数
+      // 1. 触发原有的向量写入
       const result = await insertMemory(
         summaryList[item.slice_id - 1].content,
         item.tags,
@@ -342,31 +353,38 @@ export async function saveSummaryBatchToWorldbook(
         batchId,
       );
 
-      // 如果返回了 ID，说明成功
       if (result && result.success === true) {
         console.log(`[Anima] 向量已存入: ${item.unique_id}`);
         successIds.push(item.unique_id);
       } else {
-        // 如果失败，result.error 里现在是干净的文本了
         console.warn(`[Anima] 向量存入失败: ${item.unique_id}`, result?.error);
       }
+
+      // 2. ✨ 触发新加的 BM25 增量同步 (如果开了自动构建的话)
+      if (isBm25Auto && entryUid) {
+        // 这里不需要 await 阻塞主循环，直接丢进后台运行即可
+        triggerBm25BuildSingle(
+          item.unique_id,
+          entryUid,
+          batchId,
+          item.tags,
+        ).catch((e) => {
+          console.error(`[Anima BM25] 切片 ${item.unique_id} 自动构建失败:`, e);
+        });
+      }
     } catch (err) {
-      console.error(`[Anima] 向量存入过程崩溃:`, err);
+      console.error(`[Anima] 存入过程崩溃:`, err);
     }
   }
 
+  // 更新世界书里的“绿标”同步状态
   if (successIds.length > 0) {
     await window.TavernHelper.updateWorldbookWith(wbName, (entries) => {
-      // 找到刚才操作的条目 (可能是新建的，也可能是现有的)
-      // 这里我们用 entryName (如 chapter_1) 来找最稳妥，或者遍历查找包含这些 unique_id 的条目
-
-      // 简单遍历所有 anima 条目
       entries.forEach((entry) => {
         if (entry.extra && Array.isArray(entry.extra.history)) {
           entry.extra.history.forEach((h) => {
-            // 如果这个切片的 ID 在成功列表里
             if (successIds.includes(h.unique_id || h.index)) {
-              h.vectorized = true; // 标记为绿色
+              h.vectorized = true;
             }
           });
         }
@@ -450,6 +468,8 @@ export async function updateSummaryContent(
   newContent,
   newTags,
 ) {
+  let batchId = null; // ✨ 提取出来供 BM25 使用
+
   await window.TavernHelper.updateWorldbookWith(wbName, (entries) => {
     const e = entries.find((x) => x.uid === entryUid);
     if (!e) return entries;
@@ -472,18 +492,36 @@ export async function updateSummaryContent(
       if (historyItem) {
         historyItem.tags = newTags || [];
         historyItem.last_modified = Date.now();
-
-        // 🔥 [核心修复 1] 只要内容变了，立刻标记为“未向量化” (脏数据)
-        // 这样即使后面更新失败了，UI 也会显示红色的“未向量化”
         historyItem.vectorized = false;
+        historyItem.is_bm25_synced = false;
+
+        batchId = historyItem.batch_id; // ✨ 记录拿到 batchId
       }
     }
 
     return entries;
   });
 
-  // 触发向量更新 (防抖)
+  // 1. 触发原有的向量更新 (维持你原有的调度器)
   scheduleVectorUpdate(targetIndex);
+
+  // 2. ✨ 直接触发 BM25 更新 (无需防抖，因为是点击保存按钮触发的)
+  const context = SillyTavern.getContext();
+  const bm25Settings =
+    context.extensionSettings?.anima_memory_system?.bm25 || {};
+
+  if (
+    bm25Settings.bm25_enabled &&
+    bm25Settings.auto_build &&
+    batchId !== null
+  ) {
+    // 抛到后台去执行单条重构，不用 await 卡住前端 UI
+    triggerBm25BuildSingle(targetIndex, entryUid, batchId, newTags).catch(
+      (e) => {
+        console.error(`[Anima BM25] 手动修正后自动构建失败:`, e);
+      },
+    );
+  }
 }
 
 /**
@@ -531,6 +569,7 @@ export async function addSingleSummaryItem(
     tags: tags || [],
     source_file: targetChatId,
     vectorized: false,
+    is_bm25_synced: false,
   };
 
   if (targetEntry) {
@@ -584,7 +623,7 @@ export async function addSingleSummaryItem(
 
 // worldbook_api.js
 
-const RAG_KNOWLEDGE_ENTRY_NAME = "[ANIMA_RAG_Knowledge_Container]";
+const RAG_KNOWLEDGE_ENTRY_NAME = "[ANIMA_Knowledge_Container]";
 
 /**
  * 更新或创建知识库世界书条目
@@ -613,8 +652,9 @@ export async function updateKnowledgeEntry(content) {
   // 🔴 [修改 1] 将 e.comment 改为 e.name
   const exists = entries.some((e) => e.name === RAG_KNOWLEDGE_ENTRY_NAME);
 
-  const settings = context.extensionSettings?.["anima_memory_system"]?.rag;
-  const kbSettings = settings?.knowledge_injection || {};
+  const kbGlobalSettings =
+    context.extensionSettings?.["anima_memory_system"]?.kb_settings || {};
+  const kbSettings = kbGlobalSettings.knowledge_injection || {};
 
   if (exists) {
     // A. 更新现有条目
@@ -1043,12 +1083,13 @@ export async function updateRagEntry(content, settings = {}) {
     );
   }
 
-  const RAG_ENTRY_NAME = "[ANIMA_RAG_Container]";
+  const RAG_ENTRY_NAME = "[ANIMA_Chat_History_Container]";
 
   // 🟢 [新增] 主动读取全局配置，确保创建时与 UI 一致
   // 注意：请确保这里的路径和你保存配置的路径一致
   const globalSettings =
-    context.extensionSettings?.["anima_memory_system"]?.rag?.injection || {};
+    context.extensionSettings?.["anima_memory_system"]?.rag
+      ?.injection_settings || {};
 
   // 🟢 [修改] 合并配置：参数 > 全局配置 > 默认值
   const finalSettings = {
@@ -1142,7 +1183,7 @@ export async function clearRagEntry() {
 
   // 2. 检查条目是否存在
   const entries = await window.TavernHelper.getWorldbook(wbName);
-  const RAG_ENTRY_NAME = "[ANIMA_RAG_Container]";
+  const RAG_ENTRY_NAME = "[ANIMA_Chat_History_Container]";
   const targetEntry = entries.find((e) => e.name === RAG_ENTRY_NAME);
 
   // 3. 只有存在时才执行更新
@@ -1358,7 +1399,7 @@ export async function toggleAllSummariesState(isRagEnabled) {
 
 /**
  * [新增] 强制同步 RAG 配置到世界书条目 (用于在 UI 点击保存时调用)
- * 这将更新 [ANIMA_RAG_Container] 和 [ANIMA_RAG_Knowledge_Container] 的策略与位置，而不改变内容
+ * 这将更新 [ANIMA_Chat_History_Container] 和 [ANIMA_Knowledge_Container] 的策略与位置，而不改变内容
  */
 export async function syncRagSettingsToWorldbook() {
   if (typeof window.TavernHelper.getChatWorldbookName !== "function") {
@@ -1371,67 +1412,101 @@ export async function syncRagSettingsToWorldbook() {
   const wbName = await window.TavernHelper.getChatWorldbookName("current");
   if (!wbName) return;
 
-  // 1. 获取最新配置 (请确保这里的路径与你在 rag.js 中保存的路径一致)
-  const allSettings =
+  const ragSettings =
     context.extensionSettings?.["anima_memory_system"]?.rag || {};
+  const kbGlobalSettings =
+    context.extensionSettings?.["anima_memory_system"]?.kb_settings || {};
 
-  // 假设配置结构如下 (你需要根据实际情况调整字段名):
-  const chatSettings = allSettings.injection_settings || {}; // 聊天注入配置
-  const kbSettings = allSettings.knowledge_injection || {}; // 知识库注入配置
+  const chatSettings = ragSettings.injection_settings || {};
+  const kbSettings = kbGlobalSettings.knowledge_injection || {};
 
-  // 2. 定义要更新的目标
   const targets = [
-    { name: "[ANIMA_RAG_Container]", settings: chatSettings },
-    { name: "[ANIMA_RAG_Knowledge_Container]", settings: kbSettings },
+    { name: "[ANIMA_Chat_History_Container]", settings: chatSettings },
+    { name: "[ANIMA_Knowledge_Container]", settings: kbSettings },
   ];
 
-  // 3. 执行更新
+  await window.TavernHelper.updateWorldbookWith(
+    wbName,
+    (entries) => {
+      let modified = false;
+
+      targets.forEach(({ name, settings }) => {
+        const entry = entries.find((e) => e.name === name);
+        if (entry && settings) {
+          if (!entry.strategy) entry.strategy = {};
+          if (settings.strategy) entry.strategy.type = settings.strategy;
+
+          if (!entry.position) entry.position = {};
+          const posMap = {
+            before_character_definition: "before_character_definition",
+            after_character_definition: "after_character_definition",
+            at_depth: "at_depth",
+          };
+
+          if (settings.position) {
+            entry.position.type =
+              posMap[settings.position] || "after_character_definition";
+          }
+
+          if (settings.order !== undefined)
+            entry.position.order = parseInt(settings.order);
+          if (settings.depth !== undefined)
+            entry.position.depth = parseInt(settings.depth);
+
+          // 🟢 修复：同时适配 ST 世界书两种不同的 Role 挂载位置规范
+          if (settings.role) {
+            const roleInt =
+              settings.role === "user"
+                ? 1
+                : settings.role === "assistant"
+                  ? 2
+                  : 0;
+            entry.role = roleInt; // 给外层兜底
+            entry.position.role = settings.role; // 给 at_depth 使用
+          }
+
+          modified = true;
+        }
+      });
+
+      if (modified) console.log("[Anima] 世界书条目配置已同步为最新 UI 设置");
+      return entries;
+    },
+    { render: "immediate" },
+  ); // 🔥 必须添加这一句，让 ST 的 UI 面板立刻更新
+}
+
+/**
+ * [BM25专用] 将所有总结切片的 BM25 同步状态标记为 false (脏数据)
+ * 适用场景：切换词典或词典规则发生改变时
+ */
+export async function markAllBm25Unsynced() {
+  if (!window.TavernHelper) return;
+  const wbName = await safeGetChatWorldbookName();
+  if (!wbName) return;
+
   await window.TavernHelper.updateWorldbookWith(wbName, (entries) => {
     let modified = false;
-
-    targets.forEach(({ name, settings }) => {
-      const entry = entries.find((e) => e.name === name);
-      if (entry && settings) {
-        // 应用 Strategy
-        if (!entry.strategy) entry.strategy = {};
-        // 如果配置里有 strategy 字段才更新，防止 undefined
-        if (settings.strategy) entry.strategy.type = settings.strategy;
-
-        // 应用 Position
-        if (!entry.position) entry.position = {};
-
-        // 映射位置类型
-        const posMap = {
-          before_character_definition: "before_character_definition",
-          after_character_definition: "after_character_definition",
-          at_depth: "at_depth",
-        };
-
-        if (settings.position) {
-          entry.position.type =
-            posMap[settings.position] || "after_character_definition";
-        }
-
-        if (settings.order !== undefined)
-          entry.position.order = parseInt(settings.order);
-        if (settings.depth !== undefined)
-          entry.position.depth = parseInt(settings.depth);
-
-        // 应用 Role
-        if (settings.role) {
-          entry.role =
-            settings.role === "user"
-              ? 1
-              : settings.role === "assistant"
-                ? 2
-                : 0;
-        }
-
-        modified = true;
+    entries.forEach((entry) => {
+      // 筛选出所有属于 Anima 总结的条目
+      if (
+        entry.extra &&
+        entry.extra.createdBy === "anima_summary" &&
+        Array.isArray(entry.extra.history)
+      ) {
+        entry.extra.history.forEach((h) => {
+          // 将同步状态全部置为 false
+          if (h.is_bm25_synced !== false) {
+            h.is_bm25_synced = false;
+            modified = true;
+          }
+        });
       }
     });
-
-    if (modified) console.log("[Anima] 世界书条目配置已同步为最新 UI 设置");
+    if (modified)
+      console.log(
+        "[Anima BM25] 词典规则发生改变，已将所有切片的 BM25 状态标记为【未同步】",
+      );
     return entries;
   });
 }

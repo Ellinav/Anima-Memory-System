@@ -1,14 +1,11 @@
-import { escapeHtml, showRagModal } from "./rag.js";
+import { showRagModal } from "./rag.js";
 import {
   getSummaryTextFromEntry,
   triggerVectorUpdate,
   safeGetChatWorldbookName,
 } from "./worldbook_api.js";
-import {
-  insertMemory, // 🟢 必须引入：用于刷新/重新向量化
-  deleteMemory, // 🟢 必须引入：用于删除向量
-  getSmartCollectionId,
-} from "./rag_logic.js";
+import { insertMemory, deleteMemory } from "./rag_logic.js";
+import { escapeHtml, getSmartCollectionId } from "./utils.js";
 // ==========================================
 // 7. 向量状态管理 (完美复刻 Summary 历史管理)
 // ==========================================
@@ -302,6 +299,19 @@ export async function showVectorStatusModal() {
           if (result && result.success === true) {
             successCount++;
             item.isVectorized = true;
+
+            // 🟢 修复：补全缺失的世界书持久化保存逻辑
+            await window.TavernHelper.updateWorldbookWith(wbName, (entries) => {
+              const e = entries.find((x) => x.uid === item.uid);
+              if (e && e.extra && Array.isArray(e.extra.history)) {
+                const h = e.extra.history.find(
+                  (x) =>
+                    String(x.unique_id || x.index) === String(item.uniqueId),
+                );
+                if (h) h.vectorized = true;
+              }
+              return entries;
+            });
           } else {
             failCount++;
             console.warn(

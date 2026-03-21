@@ -831,8 +831,11 @@ input:checked + .slider:before {
 /* === 2. 修改【实时预览】和【历史楼层管理】按钮 (改为实心灰/蓝灰色，不再透明) === */
 #anima-btn-view-history,
 #rag_btn_last_result,
+#btn_bm25_view_log,
 #btn-sync-status,
-#rag_btn_kb_import {
+#rag_btn_kb_import,
+#btn_kb_view_log,
+#btn_kb_manage_modal {
   background-color: #2563eb !important; /* 实心深灰背景 */
   color: #ffffff !important;
   border: none;
@@ -840,8 +843,11 @@ input:checked + .slider:before {
 
 #anima-btn-view-history:hover,
 #rag_btn_last_result:hover,
+#btn_bm25_view_log:hover,
 #btn-sync-status:hover,
-#rag_btn_kb_import:hover {
+#rag_btn_kb_import:hover,
+#btn_kb_view_log:hover,
+#btn_kb_manage_modal:hover {
   background-color: #1d4ed8 !important; /* 鼠标悬停变深 */
 }
 
@@ -892,14 +898,20 @@ input:checked + .slider:before {
 /* 修正：直接用 ID 选择，不要加父级 ID */
 #btn_generic_merge,
 #btn-test-zod-rules,
-#btn-gc-execute {
+#btn-gc-execute,
+#btn_kb_execute_build,
+#btn_bm25_manage_libs,
+#rag_btn_import {
   background-color: #982ac4 !important; /* 鲜艳紫 */
   color: #ffffff !important;
   border: none !important;
 }
 #btn_generic_merge:hover,
 #btn-test-zod-rules:hover,
-#btn-gc-execute:hover {
+#btn-gc-execute:hover,
+#btn_kb_execute_build:hover,
+#btn_bm25_manage_libs:hover,
+#rag_btn_import:hover {
   background-color: #6f218e !important; /* 悬停变深 */
 }
 
@@ -917,13 +929,15 @@ input:checked + .slider:before {
 /* 4. 提示词构建 -【预览 Payload】 (黄色) */
 /* 修正：直接用 ID 选择 */
 #btn-preview-status-prompt,
-#btn-gc-manage {
+#btn-gc-manage,
+#btn_bm25_dict_save {
   background-color: #b97f1c !important; /* 实心深黄/琥珀色 */
   color: #ffffff !important;
   border: none !important;
 }
 #btn-preview-status-prompt:hover,
-#btn-gc-manage:hover {
+#btn-gc-manage:hover,
+#btn_bm25_dict_save:hover {
   background-color: #97691a !important; /* 悬停变深 */
 }
 
@@ -1007,14 +1021,26 @@ input:checked + .slider:before {
 
 /* 转换按钮：绿色 (默认禁用状态在JS里控制透明度，这里写基础色) */
 #anima_btn_convert_json,
-#btn-gc-save-config {
+#btn-gc-save-config,
+#btn_kb_save_config,
+#btn_kb_save_search,
+#btn_kb_save_injection,
+#btn_bm25_work_save,
+#btn_bm25_dict_save_only,
+#btn_kb_save_char_settings {
   background-color: #10b981 !important;
   color: #ffffff !important;
   border: none;
   transition: background-color 0.2s;
 }
 #anima_btn_convert_json:hover,
-#btn-gc-save-config:hover {
+#btn-gc-save-config:hover,
+#btn_kb_save_config:hover,
+#btn_kb_save_search:hover,
+#btn_kb_save_injection:hover,
+#btn_bm25_work_save:hover,
+#btn_bm25_dict_save_only:hover,
+#btn_kb_save_char_settings:hover {
   background-color: #059669 !important;
 }
 /* 禁用时的样式覆盖 */

@@ -1,15 +1,16 @@
 import {
-  escapeHtml,
   getChatRagFiles,
-  saveChatRagFiles,
   showRagModal,
   saveRagSettings,
   DEFAULT_RAG_SETTINGS,
-  getChatKbFiles,
-  saveChatKbFiles,
 } from "./rag.js";
-import { getAvailableCollections } from "./rag_logic.js";
-import { applyRegexRules, processMacros } from "./utils.js";
+import { getAvailableCollections } from "./db_api.js";
+import {
+  applyRegexRules,
+  processMacros,
+  escapeHtml,
+  getSmartCollectionId,
+} from "./utils.js";
 // ==========================================
 // 4. 子组件渲染逻辑
 // ==========================================
@@ -431,66 +432,34 @@ export async function renderUnifiedFileList() {
   const container = $("#rag_file_list");
   container.empty();
 
-  // 1. 获取当前 Metadata 中已关联的列表
-  //    我们不再获取后端所有文件，只显示用户选择了的
   const activeChatFiles = getChatRagFiles() || [];
-  const activeKbFiles = getChatKbFiles() || [];
-  const context = SillyTavern.getContext();
-  const currentChatId = context ? context.chatId : "";
 
-  // 2. 辅助判断：是否是当前聊天的专属库
+  // 🟢 修复：废弃旧的正则替换对比，直接调用最权威的智能 ID 函数
   const isSelf = (dbId) => {
-    if (!currentChatId || !dbId) return false;
-    const rawChatId = currentChatId.replace(/\.jsonl?$/i, "");
-    const normDb = normalizeId(dbId);
-    const normChat = normalizeId(rawChatId);
-    return normDb === normChat || normDb.endsWith(normChat);
+    if (!dbId) return false;
+    const expectedDbName = getSmartCollectionId();
+    return dbId === expectedDbName;
   };
 
-  // 3. 构建显示列表 (去重合并)
-  //    为了UI美观，我们将所有已关联的数据库整合显示
-  const items = [];
-
-  // 先加入 KB
-  activeKbFiles.forEach((id) => items.push({ id, type: "kb" }));
-
-  // 再加入 Chat (避免重复，虽然理论上ID不应重叠)
-  activeChatFiles.forEach((id) => {
-    if (!items.find((x) => x.id === id)) {
-      items.push({ id, type: "chat" });
-    }
-  });
-
-  if (items.length === 0) {
+  if (activeChatFiles.length === 0) {
     container.html(
-      `<div style="text-align:center; color:#666; padding:10px; font-size:12px; font-style:italic;">暂无关联数据库，请点击上方“关联”按钮添加</div>`,
+      `<div style="text-align:center; color:#666; padding:10px; font-size:12px; font-style:italic;">暂无关联数据库，请点击上方“管理”按钮添加</div>`,
     );
     return;
   }
 
-  // 4. 渲染列表项
-  const html = items
-    .map((item) => {
-      const dbId = item.id;
-
-      // 默认样式 (Case 2: 其他聊天数据库 - 蓝色)
-      let borderColor = "#3b82f6"; // Blue-500
-      let iconColor = "#60a5fa"; // Blue-400
-      let iconClass = "fa-database";
+  // 3. 渲染列表项 (剔除了原来的 Case 3 知识库逻辑)
+  const html = activeChatFiles
+    .map((dbId) => {
+      let borderColor = "#3b82f6"; // 默认：其他聊天数据库 (蓝色)
+      let iconColor = "#60a5fa";
       let badgeHtml = "";
       let tooltipType = "Linked Chat Log";
 
-      // 判定逻辑
-      if (item.type === "kb" || dbId.startsWith("kb_")) {
-        // Case 3: 知识库 (黄色)
-        borderColor = "#eab308"; // Yellow-500
-        iconColor = "#facc15"; // Yellow-400
-        iconClass = "fa-book";
-        tooltipType = "Knowledge Base";
-      } else if (isSelf(dbId)) {
-        // Case 1: 当前聊天 (绿色)
-        borderColor = "#22c55e"; // Green-500
-        iconColor = "#4ade80"; // Green-400
+      if (isSelf(dbId)) {
+        // 当前聊天 (绿色)
+        borderColor = "#22c55e";
+        iconColor = "#4ade80";
         badgeHtml = `<span style="font-size:10px; background:rgba(74, 222, 128, 0.2); color:#4ade80; padding:1px 4px; border-radius:3px; margin-left:5px; border:1px solid rgba(74,222,128,0.3);">Current</span>`;
         tooltipType = "Current Chat DB";
       }
@@ -499,7 +468,7 @@ export async function renderUnifiedFileList() {
         <div class="anima-rag-file-item" style="border-left: 3px solid ${borderColor}; display:flex; justify-content:space-between; align-items:center; padding:8px 10px; margin-bottom:6px; border-radius:4px; background:rgba(0,0,0,0.2);">
             <div style="display:flex; align-items:center; overflow:hidden; gap:8px;">
                 <span style="font-size:13px; color:#eee; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(dbId)} (${tooltipType})">
-                    <i class="fa-solid ${iconClass}" style="color:${iconColor}; margin-right:6px;"></i>
+                    <i class="fa-solid fa-database" style="color:${iconColor}; margin-right:6px;"></i>
                     ${escapeHtml(dbId)}
                     ${badgeHtml}
                 </span>

@@ -11,6 +11,7 @@ import {
   processMacros,
   getContextData,
 } from "./utils.js";
+import { autoUpdateDictionary, triggerFullBm25Rebuild } from "./bm25_logic.js";
 
 export const MODULE_NAME = "anima_memory_system";
 let isSummarizing = false;
@@ -636,6 +637,7 @@ export async function runSummarizationTask({
 
   // 🔒 4. 上锁
   isSummarizing = true;
+  let dictChangedGlobally = false;
 
   try {
     // =======================================================
@@ -864,20 +866,77 @@ export async function runSummarizationTask({
 
       console.log("[Anima] Raw Model Output:", rawResult);
 
-      // 1. 尝试提取 JSON
+      // ✨✨ 1. 优先提取 dict_updates 并执行更新 (互不干扰)
+      const dictUpdates = extractDictUpdates(rawResult);
+      if (dictUpdates.length > 0) {
+        // 注意：需要在文件头部 import autoUpdateDictionary
+        const changed = await autoUpdateDictionary(dictUpdates);
+        if (changed) dictChangedGlobally = true;
+      }
+
+      // 1. 尝试提取 JSON (通过 JSDoc 强制声明为 any，打破 never 推断)
+      /** @type {any} */
       let parsedResult = extractJsonResult(rawResult);
-      // ✨ 修改点 A：兼容单个对象 { ... }
-      // 如果解析出来是对象，但不是数组，说明模型只输出了单条 JSON。
-      // 我们手动把它包一层数组，变成 [ { ... } ]，以便复用下方的数组遍历逻辑。
+
+      // =======================================================
+      // ✨ [新增修复] 核心解包逻辑：剥除外层数组外壳
+      // 应对 extractJsonResult 将对象包裹成 [{ "summaries": [...] }] 的情况
+      // =======================================================
+      if (
+        parsedResult &&
+        Array.isArray(parsedResult) &&
+        parsedResult.length === 1 &&
+        typeof parsedResult[0] === "object" &&
+        parsedResult[0] !== null &&
+        !Array.isArray(parsedResult[0])
+      ) {
+        // 如果数组里只包着一个对象，并且这个对象符合我们的新版结构
+        if (
+          "summaries" in parsedResult[0] ||
+          "dict_updates" in parsedResult[0]
+        ) {
+          console.log(
+            "[Anima] 发现被数组包裹的顶层 JSON 对象，执行安全解包...",
+          );
+          parsedResult = parsedResult[0];
+        }
+      }
+
+      // 2. 兼容各种 JSON 结构 (原有逻辑保持不变)
       if (
         parsedResult &&
         typeof parsedResult === "object" &&
         !Array.isArray(parsedResult)
       ) {
-        console.log(
-          "[Anima] Detected single JSON object, converting to array.",
-        );
-        parsedResult = [parsedResult];
+        // 使用括号语法避开 VSCode 的严格属性检查
+        if (
+          parsedResult["summaries"] &&
+          Array.isArray(parsedResult["summaries"])
+        ) {
+          parsedResult = parsedResult["summaries"];
+        } else if (
+          parsedResult["summary"] &&
+          Array.isArray(parsedResult["summary"])
+        ) {
+          parsedResult = parsedResult["summary"];
+        } else if (
+          parsedResult["data"] &&
+          Array.isArray(parsedResult["data"])
+        ) {
+          parsedResult = parsedResult["data"];
+        } else if (
+          !parsedResult["dict_updates"] ||
+          Object.keys(parsedResult).length > 1
+        ) {
+          // 它是一个单条的总结对象，且不全都是 dict_updates
+          console.log(
+            "[Anima] Detected single JSON object, converting to array.",
+          );
+          parsedResult = [parsedResult];
+        } else {
+          // 如果解析出来对象里【只有】dict_updates，没有总结内容，设为空数组走纯文本兜底
+          parsedResult = [];
+        }
       }
 
       // 2. 校验逻辑 (此时无论是数组还是单对象，都已统一为数组格式)
@@ -986,6 +1045,9 @@ export async function runSummarizationTask({
 
       await new Promise((r) => setTimeout(r, 1000));
     }
+    if (dictChangedGlobally) {
+      await triggerFullBm25Rebuild();
+    }
   } catch (err) {
     console.error("[Anima Error]", err);
     if (err.message.includes("API返回片段")) {
@@ -1005,4 +1067,35 @@ export async function runSummarizationTask({
  */
 export function getIsSummarizing() {
   return isSummarizing;
+}
+
+/**
+ * 从 LLM 混杂的输出中强行抓取 dict_updates 数组 (安全版本)
+ */
+function extractDictUpdates(rawResult) {
+  let updates = [];
+  try {
+    // 1. 尝试使用正则匹配独立的 "dict_updates": [...] 块
+    const match = rawResult.match(
+      /"dict_updates"\s*:\s*(\[\s*(?:\{[\s\S]*?\}\s*,?\s*)*\])/,
+    );
+    if (match) {
+      updates = JSON.parse(match[1]);
+    } else {
+      // 2. 兜底：如果 LLM 把它们全包在了一个大对象里
+      const parsed = JSON.parse(rawResult);
+      // 安全判断属性存在性，避免 TS/VSCode 报错
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        "dict_updates" in parsed &&
+        Array.isArray(parsed.dict_updates)
+      ) {
+        updates = parsed.dict_updates;
+      }
+    }
+  } catch (e) {
+    // 解析失败静默忽略，绝不阻断后续正常的总结流程
+  }
+  return updates;
 }

@@ -8,6 +8,7 @@ import {
   yamlToObject,
   applyRegexRules,
   createRenderContext,
+  customMacroReplacers,
 } from "./utils.js";
 import { generateText } from "./api.js";
 import { safeGetChatWorldbookName } from "./worldbook_api.js";
@@ -1372,7 +1373,6 @@ function createCountdownUI(seconds, onConfirm, onCancel) {
   updateTimer = setTimeout(tick, 1000);
 }
 
-// 请确保保留你的 initStatusMacro 和 registerAnimaHidingRegex
 export function initStatusMacro() {
   if (!window.TavernHelper || !window.TavernHelper.registerMacroLike) return;
   const REGEX = /\{\{ANIMA_STATUS::(\d+)\}\}/g;
@@ -1489,57 +1489,20 @@ export function initStatusMacro() {
   window.TavernHelper.registerMacroLike(
     /\{\{ANIMA_BASE_STATUS(?:::(.*?))?\}\}/g,
     (context, match, keyPath) => {
-      // 1. 获取上下文中的聊天数组
-      const ctx = SillyTavern.getContext();
-      const chat = ctx.chat || [];
-      if (chat.length === 0) return keyPath ? "" : "{}";
-
-      // 2. 确定基准查找起点
-      const lastMsg = chat[chat.length - 1];
-      const currentId =
-        lastMsg.message_id !== undefined ? lastMsg.message_id : chat.length - 1;
-
-      // 3. 执行回溯查找
-      const base = findBaseStatus(currentId);
-      const baseData = base.id !== -1 && base.data ? base.data : {};
-
-      // 4. 【核心逻辑】判断是取全量还是取特定值
-      if (keyPath && keyPath.trim()) {
-        // =========================================================
-        // A. 精准取值模式 (分支修改)
-        // =========================================================
-
-        // 🔥 1. 关键修改：使用 createRenderContext 包装数据
-        // 这样 baseData 就变成了 { "沈皎": {...}, "_user": {...} }
-        const contextData = createRenderContext(baseData);
-
-        const cleanPath = keyPath.trim();
-        let val = undefined;
-        const lodash = /** @type {any} */ (window)["_"];
-
-        // 🔥 2. 从 contextData 取值，而不是 baseData
-        if (lodash && lodash.get) {
-          val = lodash.get(contextData, cleanPath);
-        } else {
-          val = cleanPath
-            .split(".")
-            .reduce((o, k) => (o || {})[k], contextData);
-        }
-
-        // 处理返回值类型
-        if (val === undefined) return "";
-        if (typeof val === "object") {
-          return objectToYaml(val).trim();
-        }
-        return String(val);
-      } else {
-        // B. 全量模式 (保持不变)
-        // 注意：这里继续用原始的 baseData，不要用 contextData
-        // 否则输出的 YAML 会包含 "_user": ... 这种冗余数据
-        return Object.keys(baseData).length > 0 ? objectToYaml(baseData) : "{}";
-      }
+      return resolveBaseStatusMacro(match, keyPath);
     },
   );
+  const baseStatusRegex = /\{\{ANIMA_BASE_STATUS(?:::(.*?))?\}\}/g;
+  const isRegistered = customMacroReplacers.some(
+    (r) => r.regex.source === baseStatusRegex.source,
+  );
+  if (!isRegistered) {
+    customMacroReplacers.push({
+      regex: baseStatusRegex,
+      replacer: (match, keyPath) => resolveBaseStatusMacro(match, keyPath),
+    });
+  }
+
   console.log("[Anima] Base Status Macro Registered.");
   registerAnimaHidingRegex();
   console.log("[Anima] Status Macro Registered.");
@@ -2460,4 +2423,39 @@ export async function executeGCProcess() {
     // 【核心修改】将写入目标指向最新层 (如 32)，如果没找到最新层才兜底用旧层
     targetMsgId: targetWriteId !== -1 ? targetWriteId : baseStatus.id,
   };
+}
+
+// 1. 把提取数据的核心逻辑抽离成独立函数
+export function resolveBaseStatusMacro(match, keyPath) {
+  const ctx = SillyTavern.getContext();
+  const chat = ctx.chat || [];
+  if (chat.length === 0) return keyPath ? "" : "{}";
+
+  const lastMsg = chat[chat.length - 1];
+  const currentId =
+    lastMsg.message_id !== undefined ? lastMsg.message_id : chat.length - 1;
+
+  const base = findBaseStatus(currentId); // 确保 findBaseStatus 在你的作用域内可用
+  const baseData = base.id !== -1 && base.data ? base.data : {};
+
+  if (keyPath && keyPath.trim()) {
+    const contextData = createRenderContext(baseData);
+    const cleanPath = keyPath.trim();
+    let val = undefined;
+    const lodash = /** @type {any} */ (window)["_"];
+
+    if (lodash && lodash.get) {
+      val = lodash.get(contextData, cleanPath);
+    } else {
+      val = cleanPath.split(".").reduce((o, k) => (o || {})[k], contextData);
+    }
+
+    if (val === undefined) return "";
+    if (typeof val === "object") {
+      return objectToYaml(val).trim();
+    }
+    return String(val);
+  } else {
+    return Object.keys(baseData).length > 0 ? objectToYaml(baseData) : "{}";
+  }
 }

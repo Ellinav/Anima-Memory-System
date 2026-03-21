@@ -12,7 +12,15 @@ import {
   getSummarySettings,
 } from "./scripts/summary_logic.js";
 import { initRagSettings, clearLastRetrievalResult } from "./scripts/rag.js";
-import { insertMemory, queryDual, setSwipeState } from "./scripts/rag_logic.js";
+import {
+  insertMemory,
+  queryDual,
+  setSwipeState,
+  getLastRetrievalPayload,
+} from "./scripts/rag_logic.js";
+// @ts-ignore
+import { initKnowledgeSettings } from "./scripts/knowledge.js";
+import { initBm25Settings } from "./scripts/bm25.js";
 import { initInterceptor } from "./scripts/interceptor.js";
 import {
   clearRagEntry,
@@ -30,20 +38,22 @@ import {
   checkReplyIntegrity,
   syncStatusToWorldBook,
 } from "./scripts/status_logic.js";
-import { objectToYaml } from "./scripts/utils.js";
 import { initToolsSettings } from "./scripts/tools.js";
+import { escapeHtml } from "./scripts/utils.js";
 
 (function () {
   // 1. 定义基础外壳
   const shellHtml = `
     <div id="anima-overlay" class="anima-hidden">
         <div class="anima-header-bar">
-            <div class="anima-brand">
+            <div class="anima-brand" style="display: flex; align-items: center;">
                 <div id="anima-toggle-sidebar"><i class="fa-solid fa-bars"></i></div>
                 <span>Anima Memory System</span>
+                <i id="anima-global-log-btn" class="fa-solid fa-scroll fa-fw" title="查看最终注入结果" style="cursor: pointer; margin-left: 15px; font-size: 1.15em; color: #a855f7; transition: all 0.2s; filter: drop-shadow(0 0 4px rgba(168, 85, 247, 0.4));"></i>
             </div>
             <div id="anima-close-btn" title="关闭"><i class="fa-solid fa-xmark"></i></div>
         </div>
+        
         <div class="anima-main-layout">
             <div class="anima-sidebar" id="anima-sidebar">
                 <div class="anima-nav-item active" data-tab="tab-api">
@@ -53,7 +63,13 @@ import { initToolsSettings } from "./scripts/tools.js";
                     <i class="fa-solid fa-clock-rotate-left fa-fw"></i> <span>总结与记录</span>
                 </div>
                 <div class="anima-nav-item" data-tab="tab-rag">
-                    <i class="fa-solid fa-database fa-fw"></i> <span>向量 RAG</span>
+                    <i class="fa-solid fa-database fa-fw"></i> <span>向量检索</span>
+                </div>
+                <div class="anima-nav-item" data-tab="tab-bm25">
+                    <i class="fa-solid fa-magnifying-glass-chart fa-fw"></i> <span>BM25 检索</span>
+                </div>
+                <div class="anima-nav-item" data-tab="tab-knowledge">
+                    <i class="fa-solid fa-book-atlas fa-fw"></i> <span>知识库</span>
                 </div>
                 <div class="anima-nav-item" data-tab="tab-status">
                     <i class="fa-solid fa-table-list fa-fw"></i> <span>状态变量</span>
@@ -65,11 +81,23 @@ import { initToolsSettings } from "./scripts/tools.js";
             <div class="anima-content-area">
                 <div id="tab-api" class="anima-tab-content active"></div>
                 <div id="tab-status" class="anima-tab-content"></div>
-                <div id="tab-core" class="anima-tab-content"></div>
+                <div id="tab-knowledge" class="anima-tab-content"></div>
                 <div id="tab-summary" class="anima-tab-content"></div>
                 <div id="tab-rag" class="anima-tab-content"></div>
+                <div id="tab-bm25" class="anima-tab-content"></div>
                 <div id="tab-tools" class="anima-tab-content"></div>
             </div>
+        </div>
+
+        <div id="anima-global-log-modal" class="anima-modal anima-hidden">
+             <div class="anima-modal-content" style="max-width: 800px; width: 90%;">
+                <div class="anima-modal-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0; font-size: 1.1em;"><i class="fa-solid fa-scroll"></i> 最终注入切片 (Merged Results)</h3>
+                    <i id="anima-close-log-btn" class="fa-solid fa-xmark interactable" style="cursor: pointer; font-size: 1.2em;"></i>
+                </div>
+                <div id="anima-global-log-content" class="anima-modal-body">
+                </div>
+             </div>
         </div>
     </div>
     `;
@@ -86,6 +114,8 @@ import { initToolsSettings } from "./scripts/tools.js";
     initStatusSettings();
     initSummarySettings();
     initRagSettings();
+    initKnowledgeSettings();
+    initBm25Settings();
     initInterceptor();
     initStatusMacro();
     initToolsSettings();
@@ -104,6 +134,186 @@ import { initToolsSettings } from "./scripts/tools.js";
     $("#anima-close-btn").on("click", () => {
       $("#anima-overlay").addClass("anima-hidden");
     });
+
+    // 🟢 [新增] 悬停变色特效
+    $("#anima-global-log-btn").hover(
+      function () {
+        $(this).css({
+          color: "#d8b4fe",
+          filter: "drop-shadow(0 0 6px rgba(216, 180, 254, 0.6))",
+        });
+      },
+      function () {
+        $(this).css({
+          color: "#a855f7",
+          filter: "drop-shadow(0 0 4px rgba(168, 85, 247, 0.4))",
+        });
+      },
+    );
+
+    // 🟢 [新增] 打开全局日志模态框
+    $("#anima-global-log-btn").on("click", (e) => {
+      e.stopPropagation();
+      renderGlobalLogModal();
+      $("#anima-global-log-modal").removeClass("anima-hidden");
+    });
+
+    // 🟢 [新增] 关闭全局日志模态框
+    $("#anima-close-log-btn").on("click", () => {
+      $("#anima-global-log-modal").addClass("anima-hidden");
+    });
+
+    // 🟢 [修改] 渲染核心逻辑
+    function renderGlobalLogModal() {
+      const payload = getLastRetrievalPayload();
+      const container = $("#anima-global-log-content");
+      container.empty();
+
+      if (!payload) {
+        container.html(
+          "<div style='padding:20px; text-align:center; color:#94a3b8;'>暂无检索记录，请先触发一次对话或手动检索。</div>",
+        );
+        return;
+      }
+
+      const chatMerged = payload.merged_chat_results || [];
+      const kbMerged = payload.merged_kb_results || [];
+
+      // 如果完全没数据，直接返回
+      if (chatMerged.length === 0 && kbMerged.length === 0) {
+        container.html(
+          "<div style='padding:20px; text-align:center; color:#94a3b8;'>本次检索未触发任何切片注入。</div>",
+        );
+        return;
+      }
+
+      // 🟢 1. 计算各项字数
+      const getCharCount = (items) =>
+        items.reduce(
+          (sum, item) => sum + (item.text || item.content || "").length,
+          0,
+        );
+      const chatLength = getCharCount(chatMerged);
+      const kbLength = getCharCount(kbMerged);
+      const totalLength = chatLength + kbLength;
+
+      // 🟢 2. 顶部字数统计看板
+      let html = `
+        <div style="margin-bottom: 20px; padding: 12px; background: rgba(30, 41, 59, 0.8); border-radius: 6px; border: 1px solid #334155; color: #cbd5e1; font-size: 0.95em; display: flex; justify-content: space-around; flex-wrap: wrap; gap: 10px;">
+            <span>💬 聊天记录: <strong style="color: #3b82f6;">${chatLength}</strong></span>
+            <span>📚 知识库: <strong style="color: #8b5cf6;">${kbLength}</strong></span>
+            <span>📝 注入总字数: <strong style="color: #e2e8f0; font-size: 1.1em;">${totalLength}</strong></span>
+        </div>
+      `;
+
+      // 🟢 辅助渲染函数 (增强版：支持双重命中标识 + 详情子标题)
+      const renderSection = (items, title, type) => {
+        if (!items || items.length === 0) return "";
+
+        // 提取各个原始结果池的 ID 集合 (用于交叉比对)
+        const vecChatIds = new Set(
+          (payload.vector_chat_results || []).map((i) =>
+            String(i.index || i.id),
+          ),
+        );
+        const bm25ChatIds = new Set(
+          (payload.bm25_chat_results || []).map((i) => String(i.index || i.id)),
+        );
+        const vecKbIds = new Set(
+          (payload.vector_kb_results || []).map((i) => String(i.index || i.id)),
+        );
+        const bm25KbIds = new Set(
+          (payload.bm25_kb_results || []).map((i) => String(i.index || i.id)),
+        );
+
+        let sectionHtml = `<div style="margin-bottom: 20px;">
+                <h4 style="margin: 0 0 10px 0; color: #cbd5e1; border-bottom: 1px solid #334155; padding-bottom: 4px;">${title} (${items.length})</h4>`;
+
+        items.forEach((item) => {
+          const uid = String(item.index || item.id);
+          const isChat = type === "chat";
+
+          // 交叉查验该切片存在于哪个池子中
+          const isVector = isChat ? vecChatIds.has(uid) : vecKbIds.has(uid);
+          const isBM25 = isChat ? bm25ChatIds.has(uid) : bm25KbIds.has(uid);
+
+          // 颜色和文案配置
+          const vecColor = isChat ? "#3b82f6" : "#8b5cf6"; // 聊矢蓝 / 知矢紫
+          const bmColor = isChat ? "#10b981" : "#f59e0b"; // 聊B绿 / 知B琥珀
+          const vecText = isChat ? "Chat Vector" : "KB Vector";
+          const bmText = isChat ? "Chat BM25" : "KB BM25";
+
+          let tagsHtml = "";
+          let mainBorderColor = "#444";
+
+          if (isVector) {
+            tagsHtml += `<span style="color: ${vecColor}; font-weight: bold; margin-right: 6px;">[${vecText}]</span>`;
+            mainBorderColor = vecColor;
+          }
+          if (isBM25) {
+            tagsHtml += `<span style="color: ${bmColor}; font-weight: bold;">[${bmText}]</span>`;
+            mainBorderColor = isVector ? "#0ea5e9" : bmColor;
+          }
+
+          if (!isVector && !isBM25) {
+            const fallbackType = (item.type || "").toLowerCase();
+            if (fallbackType === "bm25") {
+              tagsHtml = `<span style="color: ${bmColor}; font-weight: bold;">[${bmText}]</span>`;
+              mainBorderColor = bmColor;
+            } else {
+              tagsHtml = `<span style="color: ${vecColor}; font-weight: bold;">[${vecText}]</span>`;
+              mainBorderColor = vecColor;
+            }
+          }
+
+          const score =
+            item.score !== undefined
+              ? parseFloat(item.score).toFixed(3)
+              : "N/A";
+          const text = item.text || item.content || "内容为空";
+          const wordCount = text.length;
+          const sourceName =
+            item.source || item._source_collection || "Unknown";
+
+          // 🟢 构造详情行 (溯源与分片信息)
+          let detailsHtml = "";
+          if (isChat) {
+            detailsHtml = `
+                <div style="margin-bottom: 3px;">📦 库: <strong>${sourceName}</strong></div>
+                <div>🔖 切片: <strong>#${uid}</strong> <span style="margin: 0 6px; color: #334155;">|</span> 🔠 字数: <strong>${wordCount}</strong></div>
+              `;
+          } else {
+            const docName = item.doc_name || "未知文档";
+            const chunkIndex =
+              item.chunk_index !== undefined ? item.chunk_index : "N/A";
+            detailsHtml = `
+                <div style="margin-bottom: 3px;">📦 库: <strong>${sourceName}</strong> <span style="margin: 0 6px; color: #334155;">|</span> 📄 文档: <strong title="${escapeHtml(docName)}">${escapeHtml(docName.length > 20 ? docName.substring(0, 20) + "..." : docName)}</strong></div>
+                <div>🧩 Chunk: <strong>#${chunkIndex}</strong> <span style="margin: 0 6px; color: #334155;">|</span> 🔠 字数: <strong>${wordCount}</strong></div>
+              `;
+          }
+
+          sectionHtml += `
+                    <div style="border-left: 4px solid ${mainBorderColor}; padding: 10px; margin-bottom: 8px; background: rgba(15, 23, 42, 0.6); border-radius: 4px; border-right: 1px solid #1e293b; border-top: 1px solid #1e293b; border-bottom: 1px solid #1e293b;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.85em; margin-bottom: 6px;">
+                            <div>${tagsHtml}</div>
+                            <span style="color: #64748b;">Score: ${score}</span>
+                        </div>
+                        <div style="font-size: 0.8em; color: #94a3b8; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px dashed #334155;">
+                            ${detailsHtml}
+                        </div>
+                        <div style="font-size: 0.9em; color: #e2e8f0; white-space: pre-wrap; line-height: 1.4;">${text}</div>
+                    </div>
+                `;
+        });
+        sectionHtml += `</div>`;
+        return sectionHtml;
+      };
+
+      html += renderSection(chatMerged, "💬 聊天检索最终切片", "chat");
+      html += renderSection(kbMerged, "📚 知识库检索最终切片", "kb");
+
+      container.html(html);
+    }
 
     $("#anima-toggle-sidebar").on("click", () => {
       $("#anima-sidebar").toggleClass("collapsed");

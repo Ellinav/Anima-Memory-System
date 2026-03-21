@@ -485,7 +485,7 @@ function renderBm25UI(container, settings, dicts, words, libs) {
         <div class="bm25-file-item">
             <div style="font-family: monospace; display: flex; align-items: center; gap: 10px;">
                 ${icon}
-                <span style="color: #ddd;">${escapeHtml(lib.name)}</span>
+                <span class="bm25-lib-name-text" style="color: #ddd;">${escapeHtml(lib.name)}</span>
             </div>
         </div>`;
     })
@@ -1450,20 +1450,21 @@ function bindBm25Events() {
     });
 
   // 主界面：保存库绑定状态（存入角色卡）
-  $tab.find("#btn_bm25_lib_bind_save").on("click", async () => {
-    // 实际上，你需要遍历主界面的 DOM 抓取当前生效的库列表
-    // 这里假设你通过某种方式获取到了主界面上显示的库
-    const currentLibs = [];
-    $tab.find(".bm25-file-item").each(function () {
-      const libName = $(this).find("span").text().trim();
-      // 你可以根据 DOM 里的 icon 颜色或其他属性推断 status，这里简单演示
-      currentLibs.push({ name: libName, status: "normal" });
-    });
+  $tab
+    .find("#btn_bm25_lib_bind_save")
+    .off("click")
+    .on("click", async () => {
+      const currentLibs = [];
+      $tab.find(".bm25-file-item").each(function () {
+        // 🟢 修改此处：精准获取专属 class，防止吞噬徽章文本
+        const libName = $(this).find(".bm25-lib-name-text").text().trim();
+        currentLibs.push({ name: libName, status: "normal" });
+      });
 
-    // 调用存入角色卡的 API
-    await saveCharBm25Settings({ libs: currentLibs });
-    toastr.success("当前 BM25 库绑定状态已成功保存到角色卡！");
-  });
+      // 调用存入角色卡的 API
+      await saveCharBm25Settings({ libs: currentLibs });
+      toastr.success("当前 BM25 库绑定状态已成功保存到角色卡！");
+    });
 
   // 4. 工作区逻辑：切片同步状态面板 (连通后端 + 进度条 + 真实索引词)
   // 4. 工作区逻辑：切片同步状态面板 (连通后端 + 进度条 + 真实索引词 + 前端分页)
@@ -2660,7 +2661,7 @@ async function refreshLibsUI(libs) {
         <div class="bm25-file-item" title="${titleText}" style="border-color: ${needsWarning ? "#fbbf24" : "var(--anima-primary)"};">
             <div style="font-family: monospace; display: flex; align-items: center; gap: 10px;">
                 ${icon}
-                <span style="color: ${isCurrent ? "#ddd" : "#999"}; word-break: break-all;">${escapeHtml(lib.name)}</span>
+                <span class="bm25-lib-name-text" style="color: ${isCurrent ? "#ddd" : "#999"}; word-break: break-all;">${escapeHtml(lib.name)}</span>
                 ${extraTag}
             </div>
         </div>`;

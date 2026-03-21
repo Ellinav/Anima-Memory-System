@@ -48,18 +48,17 @@ function formatMergedKb(mergedList) {
   return finalString;
 }
 
-// ✨ 修改版：构建查询的核心逻辑 (逻辑已同步至与 UI 预览完全一致)
+// ✨ 终极修复版：构建 RAG 查询
 function constructRagQuery(chat, settings) {
   const promptConfig = settings.vector_prompt || [];
   let finalQueryParts = [];
 
-  // 🟢 黄金修复方案：先拿到原生 chat 兜底，并动态计算长度
+  // 1. 获取底层最真实的聊天数组
   const nativeChat = SillyTavern.getContext().chat || chat || [];
   let allMsgs = [];
 
   try {
     if (window.TavernHelper && window.TavernHelper.getChatMessages) {
-      // 动态获取最后一条消息的 ID，而不是传宏字符串
       const lastId = nativeChat.length > 0 ? nativeChat.length - 1 : 0;
       allMsgs =
         window.TavernHelper.getChatMessages(`0-${lastId}`, {
@@ -70,33 +69,37 @@ function constructRagQuery(chat, settings) {
     console.warn("[Anima] TavernHelper 提取失败，准备回退");
   }
 
-  // 🚨 最核心的兜底：就算没报错，只要是空数组，一律强制回退到原生 chat！
   if (!allMsgs || allMsgs.length === 0) {
     allMsgs = nativeChat;
   }
+
+  // 🔴 核心修复：必须先过滤掉系统隐藏消息和空消息，然后再切片！
+  let filteredChat = allMsgs.filter((msg, idx) => {
+    // 剔除纯系统消息 (防止截取到 Author's Note 等临时注入块)
+    if (msg.is_system && !msg.role) return false;
+    // 剔除开场白
+    if (
+      settings.skip_layer_zero &&
+      (String(msg.message_id) === "0" || idx === 0)
+    )
+      return false;
+    // 剔除当前正在生成/Swipe的空消息
+    if (!msg.mes && !msg.message) return false;
+    return true;
+  });
 
   for (const item of promptConfig) {
     if (item.type === "context") {
       const count = parseInt(item.count) || 5;
 
-      // 🟢 修复：先精准截取最后 N 楼，再进行清洗（保证不多截也不漏截）
-      const slicedChat = allMsgs.slice(-count);
+      // A. 从【全是干货】的数组中安全截取最后 N 条
+      const slicedChat = filteredChat.slice(-count);
 
+      // B. 格式化 & 正则清洗
       const textBlock = slicedChat
         .map((msg) => {
-          // 兼容 TavernHelper(role) 和 ST(is_user) 结构
-          const isUser = msg.role === "user" || msg.is_user === true;
-          if (msg.is_system && !msg.role) return null; // 过滤纯系统消息
-
-          // 跳过开场白 (严格判断消息 ID 或对比原文)
-          if (
-            settings.skip_layer_zero &&
-            (String(msg.message_id) === "0" || msg.mes === allMsgs[0]?.mes)
-          )
-            return null;
-
           let content = msg.message || msg.mes;
-          if (!content) return null;
+          const isUser = msg.role === "user" || msg.is_user === true;
 
           const shouldApplyRegex = !(isUser && settings.regex_skip_user);
           if (
@@ -133,7 +136,7 @@ function constructRagQuery(chat, settings) {
   return finalQueryParts.join("\n\n").trim();
 }
 
-// ✨ 修复版：构建 BM25 检索词 (与预览绝对对齐)
+// ✨ 终极修复版：构建 BM25 查询
 async function constructBm25Query(chat, bm25Settings, ragSettings) {
   if (!bm25Settings || !bm25Settings.content_settings) return "";
 
@@ -160,7 +163,6 @@ async function constructBm25Query(chat, bm25Settings, ragSettings) {
 
   try {
     if (window.TavernHelper && window.TavernHelper.getChatMessages) {
-      // 动态获取最后一条消息的 ID，而不是传宏字符串
       const lastId = nativeChat.length > 0 ? nativeChat.length - 1 : 0;
       allMsgs =
         window.TavernHelper.getChatMessages(`0-${lastId}`, {
@@ -171,27 +173,33 @@ async function constructBm25Query(chat, bm25Settings, ragSettings) {
     console.warn("[Anima] TavernHelper 提取失败，准备回退");
   }
 
-  // 🚨 最核心的兜底：就算没报错，只要是空数组，一律强制回退到原生 chat！
   if (!allMsgs || allMsgs.length === 0) {
     allMsgs = nativeChat;
   }
+
+  // 🔴 核心修复：提前过滤系统消息和空消息
+  let filteredChat = allMsgs.filter((msg, idx) => {
+    if (msg.is_system && !msg.role) return false;
+    if (skipZero && (String(msg.message_id) === "0" || idx === 0)) return false;
+
+    const isUser = msg.role === "user" || msg.is_user === true;
+    if (excludeUser && isUser) return false;
+    // 剔除正在生成的空消息
+    if (!msg.mes && !msg.message) return false;
+    return true;
+  });
 
   for (const item of promptConfig) {
     if (item.id === "floor_content") {
       const count = parseInt(item.count) || 1;
 
-      // 🔴 核心修复 1：绝对优先切片！截死最后 N 层，决不允许向前越界抓取
-      const slicedChat = allMsgs.slice(-count);
+      // 安全切片
+      const slicedChat = filteredChat.slice(-count);
       let processedChat = [];
 
       slicedChat.forEach((msg) => {
-        // 兼容 TavernHelper(role) 和 原生 ST(is_user) 结构
         const isUser = msg.role === "user" || msg.is_user === true;
-        if (msg.is_system && !msg.role) return;
-        if (excludeUser && isUser) return;
-
         let content = msg.message || msg.mes || "";
-        if (!content) return;
 
         if (typeof processMacros === "function") {
           content = processMacros(content);
@@ -202,33 +210,17 @@ async function constructBm25Query(chat, bm25Settings, ragSettings) {
           content = content.replace(cleanRegex, "");
         }
 
-        // 🔴 核心修复 2：稳健的正则判定逻辑，避免 undefined 短路
         let shouldApplyRegex = true;
-
-        // 判断是否为开场白 (严谨比对，防止报错)
-        const isLayerZero =
-          String(msg.message_id) === "0" ||
-          msg._id === 0 ||
-          (msg.mes && allMsgs[0]?.mes && msg.mes === allMsgs[0].mes) ||
-          (msg.message &&
-            allMsgs[0]?.message &&
-            msg.message === allMsgs[0].message);
-
-        if (skipZero && isLayerZero) {
-          shouldApplyRegex = false;
-        }
         if (skipUser && isUser) {
           shouldApplyRegex = false;
         }
 
-        // 应用正则
         if (shouldApplyRegex && regexList && regexList.length > 0) {
           content = applyRegexRules(content, regexList);
         }
 
         content = content?.trim() || "";
 
-        // 如果清洗后内容仍然存在，才推入最终结果
         if (content) {
           processedChat.push(`${isUser ? "user" : "assistant"}: ${content}`);
         }

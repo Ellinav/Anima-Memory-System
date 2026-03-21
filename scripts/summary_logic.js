@@ -1042,6 +1042,7 @@ export async function runSummarizationTask({
         // 使用 success 样式表示成功，提示用户该序号已保存
         toastr.success(`Anima: 总结 #${finalIndex} 已成功存入世界书`);
       }
+      document.dispatchEvent(new CustomEvent("anima_summary_written"));
 
       await new Promise((r) => setTimeout(r, 1000));
     }

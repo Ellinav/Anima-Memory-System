@@ -2557,44 +2557,37 @@ function bindBm25Events() {
       refreshLibsUI(charSettings.libs || []);
     });
   }
+  document.addEventListener("anima_summary_written", () => {
+    const charSettings = getCharBm25Settings();
+    // 这里调用咱们上一轮刚刚修复好的 refreshLibsUI，它会无条件向底层查询切片状态
+    refreshLibsUI(charSettings.libs || []);
+  });
 
   setTimeout(() => $tab.find("#bm25_dict_select").trigger("change"), 50);
 }
 
-async function refreshLibsUI(libs) {
+export async function refreshLibsUI(libs) {
   const container = $("#bm25_current_libs_container");
-
-  if (!libs || libs.length === 0) {
-    container.html(
-      '<div style="color:#666; text-align:center;">暂无绑定的 BM25 库</div>',
-    );
-    return;
-  }
-
   const currentLibName = getCurrentBm25LibName();
-  let hasDirtyData = false;
-
-  // 🟢 核心：只有当绑定的库里包含当前聊天时，才去向底层询问有没有未同步的切片
-  if (libs.some((l) => l.name === currentLibName)) {
-    try {
-      const data = await getBm25SyncList();
-      hasDirtyData =
-        data.list && data.list.some((item) => item.is_bm25_synced === false);
-    } catch (e) {
-      console.warn("[Anima BM25] 获取脏数据状态失败", e);
-    }
-  }
-
   const globalSettings = getGlobalBm25Settings();
 
-  // ✨ 新增：提取当前库的词典修改状态
+  // 1. 无条件向底层询问当前聊天有没有未同步的切片（解开原来的 libs.some 限制）
+  let hasDirtyData = false;
+  try {
+    const data = await getBm25SyncList();
+    hasDirtyData =
+      data.list && data.list.some((item) => item.is_bm25_synced === false);
+  } catch (e) {
+    console.warn("[Anima BM25] 获取脏数据状态失败", e);
+  }
+
+  // 2. 提取当前库的词典修改状态
   const isCurrentDictDirty =
     globalSettings.dict_mapping?.[currentLibName]?.dirty === true;
   const needsSyncWarning = hasDirtyData || isCurrentDictDirty;
 
-  // ✨ 新增：接管【切片同步状态】按钮的 UI
+  // 3. 无论有没有绑定库，都接管并更新【切片同步状态】按钮的 UI
   const $scanBtn = $("#btn_bm25_scan_build");
-  // 确保先清除默认的 class 样式，防止覆盖我们的自定义颜色
   $scanBtn.removeClass("secondary primary");
 
   if (needsSyncWarning) {
@@ -2617,40 +2610,46 @@ async function refreshLibsUI(libs) {
       .html('<i class="fa-solid fa-check"></i> 已同步');
   }
 
+  // 4. 下方才是库列表的渲染逻辑，如果为空在这里 return 就不会影响上面的按钮了
+  if (!libs || libs.length === 0) {
+    container.html(
+      '<div style="color:#666; text-align:center;">暂无绑定的 BM25 库</div>',
+    );
+    return;
+  }
+
+  // 5. 渲染绑定的库列表
   const libsHtml = libs
     .map((lib) => {
       const isCurrent = lib.name === currentLibName;
-      // ✨ 检查该库是否因为切换词典而变脏
       const isDictDirty =
         globalSettings.dict_mapping?.[lib.name]?.dirty === true;
-      // ✨ 综合判断：有未同步切片，或者词典被修改，都需要标黄警告
       const needsWarning = (isCurrent && hasDirtyData) || isDictDirty;
 
       let color, icon, extraTag, titleText;
 
       if (isCurrent) {
         if (needsWarning) {
-          color = "#fbbf24"; // ⚠️ 黄色警告
+          color = "#fbbf24";
           icon = `<i class="fa-solid fa-triangle-exclamation" style="color:${color};"></i>`;
           extraTag = `<span style="font-size:10px; background:rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.4); color:#fbbf24; padding:2px 6px; border-radius:10px; margin-left:6px;">⚠️ 需重构</span>`;
           titleText = isDictDirty
             ? "当前库词典已更新，请重构"
             : "存在未同步切片，请前往重构";
         } else {
-          color = "#34d399"; // 🟢 绿色健康
+          color = "#34d399";
           icon = `<i class="fa-solid fa-database" style="color:${color};"></i>`;
           extraTag = `<span style="font-size:10px; background:rgba(52, 211, 153, 0.2); border: 1px solid rgba(52, 211, 153, 0.4); color:#34d399; padding:2px 6px; border-radius:10px; margin-left:6px;">Current</span>`;
           titleText = "当前聊天关联库 (已同步)";
         }
       } else {
-        // ✨ 非当前库（历史库）如果词典改了，也要变黄
         if (needsWarning) {
-          color = "#fbbf24"; // ⚠️ 黄色警告
+          color = "#fbbf24";
           icon = `<i class="fa-solid fa-triangle-exclamation" style="color:${color};"></i>`;
           extraTag = `<span style="font-size:10px; background:rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.4); color:#fbbf24; padding:2px 6px; border-radius:10px; margin-left:6px;">⚠️ 词典已更新</span>`;
           titleText = "历史库词典已更改，建议重构";
         } else {
-          color = "#94a3b8"; // ⚪ 灰色只读
+          color = "#94a3b8";
           icon = `<i class="fa-solid fa-box-archive" style="color:${color};"></i>`;
           extraTag = `<span style="font-size:10px; background:rgba(148, 163, 184, 0.2); border: 1px solid rgba(148, 163, 184, 0.4); color:#94a3b8; padding:2px 6px; border-radius:10px; margin-left:6px;">Histroy</span>`;
           titleText = "其他聊天的历史库";

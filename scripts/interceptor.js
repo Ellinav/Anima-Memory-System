@@ -53,9 +53,20 @@ function constructRagQuery(chat, settings) {
   const promptConfig = settings.vector_prompt || [];
   let finalQueryParts = [];
 
-  // 🔴 核心修复：彻底抛弃 getContext() 和 TavernHelper！
-  // 绝对信任拦截器传进来的 chat 数组，因为 ST 在 Swipe 时已经自动弹出了废弃楼层！
-  let allMsgs = Array.isArray(chat) ? chat : [];
+  let allMsgs = [];
+  try {
+    if (window.TavernHelper && window.TavernHelper.getChatMessages) {
+      allMsgs =
+        window.TavernHelper.getChatMessages("0-{{lastMessageId}}", {
+          include_swipes: false,
+        }) || [];
+    } else {
+      allMsgs = Array.isArray(chat) ? chat : [];
+    }
+  } catch (e) {
+    console.error("[Anima RAG] Interceptor 获取原始聊天记录失败:", e);
+    allMsgs = Array.isArray(chat) ? chat : [];
+  }
 
   // 先过滤出“纯净的聊天记录”
   let filteredChat = allMsgs.filter((msg, idx) => {
@@ -138,7 +149,20 @@ async function constructBm25Query(chat, bm25Settings, ragSettings) {
   const promptConfig = cSettings.prompt_items || [];
 
   // 🔴 核心修复：同样只信任拦截器参数
-  let allMsgs = Array.isArray(chat) ? chat : [];
+  let allMsgs = [];
+  try {
+    if (window.TavernHelper && window.TavernHelper.getChatMessages) {
+      allMsgs =
+        window.TavernHelper.getChatMessages("0-{{lastMessageId}}", {
+          include_swipes: false,
+        }) || [];
+    } else {
+      allMsgs = Array.isArray(chat) ? chat : [];
+    }
+  } catch (e) {
+    console.error("[Anima BM25] Interceptor 获取原始聊天记录失败:", e);
+    allMsgs = Array.isArray(chat) ? chat : [];
+  }
 
   let filteredChat = allMsgs.filter((msg, idx) => {
     if (msg.is_system && !msg.role) return false;

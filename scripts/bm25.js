@@ -1071,7 +1071,7 @@ function bindBm25Events() {
 
       if (res.rebuilt) {
         toastr.success(
-          `词典 [${currentDictName}] 已绑定至当前角色！相关库同步中...`,
+          `词典 [${currentDictName}] 已绑定至当前角色！完成相关库同步！`,
         );
       } else if (res.reason === "auto_build_off") {
         toastr.warning(
@@ -1208,7 +1208,7 @@ function bindBm25Events() {
                 <div style="text-align:center;">关联</div>
                 <div style="text-align:right;">操作</div>
             </div>
-            <div class="anima-scroll" style="max-height: 350px;">
+            <div class="anima-scroll" style="max-height: 350px; overflow-y: auto; padding-right: 5px;">
                 ${rowsHtml}
             </div>
         </div>

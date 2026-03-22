@@ -300,7 +300,16 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
         
         /* 正则列表样式 (Row模式) */
         .anima-regex-item.is-row { background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05); border-radius: 4px; padding: 8px; margin-bottom: 5px; }
-        
+        select.anima-select.edit-type {
+            height: 30px !important;        /* 设定合适的固定高度 */
+            min-height: 30px !important;
+            line-height: 28px !important;   /* 核心：行高 = 高度减去上下边框(通常2px)，实现垂直居中 */
+            padding-top: 0 !important;      /* 抹除 ST 原生可能带来的畸形顶部 Padding */
+            padding-bottom: 0 !important;   /* 抹除 ST 原生可能带来的畸形底部 Padding */
+            padding-left: 8px !important;   /* 保持左侧呼吸感 */
+            box-sizing: border-box !important;
+            vertical-align: middle !important;
+        }
         /* 历史记录/向量状态样式 */
         .anima-history-entry { margin-bottom: 5px; border: 1px solid #444; border-radius: 4px; background: rgba(0,0,0,0.2); }
         .anima-history-header { padding: 8px 10px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }

@@ -1417,6 +1417,7 @@ function bindRagEvents(settings) {
       confirmText, // 确认按钮文字
       multiSelect, // (保留扩展) 默认 true
       filterOrphans, // 是否过滤掉不存在的库 (导出时需要过滤)
+      excludeKB,
       onConfirm, // 确认回调 (selectedIds) => {}
     } = options;
 
@@ -1424,6 +1425,11 @@ function bindRagEvents(settings) {
     let allCollections = [];
     try {
       allCollections = await getAvailableCollections();
+
+      // 🟢 核心修复：如果在配置中指定了排除知识库，则提前过滤掉 kb_ 开头的库
+      if (excludeKB) {
+        allCollections = allCollections.filter((db) => !db.startsWith("kb_"));
+      }
     } catch (e) {
       toastr.error("无法获取服务器数据库列表");
       return;
@@ -1859,8 +1865,9 @@ function bindRagEvents(settings) {
         title: "管理聊天数据库",
         confirmText: "关联",
         filterOrphans: false,
+        excludeKB: true, // 🟢 新增：告诉弹窗组件，渲染列表时不显示 kb_ 开头的知识库
         onConfirm: async (selectedIds) => {
-          // 过滤掉知识库，只保留普通聊天数据库
+          // 这里的过滤可以保留作为双重保险，或者直接去掉也可以
           const newChatFiles = selectedIds.filter(
             (id) => !id.startsWith("kb_"),
           );

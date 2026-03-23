@@ -763,7 +763,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                         <div style="margin-bottom: 5px;">
                             <div class="anima-label-group" style="margin-bottom: 5px;">
                                 <span class="anima-label-text">提示词构建模板</span>
-                                <span class="anima-desc-inline">使用 <code>{{chatHistory}}</code> 作为占位符。</span>
+                                <span class="anima-desc-inline">使用 <code>{{chatHistory}}</code>（推荐） 或者 <code>{{rag}}</code> 作为占位符。</span>
                             </div>
                             <textarea id="rag_inject_template" class="anima-textarea" rows="4" 
                                 placeholder="例如：以下是相关记忆...\n{{chatHistory}}">${escapeHtml(settings.injection_settings?.template || "以下是相关的记忆内容：\n{{chatHistory}}")}</textarea>

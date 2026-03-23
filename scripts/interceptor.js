@@ -357,7 +357,9 @@ export async function initInterceptor() {
       const hasRecent = recentData.text && recentData.text.trim().length > 0;
 
       if (hasRag || hasRecent) {
-        finalMemoryContent = template.replace(/\{\{rag\}\}/gi, chatRagText);
+        finalMemoryContent = template
+          .replace(/\{\{chatHistory\}\}/gi, chatRagText)
+          .replace(/\{\{rag\}\}/gi, chatRagText);
         finalMemoryContent = finalMemoryContent.replace(
           /\{\{recent_history\}\}/gi,
           recentData.text,

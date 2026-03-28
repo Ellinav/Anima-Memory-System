@@ -124,12 +124,15 @@ async function proxyFetch(targetUrl, options = {}) {
           if (xhr.readyState === 2 && !responseResolved) {
             if (xhr.status >= 200 && xhr.status < 300) {
               responseResolved = true;
-              // 包装出一个长得跟 fetch 一模一样的 Response 对象
-              resolve({
-                ok: true,
-                status: xhr.status,
-                body: { getReader: () => stream.getReader() },
-              });
+
+              // 🟢 核心修复：直接使用浏览器的原生 Response 包装流
+              // 这样包装出来的对象，天生自带 .json() / .text() 方法！
+              resolve(
+                new Response(stream, {
+                  status: xhr.status,
+                  statusText: xhr.statusText,
+                }),
+              );
             }
           }
         });
@@ -1168,7 +1171,7 @@ export async function generateText(
       if (!response.ok) {
         let errorMsg = response.statusText;
         try {
-          // 此时如果不ok，大概率走的是路线 A 的非流返回，有 text() 或 json() 方法
+          // 兼容错误状态下的解析
           const errData = response.json
             ? await response.json()
             : { error: await response.text() };
@@ -1177,27 +1180,19 @@ export async function generateText(
         throw new Error(`Google API Error (${response.status}): ${errorMsg}`);
       }
 
-      const data = await response.json();
-      console.log("[Anima Debug] Google Raw Response:", data);
-
-      // 解析响应
       let text = "";
 
       if (!stream) {
-        // 1. 非流式：安全调用 json()
+        // 1. 非流式：直接调用 json()
         const data = await response.json();
-        console.log("[Anima Debug] Google Raw Response:", data);
 
         text = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!text) {
           text = data.choices?.[0]?.message?.content || data.choices?.[0]?.text;
         }
-        if (!text) {
-          console.warn("[Anima] Google 响应解析为空，原始数据:", data);
-          throw new Error("API 返回结构未知");
-        }
+        if (!text) throw new Error("API 返回结构未知");
       } else {
-        // 2. 流式：必须通过 getReader() 手动读取拼接缓冲
+        // 2. 流式：使用 Reader 消费流
         const reader = response.body.getReader();
         const decoder = new TextDecoder("utf-8");
         let buffer = "";
@@ -1208,12 +1203,8 @@ export async function generateText(
           buffer += decoder.decode(value, { stream: true });
         }
 
-        // Google 的非 SSE 流式接口返回的是一个完整的 JSON 数组字符串
-        // 只有等全部读取完毕后，拼接的 buffer 才能被整体 parse
         try {
           const data = JSON.parse(buffer);
-          console.log("[Anima Debug] Google Stream Raw Response:", data);
-
           if (Array.isArray(data)) {
             data.forEach((chunk) => {
               const chunkText =
@@ -1235,7 +1226,6 @@ export async function generateText(
       }
 
       return text;
-      // === 🚀 核心修复部分结束 ===
     } catch (error) {
       throw error;
     }

@@ -1192,7 +1192,7 @@ export async function generateText(
         }
         if (!text) throw new Error("API 返回结构未知");
       } else {
-        // 2. 流式：使用 Reader 消费流
+        // 2. 流式：使用 Reader 消费流并按 SSE 格式 (Server-Sent Events) 解析
         const reader = response.body.getReader();
         const decoder = new TextDecoder("utf-8");
         let buffer = "";
@@ -1200,28 +1200,68 @@ export async function generateText(
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+
+          // 解码当前块并追加到缓冲区
           buffer += decoder.decode(value, { stream: true });
+
+          // 按行分割处理，防止 JSON 被截断
+          const lines = buffer.split("\n");
+          // 弹出最后一行（可能是不完整的），留在 buffer 里等下一波数据拼接
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue; // 忽略空行
+
+            // 检查是否是 SSE 格式的行
+            if (trimmed.startsWith("data: ")) {
+              const jsonStr = trimmed.slice(6); // 剥离 "data: "
+              if (jsonStr === "[DONE]") continue; // 兼容部分网关会发出的结束符
+
+              try {
+                const data = JSON.parse(jsonStr);
+
+                // 兼容可能被包成数组，也可能是单个对象的情况
+                if (Array.isArray(data)) {
+                  data.forEach((chunk) => {
+                    const chunkText =
+                      chunk.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (chunkText) text += chunkText;
+                  });
+                } else {
+                  const chunkText =
+                    data.candidates?.[0]?.content?.parts?.[0]?.text;
+                  if (chunkText) text += chunkText;
+                }
+              } catch (e) {
+                // 流式解析单行错误时仅警告，不阻断后续流接收
+                console.warn(
+                  "[Anima Debug] 单行 JSON 解析忽略:",
+                  e,
+                  "Line:",
+                  trimmed,
+                );
+              }
+            }
+            // 兼容非 SSE 格式（有些直连网关可能返回原生的数组流）
+            else if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+              try {
+                const data = JSON.parse(trimmed);
+                const chunkText =
+                  data.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (chunkText) text += chunkText;
+              } catch (e) {}
+            }
+          }
         }
 
-        try {
-          const data = JSON.parse(buffer);
-          if (Array.isArray(data)) {
-            data.forEach((chunk) => {
-              const chunkText =
-                chunk.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (chunkText) text += chunkText;
-            });
-          } else {
-            text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          }
-        } catch (e) {
-          console.error(
-            "[Anima Debug] Google 流式解析失败:",
-            e,
-            "Buffer:",
-            buffer,
-          );
-          throw new Error("Google 流式响应解析失败");
+        // 结束后，检查 buffer 中是否还有遗留的数据没处理
+        if (buffer.trim().startsWith("data: ")) {
+          try {
+            const data = JSON.parse(buffer.trim().slice(6));
+            const chunkText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (chunkText) text += chunkText;
+          } catch (e) {}
         }
       }
 

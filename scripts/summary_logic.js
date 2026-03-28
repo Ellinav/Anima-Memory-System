@@ -10,7 +10,6 @@ import {
   extractJsonResult,
   processMacros,
   getContextData,
-  normalizeJsonKeys,
 } from "./utils.js";
 import { autoUpdateDictionary, triggerFullBm25Rebuild } from "./bm25_logic.js";
 

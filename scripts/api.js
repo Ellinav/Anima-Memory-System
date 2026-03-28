@@ -1,7 +1,34 @@
-// scripts/api.js
-
 // 1. 定义插件的唯一 ID (非常重要，不要和别的插件重复)
 const MODULE_NAME = "anima_memory_system";
+
+const originalFetch = window.fetch;
+window.fetch = async function (resource, options) {
+  if (
+    typeof resource === "string" &&
+    resource.startsWith("/api/plugins/anima-rag/")
+  ) {
+    options = options || {};
+    options.headers = options.headers || {};
+
+    let stSecurityHeaders = {};
+    if (typeof window.getRequestHeaders === "function") {
+      stSecurityHeaders = window.getRequestHeaders();
+    } else if (window.csrf_token) {
+      stSecurityHeaders = { "X-CSRF-Token": window.csrf_token };
+    }
+
+    if (options.headers instanceof Headers) {
+      for (const [k, v] of Object.entries(stSecurityHeaders)) {
+        options.headers.set(k, v);
+      }
+    } else {
+      Object.assign(options.headers, stSecurityHeaders);
+    }
+
+    options.credentials = "same-origin"; // 强制携带 Cookie
+  }
+  return originalFetch.call(this, resource, options);
+};
 
 // 2. 定义默认配置结构
 const defaultSettings = {
@@ -50,6 +77,70 @@ const defaultSettings = {
 function getStContext() {
   // @ts-ignore
   return window.SillyTavern.getContext();
+}
+
+/**
+ * 🌐 纯后端代理请求函数：混合稳定版
+ * - 非流式 (如状态更新、获取模型)：使用 ST 原生 $.ajax 坐顺风车，100% 免疫本地 CSRF
+ * - 流式 (如大段文本生成)：使用 fetch，精准注入 Token 和 Cookie
+ */
+async function proxyFetch(targetUrl, options = {}) {
+  const { method = "GET", headers = {}, body, isStream = false } = options;
+  const stWindow = /** @type {any} */ (window);
+
+  // 🚗 路线 A：非流式请求，绝对安全的 $.ajax
+  if (!isStream) {
+    return new Promise((resolve) => {
+      stWindow.$.ajax({
+        url: "/api/plugins/anima-rag/proxy/forward",
+        type: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({
+          targetUrl,
+          method,
+          headers,
+          body,
+          isStream: false,
+        }),
+        success: function (data) {
+          resolve({
+            ok: true,
+            status: 200,
+            json: async () => data,
+            text: async () =>
+              typeof data === "object" ? JSON.stringify(data) : data,
+          });
+        },
+        error: function (jqXHR) {
+          resolve({
+            ok: false,
+            status: jqXHR.status,
+            text: async () => jqXHR.responseText || "请求失败",
+          });
+        },
+      });
+    });
+  }
+
+  // 🚀 路线 B：流式请求，提取 CSRF Token 并使用 fetch
+  let csrfToken = "";
+  if (typeof stWindow.getRequestHeaders === "function") {
+    const h = stWindow.getRequestHeaders();
+    if (h && h["X-CSRF-Token"]) csrfToken = h["X-CSRF-Token"];
+  }
+  if (!csrfToken && stWindow.csrf_token) {
+    csrfToken = stWindow.csrf_token;
+  }
+
+  return await fetch("/api/plugins/anima-rag/proxy/forward", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": csrfToken,
+    },
+    credentials: "same-origin", // 强制携带本地 Cookie
+    body: JSON.stringify({ targetUrl, method, headers, body, isStream: true }),
+  });
 }
 
 /**
@@ -598,13 +689,13 @@ function bindLogic(type) {
             documents: ["红富士", "香蕉", "汽车"], // 测试数据
           };
 
-          const res = await fetch(currentUrl, {
+          const res = await proxyFetch(currentUrl, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${currentKey}`,
             },
-            body: JSON.stringify(configPayload),
+            body: configPayload,
           });
 
           if (!res.ok) {
@@ -745,7 +836,7 @@ function bindLogic(type) {
             fetchUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${key}`;
           }
 
-          const res = await fetch(fetchUrl, { headers });
+          const res = await proxyFetch(fetchUrl, { headers });
 
           if (!res.ok) {
             const errText = await res.text();
@@ -773,52 +864,30 @@ function bindLogic(type) {
             modelsFetchUrl = url;
           }
 
-          try {
-            // 1. 尝试直接从浏览器 Fetch (直连)
-            const directResponse = await fetch(`${modelsFetchUrl}/models`, {
-              method: "GET",
-              headers: {
-                Authorization: `Bearer ${key}`,
-                "Content-Type": "application/json",
-              },
-            });
+          const directResponse = await proxyFetch(`${modelsFetchUrl}/models`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${key}`,
+              "Content-Type": "application/json",
+            },
+          });
 
-            if (directResponse.ok) {
-              const data = await directResponse.json();
-              if (data.data && Array.isArray(data.data)) {
-                models = data.data.map((m) => m.id);
-              } else if (Array.isArray(data)) {
-                models = data.map((m) => m.id);
-              }
-            } else {
-              throw new Error("直连请求未成功"); // 抛出异常去触发下方的 catch，走代理尝试
-            }
-          } catch (err) {
-            console.warn("[Anima] 直连失败，尝试 ST 后端代理:", err);
-
-            // 2. 如果直连失败，回退到 ST 后端代理
-            // @ts-ignore
-            const response = await $.ajax({
-              url: "/api/backends/chat-completions/status",
-              type: "POST",
-              contentType: "application/json",
-              data: JSON.stringify({
-                chat_completion_source: "custom",
-                custom_url: modelsFetchUrl,
-                reverse_proxy: modelsFetchUrl,
-                proxy_password: key,
-                custom_include_headers: "",
-              }),
-            });
-            const data = response;
-            if (Array.isArray(data)) models = data.map((m) => m.id);
-            else if (data.data && Array.isArray(data.data))
+          if (directResponse.ok) {
+            const data = await directResponse.json();
+            if (data.data && Array.isArray(data.data)) {
               models = data.data.map((m) => m.id);
-
-            // 🔥 核心修改：如果代理也没拿到数据，不要给默认值，直接报错！
-            if (!models || models.length === 0) {
-              throw new Error("连接失败：无法获取模型列表，请检查 URL 和 Key");
+            } else if (Array.isArray(data)) {
+              models = data.map((m) => m.id);
             }
+          } else {
+            const errText = await directResponse.text();
+            throw new Error(
+              `获取模型失败 (${directResponse.status}): ${errText.substring(0, 100)}`,
+            );
+          }
+
+          if (!models || models.length === 0) {
+            throw new Error("连接失败：无法获取模型列表");
           }
         }
 
@@ -1060,10 +1129,11 @@ export async function generateText(
     );
 
     try {
-      const response = await fetch(targetUrl, {
+      const response = await proxyFetch(targetUrl, {
         method: "POST",
         headers: headers,
-        body: JSON.stringify(requestBody),
+        body: requestBody,
+        isStream: stream,
       });
 
       if (!response.ok) {
@@ -1146,16 +1216,20 @@ export async function generateText(
     };
 
     // 4. 发起原生 Fetch 请求
-    console.log(`[Anima Debug] Direct Fetch to: ${endpoint}`, requestBody);
+    console.log(
+      "[Anima Debug] Backend Proxy Fetch to: ${endpoint}",
+      requestBody,
+    );
 
     try {
-      const response = await fetch(endpoint, {
+      const response = await proxyFetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${key}`, // 🔥 直接发送 Key，ST 无法干预
+          Authorization: `Bearer ${key}`,
         },
-        body: JSON.stringify(requestBody),
+        body: requestBody,
+        isStream: !!stream,
       });
 
       if (!response.ok) {

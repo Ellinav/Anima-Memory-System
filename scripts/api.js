@@ -1168,7 +1168,10 @@ export async function generateText(
       if (!response.ok) {
         let errorMsg = response.statusText;
         try {
-          const errData = await response.json();
+          // 此时如果不ok，大概率走的是路线 A 的非流返回，有 text() 或 json() 方法
+          const errData = response.json
+            ? await response.json()
+            : { error: await response.text() };
           errorMsg = errData.error?.message || JSON.stringify(errData);
         } catch (e) {}
         throw new Error(`Google API Error (${response.status}): ${errorMsg}`);
@@ -1180,27 +1183,59 @@ export async function generateText(
       // 解析响应
       let text = "";
 
-      if (stream) {
-        if (Array.isArray(data)) {
-          data.forEach((chunk) => {
-            const chunkText = chunk.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (chunkText) text += chunkText;
-          });
-        } else {
-          text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!stream) {
+        // 1. 非流式：安全调用 json()
+        const data = await response.json();
+        console.log("[Anima Debug] Google Raw Response:", data);
+
+        text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) {
+          text = data.choices?.[0]?.message?.content || data.choices?.[0]?.text;
+        }
+        if (!text) {
+          console.warn("[Anima] Google 响应解析为空，原始数据:", data);
+          throw new Error("API 返回结构未知");
         }
       } else {
-        text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text)
-          text = data.choices?.[0]?.message?.content || data.choices?.[0]?.text;
-      }
+        // 2. 流式：必须通过 getReader() 手动读取拼接缓冲
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
 
-      if (!text) {
-        console.warn("[Anima] Google 响应解析为空，原始数据:", data);
-        throw new Error("API 返回结构未知");
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+        }
+
+        // Google 的非 SSE 流式接口返回的是一个完整的 JSON 数组字符串
+        // 只有等全部读取完毕后，拼接的 buffer 才能被整体 parse
+        try {
+          const data = JSON.parse(buffer);
+          console.log("[Anima Debug] Google Stream Raw Response:", data);
+
+          if (Array.isArray(data)) {
+            data.forEach((chunk) => {
+              const chunkText =
+                chunk.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (chunkText) text += chunkText;
+            });
+          } else {
+            text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          }
+        } catch (e) {
+          console.error(
+            "[Anima Debug] Google 流式解析失败:",
+            e,
+            "Buffer:",
+            buffer,
+          );
+          throw new Error("Google 流式响应解析失败");
+        }
       }
 
       return text;
+      // === 🚀 核心修复部分结束 ===
     } catch (error) {
       throw error;
     }

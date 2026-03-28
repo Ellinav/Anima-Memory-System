@@ -630,3 +630,19 @@ export function getSmartCollectionId() {
   // 3. 兜底：直接返回清洗后的文件名
   return cleanFilename;
 }
+
+/**
+ * 递归将对象的所有 Key 转为小写，应对 LLM 输出大小写不稳定的情况
+ */
+function normalizeJsonKeys(obj) {
+  if (typeof obj !== "object" || obj === null) return obj;
+  if (Array.isArray(obj)) return obj.map(normalizeJsonKeys);
+
+  const newObj = {};
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      newObj[key.toLowerCase()] = normalizeJsonKeys(obj[key]);
+    }
+  }
+  return newObj;
+}

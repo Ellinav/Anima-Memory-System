@@ -1,35 +1,6 @@
 // 1. 定义插件的唯一 ID (非常重要，不要和别的插件重复)
 const MODULE_NAME = "anima_memory_system";
 
-const originalFetch = window.fetch;
-window.fetch = async function (resource, options) {
-  if (
-    typeof resource === "string" &&
-    resource.startsWith("/api/plugins/anima-rag/")
-  ) {
-    options = options || {};
-    options.headers = options.headers || {};
-
-    let stSecurityHeaders = {};
-    if (typeof window.getRequestHeaders === "function") {
-      stSecurityHeaders = window.getRequestHeaders();
-    } else if (window.csrf_token) {
-      stSecurityHeaders = { "X-CSRF-Token": window.csrf_token };
-    }
-
-    if (options.headers instanceof Headers) {
-      for (const [k, v] of Object.entries(stSecurityHeaders)) {
-        options.headers.set(k, v);
-      }
-    } else {
-      Object.assign(options.headers, stSecurityHeaders);
-    }
-
-    options.credentials = "same-origin"; // 强制携带 Cookie
-  }
-  return originalFetch.call(this, resource, options);
-};
-
 // 2. 定义默认配置结构
 const defaultSettings = {
   api: {
@@ -80,15 +51,14 @@ function getStContext() {
 }
 
 /**
- * 🌐 纯后端代理请求函数：混合稳定版
- * - 非流式 (如状态更新、获取模型)：使用 ST 原生 $.ajax 坐顺风车，100% 免疫本地 CSRF
- * - 流式 (如大段文本生成)：使用 fetch，精准注入 Token 和 Cookie
+ * 🌐 纯后端代理请求函数：终极顺风车版
+ * 完全抛弃 fetch，利用 $.ajax 的底层 XMLHttpRequest 实现流式与非流式传输
  */
 async function proxyFetch(targetUrl, options = {}) {
   const { method = "GET", headers = {}, body, isStream = false } = options;
   const stWindow = /** @type {any} */ (window);
 
-  // 🚗 路线 A：非流式请求，绝对安全的 $.ajax
+  // 🚗 路线 A：非流式请求 (保持不变，绝对安全)
   if (!isStream) {
     return new Promise((resolve) => {
       stWindow.$.ajax({
@@ -122,24 +92,83 @@ async function proxyFetch(targetUrl, options = {}) {
     });
   }
 
-  // 🚀 路线 B：流式请求，提取 CSRF Token 并使用 fetch
-  let csrfToken = "";
-  if (typeof stWindow.getRequestHeaders === "function") {
-    const h = stWindow.getRequestHeaders();
-    if (h && h["X-CSRF-Token"]) csrfToken = h["X-CSRF-Token"];
-  }
-  if (!csrfToken && stWindow.csrf_token) {
-    csrfToken = stWindow.csrf_token;
-  }
+  // 🚀 路线 B：流式请求 (挂载到 $.ajax，模拟 Fetch 的 ReadableStream)
+  return new Promise((resolve) => {
+    let handledLength = 0;
+    let streamController;
+    let responseResolved = false;
 
-  return await fetch("/api/plugins/anima-rag/proxy/forward", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-CSRF-Token": csrfToken,
-    },
-    credentials: "same-origin", // 强制携带本地 Cookie
-    body: JSON.stringify({ targetUrl, method, headers, body, isStream: true }),
+    // 构造一个标准的可读流，用来完美骗过后续的 response.body.getReader()
+    const stream = new ReadableStream({
+      start(controller) {
+        streamController = controller;
+      },
+    });
+
+    stWindow.$.ajax({
+      url: "/api/plugins/anima-rag/proxy/forward",
+      type: "POST",
+      contentType: "application/json",
+      data: JSON.stringify({
+        targetUrl,
+        method,
+        headers,
+        body,
+        isStream: true,
+      }),
+      xhr: function () {
+        const xhr = new window.XMLHttpRequest();
+
+        // 1. 监听 HTTP 状态 (当后端 Headers 响应完毕时触发)
+        xhr.addEventListener("readystatechange", function () {
+          if (xhr.readyState === 2 && !responseResolved) {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              responseResolved = true;
+              // 包装出一个长得跟 fetch 一模一样的 Response 对象
+              resolve({
+                ok: true,
+                status: xhr.status,
+                body: { getReader: () => stream.getReader() },
+              });
+            }
+          }
+        });
+
+        // 2. 监听流式数据的增量进度
+        xhr.addEventListener("progress", function () {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            // 截取自上次处理之后的新文本
+            const newText = xhr.responseText.substring(handledLength);
+            handledLength = xhr.responseText.length;
+
+            if (newText && streamController) {
+              // 编码为 Uint8Array (与原生 Fetch 流保持数据类型一致)
+              streamController.enqueue(new TextEncoder().encode(newText));
+            }
+          }
+        });
+
+        return xhr;
+      },
+      success: function () {
+        // 请求正常结束，关闭流
+        if (streamController) streamController.close();
+      },
+      error: function (jqXHR) {
+        if (!responseResolved) {
+          // 如果一开局就因为 403 CSRF 炸了，直接按 fetch 失败处理
+          resolve({
+            ok: false,
+            status: jqXHR.status,
+            text: async () => jqXHR.responseText || "流式请求连接失败",
+          });
+        } else {
+          // 如果是半路断网，向流抛出异常
+          if (streamController)
+            streamController.error(new Error("Stream terminated early"));
+        }
+      },
+    });
   });
 }
 

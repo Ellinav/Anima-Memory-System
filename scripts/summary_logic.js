@@ -10,6 +10,7 @@ import {
   extractJsonResult,
   processMacros,
   getContextData,
+  normalizeJsonKeys,
 } from "./utils.js";
 import { autoUpdateDictionary, triggerFullBm25Rebuild } from "./bm25_logic.js";
 
@@ -946,10 +947,16 @@ export async function runSummarizationTask({
         parsedResult.length > 0
       ) {
         summaryBatch = parsedResult.map((item) => {
-          const content = item.summary || item.content || item.text || "";
+          const content =
+            item.summary ||
+            item.Summary ||
+            item.content ||
+            item.Content ||
+            item.text ||
+            item.Text ||
+            "";
           let tags = [];
-          const rawTags = item.tags || item.tag;
-
+          const rawTags = item.tags || item.Tags || item.tag || item.Tag;
           if (Array.isArray(rawTags)) {
             tags = rawTags;
           }
@@ -1076,23 +1083,23 @@ export function getIsSummarizing() {
 function extractDictUpdates(rawResult) {
   let updates = [];
   try {
-    // 1. 尝试使用正则匹配独立的 "dict_updates": [...] 块
+    // 1. 加上 'i' 标志，支持 "Dict_Updates" 或 "DICT_UPDATES"
     const match = rawResult.match(
-      /"dict_updates"\s*:\s*(\[\s*(?:\{[\s\S]*?\}\s*,?\s*)*\])/,
+      /"dict_updates"\s*:\s*(\[\s*(?:\{[\s\S]*?\}\s*,?\s*)*\])/i,
     );
     if (match) {
       updates = JSON.parse(match[1]);
     } else {
       // 2. 兜底：如果 LLM 把它们全包在了一个大对象里
       const parsed = JSON.parse(rawResult);
-      // 安全判断属性存在性，避免 TS/VSCode 报错
-      if (
-        parsed &&
-        typeof parsed === "object" &&
-        "dict_updates" in parsed &&
-        Array.isArray(parsed.dict_updates)
-      ) {
-        updates = parsed.dict_updates;
+      if (parsed && typeof parsed === "object") {
+        // 不区分大小写地查找 key
+        const key = Object.keys(parsed).find(
+          (k) => k.toLowerCase() === "dict_updates",
+        );
+        if (key && Array.isArray(parsed[key])) {
+          updates = parsed[key];
+        }
       }
     }
   } catch (e) {

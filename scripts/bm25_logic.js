@@ -124,7 +124,7 @@ export async function getBm25SyncList() {
         );
         syncList.push({
           unique_id: h.unique_id || h.index,
-          entryUid: entry.uid, // 🟢 新增：必须传给前端用于调取内容
+          entryUid: entry.uid,
           batch_id: h.batch_id,
           slice_id: h.slice_id,
           range_start: h.range_start || 0,
@@ -132,6 +132,7 @@ export async function getBm25SyncList() {
           tags: h.tags || [],
           is_bm25_synced: h.is_bm25_synced === true,
           fullText: fullText,
+          narrative_time: h.narrative_time || Date.now(),
         });
       }
     }
@@ -180,6 +181,25 @@ export async function triggerBm25BuildSingle(
   skipCapture = false,
 ) {
   const text = await getSummaryTextFromEntry(entryUid, uniqueId);
+
+  // 🟢 新增：从世界书中精准捞出当前切片的 narrative_time
+  let narrativeTime = Date.now(); // 兜底时间
+  if (window.TavernHelper) {
+    const wbName = await safeGetChatWorldbookName();
+    if (wbName) {
+      const entries = await window.TavernHelper.getWorldbook(wbName);
+      const entry = entries.find((e) => e.uid === entryUid);
+      if (entry && entry.extra && Array.isArray(entry.extra.history)) {
+        const targetH = entry.extra.history.find(
+          (h) => String(h.unique_id || h.index) === String(uniqueId),
+        );
+        if (targetH && targetH.narrative_time) {
+          narrativeTime = targetH.narrative_time;
+        }
+      }
+    }
+  }
+
   const context = SillyTavern.getContext();
 
   const chatId = context.chatId;
@@ -217,9 +237,9 @@ export async function triggerBm25BuildSingle(
         index: uniqueId,
         text: text,
         tags: tags,
-        timestamp: Date.now(),
+        timestamp: narrativeTime, // 🟢 修改：使用刚刚提取的叙事时间
         batch_id: batchId,
-        bm25Config: bm25Config, // 直接将生成的配置包传给后端
+        bm25Config: bm25Config,
       }),
       dataType: "json",
     });
@@ -263,8 +283,7 @@ export async function triggerBm25BuildBatch(dirtyItems) {
     index: item.unique_id,
     text: item.fullText,
     tags: item.tags || [],
-    timestamp: Date.now(),
-    batch_id: item.batch_id,
+    timestamp: item.narrative_time || Date.now(),
   }));
 
   try {

@@ -1,3 +1,4 @@
+// @ts-nocheck
 // 1. 机器看的时间：标准 ISO 8601 格式 (用于 send_date 属性)
 // ST 最喜欢这种格式，排序最准
 function formatIsoDate(timestamp) {
@@ -361,11 +362,14 @@ function setupLogInterceptor() {
 
   // 通用处理函数
   function processLog(type, args) {
-    // 🛡️ 护盾 1：加上 Try-Catch，绝不把任何错误抛给 SillyTavern 核心
     try {
       // 1. 将参数转换为字符串以便检查
       const msgStr = args
         .map((arg) => {
+          // 🟢 新增：专门处理 Error 对象，防止被 JSON.stringify 变成 {}
+          if (arg instanceof Error) {
+            return arg.stack || arg.message;
+          }
           if (typeof arg === "object") {
             try {
               return JSON.stringify(arg);

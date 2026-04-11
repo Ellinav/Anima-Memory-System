@@ -13,16 +13,18 @@ const defaultSettings = {
       temperature: 1.0,
       context_limit: 1000000,
       max_output: 8192,
+      current_channel: "默认渠道",
     },
     status: {
       source: "openai",
       url: "",
       key: "",
       model: "",
-      stream: false, // 状态更新通常后台运行，流式非必须，但保持一致性可保留
-      temperature: 0.5, // 建议默认低温度，保证格式稳定
+      stream: false,
+      temperature: 0.5,
       context_limit: 1000000,
       max_output: 8192,
+      current_channel: "默认渠道",
     },
     rag: {
       source: "openai",
@@ -31,13 +33,22 @@ const defaultSettings = {
       model: "",
       top_k: 5,
       threshold: 0.4,
+      current_channel: "默认渠道",
     },
     rerank: {
       url: "",
       key: "",
       model: "",
       timeout: 15,
+      current_channel: "默认渠道",
     },
+  },
+  // 🟢 新增：渠道预设仓库
+  api_profiles: {
+    llm: { 默认渠道: {} },
+    status: { 默认渠道: {} },
+    rag: { 默认渠道: {} },
+    rerank: { 默认渠道: {} },
   },
 };
 
@@ -51,8 +62,9 @@ function getStContext() {
 }
 
 /**
- * 🌐 纯后端代理请求函数：终极顺风车版
- * 完全抛弃 fetch，利用 $.ajax 的底层 XMLHttpRequest 实现流式与非流式传输
+ * 🌐 纯后端代理请求函数
+ * @param {string} targetUrl - 目标地址
+ * @param {{method?: string, headers?: Record<string, string>, body?: any, isStream?: boolean}} [options={}] - 请求配置
  */
 async function proxyFetch(targetUrl, options = {}) {
   const { method = "GET", headers = {}, body, isStream = false } = options;
@@ -72,7 +84,7 @@ async function proxyFetch(targetUrl, options = {}) {
           body,
           isStream: false,
         }),
-        success: function (data) {
+        success: function (/** @type {any} */ data) {
           resolve({
             ok: true,
             status: 200,
@@ -81,7 +93,7 @@ async function proxyFetch(targetUrl, options = {}) {
               typeof data === "object" ? JSON.stringify(data) : data,
           });
         },
-        error: function (jqXHR) {
+        error: function (/** @type {any} */ jqXHR) {
           resolve({
             ok: false,
             status: jqXHR.status,
@@ -95,6 +107,7 @@ async function proxyFetch(targetUrl, options = {}) {
   // 🚀 路线 B：流式请求 (挂载到 $.ajax，模拟 Fetch 的 ReadableStream)
   return new Promise((resolve) => {
     let handledLength = 0;
+    /** @type {ReadableStreamDefaultController | undefined} */
     let streamController;
     let responseResolved = false;
 
@@ -157,7 +170,8 @@ async function proxyFetch(targetUrl, options = {}) {
         // 请求正常结束，关闭流
         if (streamController) streamController.close();
       },
-      error: function (jqXHR) {
+      error: function (/** @type {any} */ jqXHR) {
+        // 🟢 顺手把这里的 any 也补上
         if (!responseResolved) {
           // 如果一开局就因为 403 CSRF 炸了，直接按 fetch 失败处理
           resolve({
@@ -181,17 +195,16 @@ async function proxyFetch(targetUrl, options = {}) {
  */
 export function getAnimaConfig() {
   const { extensionSettings } = getStContext();
-
-  // 如果还没存过，初始化默认值
   if (!extensionSettings[MODULE_NAME]) {
     extensionSettings[MODULE_NAME] = structuredClone(defaultSettings);
   }
-
   const settings = extensionSettings[MODULE_NAME];
 
-  // 🟢 确保 api 对象存在
-  if (!settings.api) {
-    settings.api = structuredClone(defaultSettings.api);
+  if (!settings.api) settings.api = structuredClone(defaultSettings.api);
+
+  // 🟢 确保 api_profiles 存在
+  if (!settings.api_profiles) {
+    settings.api_profiles = structuredClone(defaultSettings.api_profiles);
   }
 
   // 🟢 遍历 defaultSettings.api 来补全缺失字段
@@ -207,7 +220,40 @@ export function getAnimaConfig() {
 }
 
 /**
+ * 清洗错误响应，去除 HTML 标签
+ * @param {string} text - 原始报错文本
+ * @returns {string} - 清洗后的报错信息
+ */
+function cleanErrorMessage(text) {
+  if (!text) return "未知错误";
+  const trimmed = text.trim();
+
+  // 1. 如果是 HTML 页面 (常见的 404/502 报错页)
+  if (
+    trimmed.toLowerCase().startsWith("<!doctype") ||
+    trimmed.toLowerCase().startsWith("<html")
+  ) {
+    // 尝试提取网页的 <title> 标签内容
+    const titleMatch = trimmed.match(/<title>(.*?)<\/title>/i);
+    if (titleMatch && titleMatch[1]) {
+      return `网关或路由错误: ${titleMatch[1].trim()}`;
+    }
+    return "服务器返回了无效的网页内容 (请检查 URL 路径是否正确)";
+  }
+
+  // 2. 去除可能残留的 HTML 标签，并限制长度
+  let cleaned = trimmed
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned.length > 100 ? cleaned.substring(0, 100) + "..." : cleaned;
+}
+
+/**
  * URL 清洗函数
+ * @param {string} url - 原始 URL
+ * @param {string} provider - API 提供商 (例如 "google", "openai")
+ * @returns {string}
  */
 function processApiUrl(url, provider) {
   if (!url) return "";
@@ -237,7 +283,6 @@ export function initApiSettings() {
   // 1. 添加 CSS 样式
   const styles = `
     <style>
-        /* ...之前的样式保持不变... */
         .anima-card-title {
             font-size: 1.5em; 
             font-weight: bold;
@@ -257,12 +302,14 @@ export function initApiSettings() {
         /* 布局通用类 */
         .anima-row {
             display: flex;
-            gap: 15px; /* 稍微增加间距 */
-            align-items: flex-start; /* 顶部对齐，保证 Label 在同一水平线 */
+            flex-wrap: wrap; /* 🟢 核心：允许子元素在空间不足时换行 */
+            gap: 15px;
+            align-items: flex-start;
             margin-bottom: 10px;
         }
         .anima-col {
-            flex: 1;
+            flex: 1 1 calc(25% - 15px); /* 桌面端：尽量占 1/4 */
+            min-width: 130px; /* 📱 移动端核心：当屏幕变窄，每个框最小 130px，装不下 4 个就会自动变成 2 个一行 (2x2) */
             display: flex;
             flex-direction: column;
         }
@@ -277,6 +324,19 @@ export function initApiSettings() {
             width: 100%;
             height: 38px; /* 强制输入框高度 */
             box-sizing: border-box;
+        }
+
+        /* === 纵向间距优化 (拉开 API 类型、URL、Key 之间的距离) === */
+        .anima-card > label {
+            display: block;
+            margin-top: 15px; /* 让 Label 距离上方的输入框远一点 */
+            margin-bottom: 6px; /* 距离自己下方的输入框近一点，形成视觉绑定 */
+        }
+        
+        .anima-card > select.anima-select,
+        .anima-card > input.anima-input,
+        .anima-card > .anima-input-group {
+            margin-bottom: 12px; /* 增加所有输入框底部的留白 */
         }
 
         /* === 新增：大号开关样式 (匹配输入框高度) === */
@@ -358,7 +418,7 @@ export function initApiSettings() {
         }
         .anima-btn:hover { background-color: #6f218e; }
         .anima-btn.primary { background-color: #10b981; }
-        .anima-btn.primary:hover { background-color: #059669; }    
+        .anima-btn.primary:hover { background-color: #059669; } 
     </style>
     `;
 
@@ -401,6 +461,12 @@ export function initApiSettings() {
   initModalLogic();
 }
 
+/**
+ * 获取 API 卡片的 HTML
+ * @param {string} type - 卡片类型 (例如 "llm", "status", "rag")
+ * @param {string} title - 卡片标题
+ * @returns {string}
+ */
 function getApiCardHtml(type, title) {
   let extraSettingsHtml = "";
 
@@ -462,7 +528,20 @@ function getApiCardHtml(type, title) {
 
   return `
     <div class="anima-card" data-config-type="${type}">
-        <div class="anima-card-title">${title}</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--smart-border-color, #444); padding-bottom: 10px; margin-bottom: 15px;">
+            <div style="font-size: 1.5em; font-weight: bold; color: var(--smart-text-color, #ccc);">
+                ${title}
+            </div>
+            <div style="display: flex; gap: 5px; align-items: center;">
+                <select class="anima-select" id="anima-${type}-channel" style="width: 120px; height: 30px; margin: 0 !important; padding: 0 8px !important; font-size: 0.85em; box-sizing: border-box; line-height: normal !important;"></select>
+                <button class="anima-icon-btn" id="btn-add-channel-${type}" title="添加新渠道" style="height: 30px; width: 30px; margin: 0 !important; display: flex; align-items: center; justify-content: center; box-sizing: border-box;">
+                    <i class="fa-solid fa-plus"></i>
+                </button>
+                <button class="anima-icon-btn" id="btn-del-channel-${type}" title="删除当前渠道" style="height: 30px; width: 30px; margin: 0 !important; color: #f87171; display: flex; align-items: center; justify-content: center; box-sizing: border-box;">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            </div>
+        </div>
         
         ${apiTypeHtml}
         
@@ -515,19 +594,20 @@ function saveSettingsFromUI() {
     const el = /** @type {HTMLInputElement} */ (document.getElementById(id));
     return el?.checked || false;
   };
-  // 辅助：转数字，如果为空或无效则返回 undefined (让后续逻辑用默认值)
+  // 辅助：转数字，如果为空或无效则返回 undefined
   const getNum = (id) => {
     const el = /** @type {HTMLInputElement} */ (document.getElementById(id));
     return el?.value ? Number(el.value) : undefined;
   };
 
+  // 1. 从界面读取最新输入的值
   const newApiConfig = {
     llm: {
       source: getVal("anima-llm-source"),
       url: getVal("anima-llm-url"),
       key: getVal("anima-llm-key"),
       model: getVal("anima-llm-model"),
-      stream: getCheck("anima-llm-stream"), // 滑块开关
+      stream: getCheck("anima-llm-stream"),
       temperature: getNum("anima-llm-temperature") ?? 1.0,
       context_limit: getNum("anima-llm-context") ?? 64000,
       max_output: getNum("anima-llm-maxout") ?? 8192,
@@ -547,8 +627,9 @@ function saveSettingsFromUI() {
       url: getVal("anima-rag-url"),
       key: getVal("anima-rag-key"),
       model: getVal("anima-rag-model"),
-      top_k: extensionSettings[MODULE_NAME]?.rag?.top_k ?? 5,
-      threshold: extensionSettings[MODULE_NAME]?.rag?.threshold ?? 0.4,
+      // 注意：从最新的 api.rag 中读取历史参数
+      top_k: extensionSettings[MODULE_NAME]?.api?.rag?.top_k ?? 5,
+      threshold: extensionSettings[MODULE_NAME]?.api?.rag?.threshold ?? 0.4,
     },
     rerank: {
       url: getVal("anima-rerank-url"),
@@ -558,23 +639,33 @@ function saveSettingsFromUI() {
     },
   };
 
+  // 确保基础的数据结构存在，防止报错
   if (!extensionSettings[MODULE_NAME].api) {
     extensionSettings[MODULE_NAME].api = {};
   }
+  if (!extensionSettings[MODULE_NAME].api_profiles) {
+    extensionSettings[MODULE_NAME].api_profiles = {};
+  }
 
-  // 🟢 保存到 .api 下
-  // 注意：这里我们读取旧的 rag 配置时，也要从 .api 里读
-  const currentRag = extensionSettings[MODULE_NAME].api.rag || {}; // 获取当前已保存的rag以保留 top_k 等
+  // 2. 🟢 核心逻辑：遍历四个模块，保存到预设仓库，并更新当前激活配置
+  const types = ["llm", "status", "rag", "rerank"];
+  types.forEach((type) => {
+    // 获取当前下拉框选中的渠道名，如果没有渲染出来则默认使用 "默认渠道"
+    const channelName = getVal(`anima-${type}-channel`) || "默认渠道";
+    newApiConfig[type].current_channel = channelName;
 
-  // 更新 newApiConfig 里的 RAG 额外参数 (top_k/threshold)
-  newApiConfig.rag.top_k = currentRag.top_k ?? 5;
-  newApiConfig.rag.threshold = currentRag.threshold ?? 0.4;
+    // 确保该类型在预设仓库中存在对象
+    if (!extensionSettings[MODULE_NAME].api_profiles[type]) {
+      extensionSettings[MODULE_NAME].api_profiles[type] = {};
+    }
 
-  // 赋值
-  extensionSettings[MODULE_NAME].api.llm = newApiConfig.llm;
-  extensionSettings[MODULE_NAME].api.status = newApiConfig.status;
-  extensionSettings[MODULE_NAME].api.rag = newApiConfig.rag;
-  extensionSettings[MODULE_NAME].api.rerank = newApiConfig.rerank;
+    // A. 把界面上的最新数据，存入“预设仓库”对应的渠道名下
+    extensionSettings[MODULE_NAME].api_profiles[type][channelName] =
+      structuredClone(newApiConfig[type]);
+
+    // B. 把界面上的最新数据，设为“当前激活配置”（给 rag_logic.js 等外部文件读取用）
+    extensionSettings[MODULE_NAME].api[type] = newApiConfig[type];
+  });
 
   saveSettingsDebounced();
 
@@ -587,6 +678,7 @@ function saveSettingsFromUI() {
 function loadSettingsToUI() {
   const rootConfig = getAnimaConfig();
   const config = rootConfig.api;
+  const profiles = rootConfig.api_profiles;
   const setVal = (id, val) => {
     const el = /** @type {HTMLInputElement} */ (document.getElementById(id));
     if (el) el.value = val !== undefined ? val : "";
@@ -601,6 +693,28 @@ function loadSettingsToUI() {
     if (select)
       select.innerHTML = `<option value="${val}" selected>${val}</option>`;
   };
+
+  const renderChannels = (type) => {
+    const select = document.getElementById(`anima-${type}-channel`);
+    if (!select) return;
+    select.innerHTML = "";
+    // 获取该类型所有的渠道名
+    const channelNames = Object.keys(profiles[type] || { 默认渠道: {} });
+    channelNames.forEach((name) => {
+      const opt = document.createElement("option");
+      opt.value = name;
+      opt.innerText = name;
+      select.appendChild(opt);
+    });
+    // 设置当前选中的渠道
+    select.value = config[type]?.current_channel || "默认渠道";
+  };
+
+  // 渲染下拉框
+  renderChannels("llm");
+  renderChannels("status");
+  renderChannels("rag");
+  renderChannels("rerank");
 
   // LLM 加载
   if (config.llm) {
@@ -733,7 +847,7 @@ function bindLogic(type) {
           if (!res.ok) {
             const errText = await res.text();
             throw new Error(
-              `Rerank 报错 (${res.status}): ${errText.substring(0, 100)}`,
+              `Rerank 报错 (${res.status}): ${cleanErrorMessage(errText)}`,
             );
           }
 
@@ -809,7 +923,7 @@ function bindLogic(type) {
           }
         }
       } catch (e) {
-        console.error(`[Anima] Test Failed:`, e);
+        console.error(`[Anima] Test Failed: ${e.message}`);
         let errorMsg = e.message || "未知错误";
         // 简单美化一下常见错误
         if (errorMsg.includes("401")) errorMsg = "401 鉴权失败 (请检查 Key)";
@@ -873,7 +987,7 @@ function bindLogic(type) {
           if (!res.ok) {
             const errText = await res.text();
             throw new Error(
-              `Google 连接失败 (${res.status}): ${errText.substring(0, 50)}`,
+              `Google 连接失败 (${res.status}): ${cleanErrorMessage(errText)}`,
             );
           }
 
@@ -914,7 +1028,7 @@ function bindLogic(type) {
           } else {
             const errText = await directResponse.text();
             throw new Error(
-              `获取模型失败 (${directResponse.status}): ${errText.substring(0, 100)}`,
+              `获取模型失败 (${directResponse.status}): ${cleanErrorMessage(errText)}`,
             );
           }
 
@@ -935,7 +1049,7 @@ function bindLogic(type) {
           selectModel.value = models[0];
         }
       } catch (/** @type {any} */ e) {
-        console.error(e);
+        console.error(`[Anima] Connect Error: ${e.message}`);
         let errorMsg = e.message;
         if (e.status === 403) errorMsg = "403 Forbidden: 检查 Key 或白名单";
         else if (e.responseText) errorMsg = `错误: ${e.status}`;
@@ -943,6 +1057,93 @@ function bindLogic(type) {
       } finally {
         btnConnect.innerHTML = originalHtml;
         btnConnect.disabled = false;
+      }
+    });
+  }
+  const channelSelect = document.getElementById(`anima-${type}-channel`);
+  const btnAddChannel = document.getElementById(`btn-add-channel-${type}`);
+  const btnDelChannel = document.getElementById(`btn-del-channel-${type}`);
+  const { extensionSettings, saveSettingsDebounced } = getStContext();
+
+  if (channelSelect && btnAddChannel && btnDelChannel) {
+    // 1. 切换渠道事件
+    channelSelect.addEventListener("change", () => {
+      const selectedChannel = channelSelect.value;
+      const profiles = extensionSettings[MODULE_NAME].api_profiles[type];
+
+      if (profiles && profiles[selectedChannel]) {
+        // 将预设数据覆盖到当前激活的配置中
+        extensionSettings[MODULE_NAME].api[type] = structuredClone(
+          profiles[selectedChannel],
+        );
+        extensionSettings[MODULE_NAME].api[type].current_channel =
+          selectedChannel;
+        saveSettingsDebounced();
+        // 重新加载 UI
+        loadSettingsToUI();
+        if (window.toastr)
+          window.toastr.info(`已切换至渠道: ${selectedChannel}`);
+      }
+    });
+
+    // 2. 添加渠道事件
+    btnAddChannel.addEventListener("click", () => {
+      // 这里使用原生的 prompt，最简单直接，不需要写复杂的 HTML 弹窗
+      const newName = prompt(
+        "请输入新渠道的名称：",
+        "备用渠道 " + Math.floor(Math.random() * 100),
+      );
+      if (!newName || !newName.trim()) return;
+
+      const cleanName = newName.trim();
+      const profiles = extensionSettings[MODULE_NAME].api_profiles[type];
+
+      if (profiles[cleanName]) {
+        if (window.toastr) window.toastr.warning("该渠道名称已存在！");
+        return;
+      }
+
+      // 先执行一次保存，确保当前表单数据不会丢失
+      saveSettingsFromUI();
+
+      // 复制当前配置作为新渠道的起点
+      const currentConfig = structuredClone(
+        extensionSettings[MODULE_NAME].api[type],
+      );
+      currentConfig.current_channel = cleanName;
+
+      profiles[cleanName] = currentConfig;
+      extensionSettings[MODULE_NAME].api[type] = currentConfig;
+      saveSettingsDebounced();
+
+      loadSettingsToUI();
+      if (window.toastr) window.toastr.success(`已创建新渠道: ${cleanName}`);
+    });
+
+    // 3. 删除渠道事件
+    btnDelChannel.addEventListener("click", () => {
+      const currentChannel = channelSelect.value;
+      const profiles = extensionSettings[MODULE_NAME].api_profiles[type];
+
+      if (Object.keys(profiles).length <= 1) {
+        if (window.toastr) window.toastr.warning("必须保留至少一个渠道！");
+        return;
+      }
+
+      if (confirm(`确定要删除渠道 "${currentChannel}" 吗？此操作不可逆。`)) {
+        delete profiles[currentChannel];
+        // 删除后，自动切换到列表里的第一个可用渠道
+        const fallbackChannel = Object.keys(profiles)[0];
+        extensionSettings[MODULE_NAME].api[type] = structuredClone(
+          profiles[fallbackChannel],
+        );
+        extensionSettings[MODULE_NAME].api[type].current_channel =
+          fallbackChannel;
+
+        saveSettingsDebounced();
+        loadSettingsToUI();
+        if (window.toastr)
+          window.toastr.success(`已删除渠道: ${currentChannel}`);
       }
     });
   }
@@ -1018,183 +1219,411 @@ export async function generateText(
   purpose = "llm",
   overrideConfig = null,
 ) {
-  const config = overrideConfig || getAnimaConfig().api[purpose];
-  if (!config || !config.key) {
-    if (config.source !== "openai" && config.source !== "google") {
-      // 允许无 key
-    } else {
-      throw new Error(`未配置 ${purpose.toUpperCase()} 的 API Key`);
-    }
-  }
-
-  const { source, key, model, stream } = config;
-  let { url } = config;
-  if (key && /[^\x20-\x7E]/.test(key)) {
-    throw new Error(
-      "API Key 包含非法字符（如中文标点或全角空格），请重新检查！",
-    );
-  }
-  if (url && /[^\x20-\x7E]/.test(url)) {
-    throw new Error(
-      "API URL 包含非法字符（如中文标点或全角空格），请重新检查！",
-    );
-  }
-  // 获取高级参数 (赋予默认值以防万一)
-  const temperature = Number(config.temperature ?? 1.0);
-  const maxOutput = Number(config.max_output ?? 8192);
-
-  // 🔥【关键修改 1】标准化数据格式
-  // 无论传进来是字符串还是数组，统一转成数组处理
-  let messages = [];
-  if (typeof promptOrMessages === "string") {
-    messages = [{ role: "user", content: promptOrMessages }];
-  } else {
-    messages = promptOrMessages; // 直接使用传入的数组
-  }
-
-  // ============================================================
-  // 1. Google Gemini 处理逻辑
-  // ============================================================
-  if (source === "google") {
-    let targetUrl;
-    const headers = { "Content-Type": "application/json" };
-    const isCustomUrl = url && !url.includes("googleapis.com");
-
-    // 第一步：将所有角色映射为 user 或 model
-    const rawGoogleContents = messages.map((msg) => {
-      let gRole = "user";
-      if (msg.role === "assistant") {
-        gRole = "model"; // AI 回复映射为 model
-      } else if (msg.role === "system") {
-        gRole = "user"; // System 映射为 user
-      } else {
-        gRole = "user"; // User 保持 user
-      }
-      return {
-        role: gRole,
-        parts: [{ text: msg.content }],
-      };
-    });
-
-    // 🔥【关键修改 2】第二步：强制合并相邻的同角色消息 (满足 Gemini 强制交替规则)
-    const googleContents = [];
-    rawGoogleContents.forEach((curr) => {
-      if (
-        googleContents.length > 0 &&
-        googleContents[googleContents.length - 1].role === curr.role
-      ) {
-        // 如果当前角色和上一个角色相同，直接把文本用双换行拼接在一起
-        googleContents[googleContents.length - 1].parts[0].text +=
-          "\n\n" + curr.parts[0].text;
-      } else {
-        // 否则作为一个新的消息块推入数组
-        googleContents.push(curr);
-      }
-    });
-
-    // 构造请求体
-    const requestBody = {
-      contents: googleContents,
-      safetySettings: [
-        {
-          category: "HARM_CATEGORY_HARASSMENT",
-          threshold: "BLOCK_NONE",
-        },
-        {
-          category: "HARM_CATEGORY_HATE_SPEECH",
-          threshold: "BLOCK_NONE",
-        },
-        {
-          category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-          threshold: "BLOCK_NONE",
-        },
-        {
-          category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-          threshold: "BLOCK_NONE",
-        },
-        {
-          category: "HARM_CATEGORY_CIVIC_INTEGRITY",
-          threshold: "BLOCK_NONE",
-        },
-      ],
-      generationConfig: {
-        temperature: temperature, // ✅ 应用温度
-        topP: 0.98,
-        topK: 60,
-        maxOutputTokens: maxOutput, // ✅ 应用最大输出
-      },
-    };
-
-    // 确定 Endpoint：流式 vs 非流式
-    const methodAction = stream ? "streamGenerateContent" : "generateContent";
-
-    if (isCustomUrl) {
-      let baseUrl = url.trim().replace(/\/+$/, "");
-      if (
-        !baseUrl.includes("/models") &&
-        !baseUrl.includes("/generateContent")
-      ) {
-        baseUrl = `${baseUrl}/v1beta/models/${model}:${methodAction}`;
-      } else {
-        // 如果用户填了 ...:generateContent，我们尝试根据开关替换成 ...:streamGenerateContent
-        if (stream)
-          baseUrl = baseUrl.replace(
-            ":generateContent",
-            ":streamGenerateContent",
-          );
-        else
-          baseUrl = baseUrl.replace(
-            ":streamGenerateContent",
-            ":generateContent",
-          );
-      }
-      targetUrl = baseUrl;
-      headers["Authorization"] = `Bearer ${key}`;
-    } else {
-      targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:${methodAction}?key=${key}`;
+  try {
+    // 🟢 1. 拦截空数据，防止 map 崩溃
+    if (!promptOrMessages) {
+      throw new Error(
+        `[致命错误] ${purpose} 模块传给 generateText 的消息是空的 (undefined)`,
+      );
     }
 
-    // 🔴 [DEBUG] 打印 Google 请求日志
-    console.log(
-      `[Anima Debug] Google Request:`,
-      JSON.parse(JSON.stringify({ url: targetUrl, body: requestBody })),
-    );
+    const config = overrideConfig || getAnimaConfig().api[purpose];
 
-    try {
-      const response = await proxyFetch(targetUrl, {
-        method: "POST",
-        headers: headers,
-        body: requestBody,
-        isStream: stream,
+    // 🟢 2. 打印看看当前到底读到了什么配置
+    console.log(`[Anima Debug] 发起 ${purpose} 请求...`);
+    console.log(`[Anima Debug] 读到的配置:`, config);
+    console.log(`[Anima Debug] 传进来的消息:`, promptOrMessages);
+
+    if (!config || !config.key) {
+      if (config.source !== "openai" && config.source !== "google") {
+        // 允许无 key
+      } else {
+        throw new Error(
+          `未配置 ${purpose.toUpperCase()} 的 API Key 或 URL (请检查设置面板)`,
+        );
+      }
+    }
+
+    const { source, key, model, stream } = config;
+    let { url } = config;
+    if (key && /[^\x20-\x7E]/.test(key)) {
+      throw new Error(
+        "API Key 包含非法字符（如中文标点或全角空格），请重新检查！",
+      );
+    }
+    if (url && /[^\x20-\x7E]/.test(url)) {
+      throw new Error(
+        "API URL 包含非法字符（如中文标点或全角空格），请重新检查！",
+      );
+    }
+    // 获取高级参数 (赋予默认值以防万一)
+    const temperature = Number(config.temperature ?? 1.0);
+    const maxOutput = Number(config.max_output ?? 8192);
+
+    // 🔥【关键修改 1】标准化数据格式
+    // 无论传进来是字符串还是数组，统一转成数组处理
+    let messages = [];
+    if (typeof promptOrMessages === "string") {
+      messages = [{ role: "user", content: promptOrMessages }];
+    } else {
+      messages = promptOrMessages; // 直接使用传入的数组
+    }
+
+    // ============================================================
+    // 1. Google Gemini 处理逻辑
+    // ============================================================
+    if (source === "google") {
+      let targetUrl;
+      const headers = { "Content-Type": "application/json" };
+      const isCustomUrl = url && !url.includes("googleapis.com");
+
+      // 第一步：将所有角色映射为 user 或 model
+      const rawGoogleContents = messages.map((msg) => {
+        let gRole = "user";
+        if (msg.role === "assistant") {
+          gRole = "model"; // AI 回复映射为 model
+        } else if (msg.role === "system") {
+          gRole = "user"; // System 映射为 user
+        } else {
+          gRole = "user"; // User 保持 user
+        }
+        return {
+          role: gRole,
+          parts: [{ text: msg.content }],
+        };
       });
 
-      if (!response.ok) {
-        let errorMsg = response.statusText;
-        try {
-          // 兼容错误状态下的解析
-          const errData = response.json
-            ? await response.json()
-            : { error: await response.text() };
-          errorMsg = errData.error?.message || JSON.stringify(errData);
-        } catch (e) {}
-        throw new Error(`Google API Error (${response.status}): ${errorMsg}`);
+      // 🔥【关键修改 2】第二步：强制合并相邻的同角色消息 (满足 Gemini 强制交替规则)
+      const googleContents = [];
+      rawGoogleContents.forEach((curr) => {
+        if (
+          googleContents.length > 0 &&
+          googleContents[googleContents.length - 1].role === curr.role
+        ) {
+          // 如果当前角色和上一个角色相同，直接把文本用双换行拼接在一起
+          googleContents[googleContents.length - 1].parts[0].text +=
+            "\n\n" + curr.parts[0].text;
+        } else {
+          // 否则作为一个新的消息块推入数组
+          googleContents.push(curr);
+        }
+      });
+
+      // 构造请求体
+      const requestBody = {
+        contents: googleContents,
+        safetySettings: [
+          {
+            category: "HARM_CATEGORY_HARASSMENT",
+            threshold: "BLOCK_NONE",
+          },
+          {
+            category: "HARM_CATEGORY_HATE_SPEECH",
+            threshold: "BLOCK_NONE",
+          },
+          {
+            category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+            threshold: "BLOCK_NONE",
+          },
+          {
+            category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+            threshold: "BLOCK_NONE",
+          },
+          {
+            category: "HARM_CATEGORY_CIVIC_INTEGRITY",
+            threshold: "BLOCK_NONE",
+          },
+        ],
+        generationConfig: {
+          temperature: temperature, // ✅ 应用温度
+          topP: 0.98,
+          topK: 60,
+          maxOutputTokens: maxOutput, // ✅ 应用最大输出
+        },
+      };
+
+      // 确定 Endpoint：流式 vs 非流式
+      const methodAction = stream ? "streamGenerateContent" : "generateContent";
+
+      if (isCustomUrl) {
+        let baseUrl = url.trim().replace(/\/+$/, "");
+        if (
+          !baseUrl.includes("/models") &&
+          !baseUrl.includes("/generateContent")
+        ) {
+          baseUrl = `${baseUrl}/v1beta/models/${model}:${methodAction}`;
+        } else {
+          // 如果用户填了 ...:generateContent，我们尝试根据开关替换成 ...:streamGenerateContent
+          if (stream)
+            baseUrl = baseUrl.replace(
+              ":generateContent",
+              ":streamGenerateContent",
+            );
+          else
+            baseUrl = baseUrl.replace(
+              ":streamGenerateContent",
+              ":generateContent",
+            );
+        }
+        targetUrl = baseUrl;
+        headers["Authorization"] = `Bearer ${key}`;
+      } else {
+        targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:${methodAction}?key=${key}`;
       }
 
-      let text = "";
+      // 🔴 [DEBUG] 打印 Google 请求日志
+      console.log(
+        `[Anima Debug] Google Request:`,
+        JSON.parse(JSON.stringify({ url: targetUrl, body: requestBody })),
+      );
 
-      if (!stream) {
-        // 1. 非流式：直接调用 json()
-        const data = await response.json();
+      try {
+        const response = await proxyFetch(targetUrl, {
+          method: "POST",
+          headers: headers,
+          body: requestBody,
+          isStream: stream,
+        });
 
-        text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) {
-          text = data.choices?.[0]?.message?.content || data.choices?.[0]?.text;
+        if (!response.ok) {
+          let errorMsg = response.statusText;
+          try {
+            // 兼容错误状态下的解析
+            const errData = response.json
+              ? await response.json()
+              : { error: await response.text() };
+            errorMsg = errData.error?.message || JSON.stringify(errData);
+          } catch (e) {}
+          throw new Error(`Google API Error (${response.status}): ${errorMsg}`);
         }
-        if (!text) throw new Error("API 返回结构未知");
-      } else {
-        // 2. 流式：使用 Reader 消费流并按 SSE 格式 (Server-Sent Events) 解析
+
+        let text = "";
+
+        if (!stream) {
+          // 1. 非流式：直接调用 json()
+          const data = await response.json();
+
+          text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (!text) {
+            text =
+              data.choices?.[0]?.message?.content || data.choices?.[0]?.text;
+          }
+          if (!text) throw new Error("API 返回结构未知");
+        } else {
+          // 2. 流式：使用 Reader 消费流并按 SSE 格式 (Server-Sent Events) 解析
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder("utf-8");
+          let buffer = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            // 解码当前块并追加到缓冲区
+            buffer += decoder.decode(value, { stream: true });
+
+            // 按行分割处理，防止 JSON 被截断
+            const lines = buffer.split("\n");
+            // 弹出最后一行（可能是不完整的），留在 buffer 里等下一波数据拼接
+            buffer = lines.pop();
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed) continue; // 忽略空行
+
+              // 检查是否是 SSE 格式的行
+              if (trimmed.startsWith("data: ")) {
+                const jsonStr = trimmed.slice(6); // 剥离 "data: "
+                if (jsonStr === "[DONE]") continue; // 兼容部分网关会发出的结束符
+
+                try {
+                  const data = JSON.parse(jsonStr);
+
+                  // 兼容可能被包成数组，也可能是单个对象的情况
+                  if (Array.isArray(data)) {
+                    data.forEach((chunk) => {
+                      const chunkText =
+                        chunk.candidates?.[0]?.content?.parts?.[0]?.text;
+                      if (chunkText) text += chunkText;
+                    });
+                  } else {
+                    const chunkText =
+                      data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (chunkText) text += chunkText;
+                  }
+                } catch (e) {
+                  // 流式解析单行错误时仅警告，不阻断后续流接收
+                  console.warn(
+                    "[Anima Debug] 单行 JSON 解析忽略:",
+                    e,
+                    "Line:",
+                    trimmed,
+                  );
+                }
+              }
+              // 兼容非 SSE 格式（有些直连网关可能返回原生的数组流）
+              else if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+                try {
+                  const data = JSON.parse(trimmed);
+                  const chunkText =
+                    data.candidates?.[0]?.content?.parts?.[0]?.text;
+                  if (chunkText) text += chunkText;
+                } catch (e) {}
+              }
+            }
+          }
+
+          // 结束后，检查 buffer 中是否还有遗留的数据没处理
+          if (buffer.trim().startsWith("data: ")) {
+            try {
+              const data = JSON.parse(buffer.trim().slice(6));
+              const chunkText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (chunkText) text += chunkText;
+            } catch (e) {}
+          }
+        }
+
+        return text;
+      } catch (error) {
+        throw error;
+      }
+    }
+
+    // ============================================================
+    // 2. 通用/OpenAI Compatible (浏览器直连模式 - 彻底解决 Auth 问题)
+    // ============================================================
+    else {
+      let conversationStarted = false;
+      // 1. 消息格式清洗
+      messages = messages.map((msg, index) => {
+        if (msg.role === "user" || msg.role === "assistant") {
+          conversationStarted = true;
+        }
+        if (msg.role === "system") {
+          if (index > 0 || conversationStarted) {
+            return { ...msg, role: "user" };
+          }
+        }
+        return msg;
+      });
+
+      // 2. URL 构造
+      // processApiUrl 会自动处理 /v1 后缀
+      let targetUrl = processApiUrl(url, source);
+      // 防御性清理：去掉末尾的 /chat/completions 或 /，我们下面手动加
+      targetUrl = targetUrl
+        .replace(/\/chat\/completions\/?$/, "")
+        .replace(/\/+$/, "");
+
+      const endpoint = `${targetUrl}/chat/completions`;
+
+      // 3. 构造请求体
+      const requestBody = {
+        model: model,
+        messages: messages,
+        temperature: temperature,
+        max_tokens: maxOutput, // OpenAI 标准参数
+        top_p: 1,
+        stream: !!stream, // 根据开关决定是否流式
+      };
+
+      // 4. 发起原生 Fetch 请求
+      console.log(
+        "[Anima Debug] Backend Proxy Fetch to: ${endpoint}",
+        requestBody,
+      );
+
+      try {
+        const response = await proxyFetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${key}`,
+          },
+          body: requestBody,
+          isStream: !!stream,
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          let errMsg = errText;
+
+          // 尝试解析厂商返回的详细 JSON 错误
+          try {
+            const errJson = JSON.parse(errText);
+            if (errJson.error && errJson.error.message) {
+              errMsg = errJson.error.message;
+            } else if (errJson.message) {
+              errMsg = errJson.message;
+            }
+          } catch (e) {}
+
+          // 抛出带有状态码的错误，这样 toastr 就能显示 "401: Invalid Key"
+          throw new Error(
+            `API Error (${response.status}): ${errMsg.substring(0, 100)}`,
+          );
+        }
+
+        // ==========================================
+        // 响应解析 (兼容流式和非流式)
+        // ==========================================
+
+        // A. 非流式
+        if (!stream) {
+          const data = await response.json();
+
+          // 🔥【新增】优先检查厂商返回的错误信息
+          // 很多中转站或 API 会返回 200 OK 但 body 里包含 error
+          if (data.error) {
+            console.error("[Anima] API Error Details:", data.error);
+            const errorMsg =
+              data.error.message ||
+              data.error.code ||
+              JSON.stringify(data.error);
+            throw new Error(`API 业务错误: ${errorMsg}`);
+          }
+
+          const choice = data.choices?.[0];
+          const message = choice?.message;
+
+          // 优先取 content；如果为空，尝试取 reasoning_content（防止因 max_tokens 截断导致报错）；最后尝试 text
+          const content =
+            message?.content || message?.reasoning_content || choice?.text;
+
+          // 🔥 2. HTTP 200 但内容为空的处理
+          if (!content) {
+            console.warn(
+              "[Anima] Empty Content. Full Response:",
+              JSON.stringify(data, null, 2),
+            );
+
+            // [细化错误提示]
+            let extraHint = "";
+            // 检测是不是 Gemini 模型
+            if (model.toLowerCase().includes("gemini")) {
+              extraHint =
+                " 检测到 Gemini 模型且内容为空，这通常是因为 OpenAI 格式没有 Safety Settings 导致破限失败。如API支持，请尝试切换为 'Google Gemini' 格式。";
+            }
+
+            const finalErrorMsg = "模型返回内容为空。" + extraHint;
+
+            // ✅【新增】强制弹窗：不管调用方怎么处理，先弹个窗告诉用户
+            if (window.toastr) {
+              // timeOut: 0 表示不自动消失（或者是设置长一点时间），让用户看清楚
+              window.toastr.error(finalErrorMsg, "Anima Critical Error");
+            }
+
+            // 继续抛出错误，中断后续逻辑
+            throw new Error(finalErrorMsg);
+          }
+          return content;
+        }
+
+        // B. 流式解析 (SSE)
+        // 即使是 summary 任务通常等待结果，我们也要正确消耗流
         const reader = response.body.getReader();
         const decoder = new TextDecoder("utf-8");
+        let fullText = "";
         let buffer = "";
 
         while (true) {
@@ -1204,244 +1633,43 @@ export async function generateText(
           // 解码当前块并追加到缓冲区
           buffer += decoder.decode(value, { stream: true });
 
-          // 按行分割处理，防止 JSON 被截断
+          // 按行分割处理
           const lines = buffer.split("\n");
-          // 弹出最后一行（可能是不完整的），留在 buffer 里等下一波数据拼接
+          // 数组最后一行可能不完整，留到下一次处理
           buffer = lines.pop();
 
           for (const line of lines) {
             const trimmed = line.trim();
-            if (!trimmed) continue; // 忽略空行
-
-            // 检查是否是 SSE 格式的行
             if (trimmed.startsWith("data: ")) {
-              const jsonStr = trimmed.slice(6); // 剥离 "data: "
-              if (jsonStr === "[DONE]") continue; // 兼容部分网关会发出的结束符
-
+              const jsonStr = trimmed.slice(6);
+              if (jsonStr === "[DONE]") continue;
               try {
-                const data = JSON.parse(jsonStr);
-
-                // 兼容可能被包成数组，也可能是单个对象的情况
-                if (Array.isArray(data)) {
-                  data.forEach((chunk) => {
-                    const chunkText =
-                      chunk.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (chunkText) text += chunkText;
-                  });
-                } else {
-                  const chunkText =
-                    data.candidates?.[0]?.content?.parts?.[0]?.text;
-                  if (chunkText) text += chunkText;
-                }
+                const json = JSON.parse(jsonStr);
+                const content =
+                  json.choices?.[0]?.delta?.content ||
+                  json.choices?.[0]?.text ||
+                  json.content;
+                if (content) fullText += content;
               } catch (e) {
-                // 流式解析单行错误时仅警告，不阻断后续流接收
-                console.warn(
-                  "[Anima Debug] 单行 JSON 解析忽略:",
-                  e,
-                  "Line:",
-                  trimmed,
-                );
+                // 忽略解析错误的帧
               }
             }
-            // 兼容非 SSE 格式（有些直连网关可能返回原生的数组流）
-            else if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
-              try {
-                const data = JSON.parse(trimmed);
-                const chunkText =
-                  data.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (chunkText) text += chunkText;
-              } catch (e) {}
-            }
           }
         }
 
-        // 结束后，检查 buffer 中是否还有遗留的数据没处理
-        if (buffer.trim().startsWith("data: ")) {
-          try {
-            const data = JSON.parse(buffer.trim().slice(6));
-            const chunkText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (chunkText) text += chunkText;
-          } catch (e) {}
-        }
+        if (!fullText) throw new Error("流式传输完成，但未收到有效内容");
+        return fullText;
+      } catch (error) {
+        console.error("[Anima] Direct API Error Details:", error);
+        throw error;
       }
-
-      return text;
-    } catch (error) {
-      throw error;
     }
-  }
-
-  // ============================================================
-  // 2. 通用/OpenAI Compatible (浏览器直连模式 - 彻底解决 Auth 问题)
-  // ============================================================
-  else {
-    let conversationStarted = false;
-    // 1. 消息格式清洗
-    messages = messages.map((msg, index) => {
-      if (msg.role === "user" || msg.role === "assistant") {
-        conversationStarted = true;
-      }
-      if (msg.role === "system") {
-        if (index > 0 || conversationStarted) {
-          return { ...msg, role: "user" };
-        }
-      }
-      return msg;
-    });
-
-    // 2. URL 构造
-    // processApiUrl 会自动处理 /v1 后缀
-    let targetUrl = processApiUrl(url, source);
-    // 防御性清理：去掉末尾的 /chat/completions 或 /，我们下面手动加
-    targetUrl = targetUrl
-      .replace(/\/chat\/completions\/?$/, "")
-      .replace(/\/+$/, "");
-
-    const endpoint = `${targetUrl}/chat/completions`;
-
-    // 3. 构造请求体
-    const requestBody = {
-      model: model,
-      messages: messages,
-      temperature: temperature,
-      max_tokens: maxOutput, // OpenAI 标准参数
-      top_p: 1,
-      stream: !!stream, // 根据开关决定是否流式
-    };
-
-    // 4. 发起原生 Fetch 请求
-    console.log(
-      "[Anima Debug] Backend Proxy Fetch to: ${endpoint}",
-      requestBody,
+  } catch (error) {
+    // 🟢 3. 捕捉真正的错误原因并打印到 F12
+    console.error(
+      `[Anima 崩溃现场] generateText 在处理 ${purpose} 时炸了:`,
+      error.message,
     );
-
-    try {
-      const response = await proxyFetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${key}`,
-        },
-        body: requestBody,
-        isStream: !!stream,
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        let errMsg = errText;
-
-        // 尝试解析厂商返回的详细 JSON 错误
-        try {
-          const errJson = JSON.parse(errText);
-          if (errJson.error && errJson.error.message) {
-            errMsg = errJson.error.message;
-          } else if (errJson.message) {
-            errMsg = errJson.message;
-          }
-        } catch (e) {}
-
-        // 抛出带有状态码的错误，这样 toastr 就能显示 "401: Invalid Key"
-        throw new Error(
-          `API Error (${response.status}): ${errMsg.substring(0, 100)}`,
-        );
-      }
-
-      // ==========================================
-      // 响应解析 (兼容流式和非流式)
-      // ==========================================
-
-      // A. 非流式
-      if (!stream) {
-        const data = await response.json();
-
-        // 🔥【新增】优先检查厂商返回的错误信息
-        // 很多中转站或 API 会返回 200 OK 但 body 里包含 error
-        if (data.error) {
-          console.error("[Anima] API Error Details:", data.error);
-          const errorMsg =
-            data.error.message || data.error.code || JSON.stringify(data.error);
-          throw new Error(`API 业务错误: ${errorMsg}`);
-        }
-
-        const choice = data.choices?.[0];
-        const message = choice?.message;
-
-        // 优先取 content；如果为空，尝试取 reasoning_content（防止因 max_tokens 截断导致报错）；最后尝试 text
-        const content =
-          message?.content || message?.reasoning_content || choice?.text;
-
-        // 🔥 2. HTTP 200 但内容为空的处理
-        if (!content) {
-          console.warn(
-            "[Anima] Empty Content. Full Response:",
-            JSON.stringify(data, null, 2),
-          );
-
-          // [细化错误提示]
-          let extraHint = "";
-          // 检测是不是 Gemini 模型
-          if (model.toLowerCase().includes("gemini")) {
-            extraHint =
-              " 检测到 Gemini 模型且内容为空，这通常是因为 OpenAI 格式没有 Safety Settings 导致破限失败。如API支持，请尝试切换为 'Google Gemini' 格式。";
-          }
-
-          const finalErrorMsg = "模型返回内容为空。" + extraHint;
-
-          // ✅【新增】强制弹窗：不管调用方怎么处理，先弹个窗告诉用户
-          if (window.toastr) {
-            // timeOut: 0 表示不自动消失（或者是设置长一点时间），让用户看清楚
-            window.toastr.error(finalErrorMsg, "Anima Critical Error");
-          }
-
-          // 继续抛出错误，中断后续逻辑
-          throw new Error(finalErrorMsg);
-        }
-        return content;
-      }
-
-      // B. 流式解析 (SSE)
-      // 即使是 summary 任务通常等待结果，我们也要正确消耗流
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-      let fullText = "";
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        // 解码当前块并追加到缓冲区
-        buffer += decoder.decode(value, { stream: true });
-
-        // 按行分割处理
-        const lines = buffer.split("\n");
-        // 数组最后一行可能不完整，留到下一次处理
-        buffer = lines.pop();
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed.startsWith("data: ")) {
-            const jsonStr = trimmed.slice(6);
-            if (jsonStr === "[DONE]") continue;
-            try {
-              const json = JSON.parse(jsonStr);
-              const content =
-                json.choices?.[0]?.delta?.content ||
-                json.choices?.[0]?.text ||
-                json.content;
-              if (content) fullText += content;
-            } catch (e) {
-              // 忽略解析错误的帧
-            }
-          }
-        }
-      }
-
-      if (!fullText) throw new Error("流式传输完成，但未收到有效内容");
-      return fullText;
-    } catch (error) {
-      console.error("[Anima] Direct API Error Details:", error);
-      throw error;
-    }
+    throw error; // 继续向上抛出
   }
 }

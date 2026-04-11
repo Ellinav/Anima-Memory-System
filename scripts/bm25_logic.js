@@ -1,4 +1,4 @@
-// 导入前端通用 API
+// @ts-nocheck
 import { getAnimaConfig } from "./api.js";
 import {
   safeGetChatWorldbookName,

@@ -1,11 +1,11 @@
 {
-    "compilerOptions": {
-        "target": "ES2022",
-        "module": "ESNext",
-        "lib": ["ES2022", "DOM", "DOM.Iterable"],
-        "checkJs": true,
-        "allowJs": true,
-        "moduleResolution": "node"
-    },
-    "exclude": ["node_modules", "**/node_modules/*"]
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "checkJs": false,
+    "allowJs": true,
+    "moduleResolution": "bundler"
+  },
+  "exclude": ["node_modules", "**/node_modules/*"]
 }

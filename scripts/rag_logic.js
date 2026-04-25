@@ -574,7 +574,7 @@ export async function queryDual({
   const finalKbContext = kbPayload?.kbContext || { ids: [], strategy: {} };
 
   if (finalChatIds.length === 0 && finalKbContext.ids.length === 0) {
-    console.warn("[Anima RAG] 未指定任何数据库 ID (UI列表为空)，跳过检索");
+    console.warn("[Anima RAG] 未指定任何数据库，跳过检索");
     showToast("当前未绑定任何聊天或知识库，跳过检索。", "info");
     return { chat_results: [], kb_results: [] };
   }
@@ -729,31 +729,86 @@ export async function queryDual({
     const isRerankEnabled = settings?.rerank_enabled === true;
     const rerankCount = settings?.rerank_count || 30;
 
-    const response = await callBackend("/query", {
-      searchText,
-      bm25SearchText: finalBm25Text,
-      apiConfig: embedApiConfig,
-      ignore_ids: excludeIds || [],
-      sessionId: cleanMainId,
-      is_swipe: _isSwipeMode,
-      // 🟢 [修复] 组装正确的 Rerank 配置发给后端
-      rerankConfig: {
-        enabled: isRerankEnabled,
-        count: rerankCount,
-        api: rerankApiConfig, // 现在这里面有真实的 url 和 key 了
-      },
-      echoConfig: {
-        max_count: settings?.echo_max_count ?? 10,
-        base_life: settings?.base_life ?? 1,
-        imp_life: settings?.imp_life ?? 2,
-      },
-      chatContext: {
-        ids: finalChatIds,
-        strategy: chatStrategyPayload,
-      },
-      kbContext: finalKbContext, // ✨ 直接透传完整配置，包含所有检索数量设定
-      bm25Configs: bm25Configs,
-    });
+    let response = null;
+    let attempt = 0;
+    const maxAttempts = 3;
+    let lastError = null;
+
+    while (attempt < maxAttempts) {
+      try {
+        response = await callBackend("/query", {
+          searchText,
+          bm25SearchText: finalBm25Text,
+          apiConfig: embedApiConfig,
+          ignore_ids: excludeIds || [],
+          sessionId: cleanMainId,
+          is_swipe: _isSwipeMode,
+          rerankConfig: {
+            enabled: isRerankEnabled,
+            count: rerankCount,
+            api: rerankApiConfig,
+          },
+          echoConfig: {
+            max_count: settings?.echo_max_count ?? 10,
+            base_life: settings?.base_life ?? 1,
+            imp_life: settings?.imp_life ?? 2,
+          },
+          chatContext: {
+            ids: finalChatIds,
+            strategy: chatStrategyPayload,
+          },
+          kbContext: finalKbContext,
+          bm25Configs: bm25Configs,
+        });
+        if (!response) {
+          throw new Error("后端未返回任何数据 (网络或服务异常)");
+        }
+        if (response.error || response.success === false) {
+          throw new Error(
+            response.error || response.message || "后端返回了失败状态",
+          );
+        }
+        // 如果数据结构完全不对（连空数组都没有），同样视为崩溃
+        if (
+          !response.chat_results &&
+          !response.kb_results &&
+          !response.merged_chat_results
+        ) {
+          throw new Error("后端返回了异常的数据结构 (API可能已崩溃)");
+        }
+        break; // 请求成功，跳出重试循环
+      } catch (e) {
+        attempt++;
+        lastError = e;
+        // 使用 e.message 或 e 本身，防止拿到的是一个复杂对象
+        const errorDetail =
+          e.message || (typeof e === "string" ? e : "未知原因");
+        console.warn(
+          `[Anima RAG] ⚠️ 检索请求尝试 ${attempt}/${maxAttempts} 失败:`,
+          errorDetail,
+        );
+
+        if (attempt < maxAttempts) {
+          await new Promise((r) => setTimeout(r, 1500)); // 静默等待1.5秒后重试
+        } else {
+          response = null; // 彻底失败后，清空 response 确保进入下方的拦截逻辑
+        }
+      }
+    }
+
+    if (!response) {
+      // 达到最大重试次数后仍然失败
+      console.error("[Anima RAG] 💥 双轨检索彻底崩溃，已放弃尝试:", lastError);
+      return {
+        chat_results: [],
+        kb_results: [],
+        bm25_chat_results: [],
+        bm25_kb_results: [],
+        _is_critical_failure: true, // 🟢 增加彻底失败标记供拦截器读取
+        _error_msg: lastError ? lastError.message : "未知网络或服务错误",
+      };
+    }
+
     _lastRetrievalPayload = {
       query: searchText,
       bm25Query: finalBm25Text,
@@ -825,17 +880,14 @@ export async function queryDual({
       merged_kb_results: response.merged_kb_results || [],
     };
   } catch (e) {
-    console.error("[Anima RAG] 双轨检索失败:", e);
-    // 注意：callBackend 里面如果是网络错误已经弹过窗了，这里可以加个兜底
-    // 为了防止双重弹窗，如果你觉得烦，可以把这里的 toastr 注释掉
-    if (window.toastr && !e.message.includes("请先在")) {
-      toastr.error("检索过程崩溃: " + e.message, "Anima RAG 致命错误");
-    }
+    console.error("[Anima RAG] 双轨检索发生致命异常:", e);
     return {
       chat_results: [],
       kb_results: [],
       bm25_chat_results: [],
       bm25_kb_results: [],
+      _is_critical_failure: true, // 🟢 发生代码级别错误时同样拦截
+      _error_msg: e.message,
     };
   }
 }

@@ -346,6 +346,46 @@ export async function initInterceptor() {
         kbPayload: kbPayload, // ✨ 将知识库载荷传给逻辑层
       });
 
+      // 🛑 [新增] 致命错误检查：如果检索重试3次依然崩溃，询问用户是否继续
+      if (responsePayload._is_critical_failure) {
+        let userWantsToContinue = false;
+        const errorMsg = responsePayload._error_msg || "未知网络异常";
+
+        // 优先尝试使用 ST 原生的 SweetAlert 弹窗，保证 UI 统一美观
+        if (window.Swal) {
+          const swalResult = await window.Swal.fire({
+            title: "检索彻底失败",
+            html: `由于网络波动或后端异常，全部 3 次检索尝试均告失败。<br><br><span style="color:#ef4444;font-size:0.9em;">错误原因: ${errorMsg}</span><br><br>是否无视错误，<strong>跳过检索</strong>直接继续生成回复？`,
+            icon: "error",
+            showCancelButton: true,
+            confirmButtonColor: "#3085d6",
+            cancelButtonColor: "#d33",
+            confirmButtonText: "是 (无 RAG 继续)",
+            cancelButtonText: "否 (中断生成)",
+          });
+          userWantsToContinue = swalResult.isConfirmed;
+        } else {
+          // 兜底浏览器原生弹窗
+          userWantsToContinue = window.confirm(
+            `【Anima RAG】全部 3 次检索尝试均告失败！\n错误: ${errorMsg}\n\n是否跳过检索，直接继续生成回复？\n\n[确定] 继续生成\n[取消] 中断生成`,
+          );
+        }
+
+        if (!userWantsToContinue) {
+          console.warn("[Anima Interceptor] 用户主动中断了生成流程。");
+          if (typeof abort === "function") abort(); // 调用 ST 拦截器传来的 abort 中断机制
+
+          // 清理空数据防止下一次对话遭遇幽灵注入
+          await clearRagEntry();
+          await clearKnowledgeEntry();
+          return; // 强制退出当前拦截流程，终止请求！
+        } else {
+          console.log(
+            "[Anima Interceptor] 用户选择跳过检索，无 RAG 继续生成。",
+          );
+        }
+      }
+
       // 🟢 1. 直接使用后端处理好的 merged_chat_results 拼接文本
       const chatRagText = formatMergedChat(responsePayload.merged_chat_results);
 

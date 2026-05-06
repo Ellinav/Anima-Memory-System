@@ -364,9 +364,8 @@ function setupLogInterceptor() {
   function processLog(type, args) {
     try {
       // 1. 将参数转换为字符串以便检查
-      const msgStr = args
+      let msgStr = args
         .map((arg) => {
-          // 🟢 新增：专门处理 Error 对象，防止被 JSON.stringify 变成 {}
           if (arg instanceof Error) {
             return arg.stack || arg.message;
           }
@@ -380,6 +379,32 @@ function setupLogInterceptor() {
           return String(arg);
         })
         .join(" ");
+
+      // 🌟 新增：精准截断指定类型长日志
+      // 仅拦截包含以下特征片段的日志
+      const truncateTargets = [
+        "[WI] Adding",
+        "[QR2] calling",
+        "传进来的消息:",
+        "Google Request:",
+      ];
+
+      // 检查是否命中目标且长度足够长（避免短日志被误截断）
+      if (
+        truncateTargets.some((keyword) => msgStr.includes(keyword)) &&
+        msgStr.length > 250
+      ) {
+        const HEAD_N = 120; // 头部保留字符数
+        const TAIL_N = 80; // 尾部保留字符数
+
+        const foldedCount = msgStr.length - HEAD_N - TAIL_N;
+        if (foldedCount > 0) {
+          msgStr =
+            msgStr.substring(0, HEAD_N) +
+            `\n... [ ✂️ 已折叠中间 ${foldedCount} 个字符 ] ...\n` +
+            msgStr.substring(msgStr.length - TAIL_N);
+        }
+      }
 
       // 2. 筛选关键词 (大小写不敏感)
       if (msgStr.toLowerCase().includes("anima")) {
@@ -398,7 +423,7 @@ function setupLogInterceptor() {
             `<div style="border-bottom: 1px solid #333; padding: 2px 0;">` +
             `<span style="opacity:0.5; font-size:0.9em;">[${time}]</span> ` +
             `<span style="color:${color};">[${type.toUpperCase()}]</span> ` +
-            `${safeMsgStr}` + // <--- 使用转义后的安全字符串
+            `${safeMsgStr}` +
             `</div>`;
 
           if (

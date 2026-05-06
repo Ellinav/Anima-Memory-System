@@ -260,9 +260,14 @@ export function parseRegex(str) {
 export function applyRegexRules(text, rules) {
   if (!text || !rules || rules.length === 0) return text;
 
-  // 1. 分离规则类型
-  const excludeRules = rules.filter((r) => r.type === "exclude");
-  const extractRules = rules.filter((r) => r.type !== "exclude"); // 默认为提取
+  // ✨ 新增：过滤掉 enabled 为 false 的规则 (兼容旧版没有 enabled 字段的数据)
+  const activeRules = rules.filter((r) => r.enabled !== false);
+
+  if (activeRules.length === 0) return text;
+
+  // 1. 分离规则类型 (✨ 注意：将 rules 替换为过滤后的 activeRules)
+  const excludeRules = activeRules.filter((r) => r.type === "exclude");
+  const extractRules = activeRules.filter((r) => r.type !== "exclude"); // 默认为提取
 
   // ------------------------------------------------------
   // 阶段一：执行所有的“排除”规则

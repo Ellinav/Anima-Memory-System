@@ -279,7 +279,7 @@ function renderBm25UI(container, settings, dicts, words, libs) {
                 </div>
                 <label class="anima-switch">
                     <input type="checkbox" id="bm25_master_switch" ${settings.bm25_enabled ? "checked" : ""}>
-                    <span class="slider round"></span>
+                    <span class="anima-slider round"></span>
                 </label>
             </div>
         </div>
@@ -398,7 +398,7 @@ function renderBm25UI(container, settings, dicts, words, libs) {
                 </div>
                 <label class="anima-switch">
                     <input type="checkbox" id="bm25_reuse_rag_regex" ${isReuse ? "checked" : ""}>
-                    <span class="slider round"></span>
+                    <span class="anima-slider round"></span>
                 </label>
             </div>
 
@@ -418,7 +418,7 @@ function renderBm25UI(container, settings, dicts, words, libs) {
                     <div class="anima-label-group"><span class="anima-label-text">正则跳过开场白</span></div>
                     <label class="anima-switch">
                         <input type="checkbox" id="bm25_skip_layer_zero" ${cSettings.skip_layer_zero ? "checked" : ""}>
-                        <span class="slider round"></span>
+                        <span class="anima-slider round"></span>
                     </label>
                 </div>
 
@@ -426,7 +426,7 @@ function renderBm25UI(container, settings, dicts, words, libs) {
                     <div class="anima-label-group"><span class="anima-label-text">正则跳过 User 消息</span></div>
                     <label class="anima-switch">
                         <input type="checkbox" id="bm25_regex_skip_user" ${cSettings.regex_skip_user ? "checked" : ""}>
-                        <span class="slider round"></span>
+                        <span class="anima-slider round"></span>
                     </label>
                 </div>
 
@@ -434,7 +434,7 @@ function renderBm25UI(container, settings, dicts, words, libs) {
                     <div class="anima-label-group"><span class="anima-label-text">完全排除 User 消息</span></div>
                     <label class="anima-switch">
                         <input type="checkbox" id="bm25_exclude_user" ${cSettings.exclude_user ? "checked" : ""}>
-                        <span class="slider round"></span>
+                        <span class="anima-slider round"></span>
                     </label>
                 </div>
             </div>
@@ -531,7 +531,7 @@ function renderBm25UI(container, settings, dicts, words, libs) {
                 </div>
                 <label class="anima-switch">
                     <input type="checkbox" id="bm25_auto_build" ${settings.auto_build ? "checked" : ""}>
-                    <span class="slider round"></span>
+                    <span class="anima-slider round"></span>
                 </label>
             </div>
 

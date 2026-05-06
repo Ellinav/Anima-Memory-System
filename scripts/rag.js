@@ -370,7 +370,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                     </div>
                     <label class="anima-switch">
                         <input type="checkbox" id="rag_master_switch" ${settings.rag_enabled ? "checked" : ""}>
-                        <span class="slider round"></span>
+                        <span class="anima-slider round"></span>
                     </label>
                 </div>
             </div>
@@ -427,7 +427,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                         </div>
                         <label class="anima-switch">
                             <input type="checkbox" id="rag_auto_vectorize" ${settings.auto_vectorize ? "checked" : ""}>
-                            <span class="slider round"></span>
+                            <span class="anima-slider round"></span>
                         </label>
                     </div>
                     <div style="margin-top: 10px;">
@@ -470,7 +470,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                     </div>
                     <label class="anima-switch">
                         <input type="checkbox" id="rag_skip_layer_zero" ${settings.skip_layer_zero ? "checked" : ""}>
-                        <span class="slider round"></span>
+                        <span class="anima-slider round"></span>
                     </label>
                 </div>
 
@@ -481,7 +481,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                     </div>
                     <label class="anima-switch">
                         <input type="checkbox" id="rag_regex_skip_user" ${settings.regex_skip_user ? "checked" : ""}>
-                        <span class="slider round"></span>
+                        <span class="anima-slider round"></span>
                     </label>
                 </div>
                 
@@ -557,7 +557,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                         </div>
                         <label class="anima-switch">
                             <input type="checkbox" id="rag_distributed_switch" ${settings.distributed_retrieval ? "checked" : ""}>
-                            <span class="slider round"></span>
+                            <span class="anima-slider round"></span>
                         </label>
                     </div>
 
@@ -570,7 +570,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                             </div>
                             <label class="anima-switch">
                                 <input type="checkbox" id="rag_virtual_time_switch" ${settings.virtual_time_mode ? "checked" : ""}>
-                                <span class="slider round"></span>
+                                <span class="anima-slider round"></span>
                             </label>
                         </div>
 
@@ -673,7 +673,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
                             </div>
                             <label class="anima-switch">
                                 <input type="checkbox" id="rag_rerank_switch" ${settings.rerank_enabled ? "checked" : ""}>
-                                <span class="slider round"></span>
+                                <span class="anima-slider round"></span>
                             </label>
                         </div>
 

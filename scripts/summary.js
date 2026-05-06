@@ -158,7 +158,7 @@ export function initSummarySettings() {
                         <input type="checkbox" id="anima_skip_layer_zero" ${
                           settings.skip_layer_zero ? "checked" : ""
                         }>
-                        <span class="slider round"></span>
+                        <span class="anima-slider round"></span>
                     </label>
                 </div>
 
@@ -169,7 +169,7 @@ export function initSummarySettings() {
                     </div>
                     <label class="anima-switch">
                         <input type="checkbox" id="anima_regex_skip_user" ${settings.regex_skip_user ? "checked" : ""}>
-                        <span class="slider round"></span>
+                        <span class="anima-slider round"></span>
                     </label>
                 </div>
 
@@ -182,7 +182,7 @@ export function initSummarySettings() {
                         <input type="checkbox" id="anima_exclude_user" ${
                           settings.exclude_user ? "checked" : ""
                         }>
-                        <span class="slider round"></span>
+                        <span class="anima-slider round"></span>
                     </label>
                 </div>
 
@@ -288,11 +288,11 @@ export function initSummarySettings() {
         </div>
     `;
   regexComponentPre = new RegexListComponent(
-    "anima_regex_list_pre", // 容器ID
-    () => settings.regex_strings, // 获取数据的函数
+    "anima_regex_list_pre",
+    () => settings.regex_strings,
     (newData) => {
-      // 保存数据的回调
       settings.regex_strings = newData;
+      saveSummarySettings(settings);
     },
   );
   regexComponentPre.render();
@@ -303,6 +303,7 @@ export function initSummarySettings() {
     () => settings.output_regex,
     (newData) => {
       settings.output_regex = newData;
+      aveSummarySettings(settings);
     },
   );
   regexComponentPost.render();
@@ -425,7 +426,7 @@ function getAutomationHTML(settings) {
         </div>
         <label class="anima-switch">
             <input type="checkbox" id="anima_auto_run" ${settings.auto_run ? "checked" : ""}>
-            <span class="slider round"></span>
+            <span class="anima-slider round"></span>
         </label>
     </div>
     
@@ -507,9 +508,9 @@ function bindSummaryEvents() {
                     <span style="font-weight:bold; font-size:13px; ${colorClass}; display:flex; align-items:center; gap:5px; line-height: 1;">${title}</span>
                     
                     <div style="margin-left:auto; display:flex; align-items:center; height: 100%;">
-                        <label class="anima-switch" title="启用/关闭" style="margin: 0; display: flex; align-items: center;">
+                        <label class="anima-switch" title="启用/关闭">
                             <input type="checkbox" class="special-toggle" ${msg.enabled !== false ? "checked" : ""}>
-                            <span class="slider round"></span>
+                            <span class="anima-slider"></span>
                         </label>
                     </div>
                 </div>

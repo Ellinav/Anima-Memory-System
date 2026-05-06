@@ -208,14 +208,14 @@ export async function loadAndRenderKbList() {
             
             <div class="kb-action-group">
                 ${vectorWarning}
-                <label class="anima-switch"><input type="checkbox" class="kb-toggle-vector" data-name="${escapeHtml(kbName)}" data-exists="${hasVector}" ${pref.vector_enabled && hasVector ? "checked" : ""}><span class="slider round"></span></label>
+                <label class="anima-switch"><input type="checkbox" class="kb-toggle-vector" data-name="${escapeHtml(kbName)}" data-exists="${hasVector}" ${pref.vector_enabled && hasVector ? "checked" : ""}><span class="anima-slider round"></span></label>
                 <button class="anima-btn secondary small btn-rebuild-vector" data-name="${escapeHtml(kbName)}" title="重新向量化"><i class="fa-solid fa-rotate"></i></button>
                 <button class="anima-btn danger small btn-del-vector" data-name="${escapeHtml(kbName)}" title="仅删除向量库"><i class="fa-solid fa-trash"></i></button>
             </div>
 
             <div class="kb-action-group">
                 ${bm25Warning}
-                <label class="anima-switch"><input type="checkbox" class="kb-toggle-bm25" data-name="${escapeHtml(kbName)}" data-exists="${hasBm25}" ${pref.bm25_enabled && hasBm25 ? "checked" : ""}><span class="slider round"></span></label>
+                <label class="anima-switch"><input type="checkbox" class="kb-toggle-bm25" data-name="${escapeHtml(kbName)}" data-exists="${hasBm25}" ${pref.bm25_enabled && hasBm25 ? "checked" : ""}><span class="anima-slider round"></span></label>
                 ${bm25RebuildBtn}
                 <button class="anima-btn danger small btn-del-bm25" data-name="${escapeHtml(kbName)}" title="仅删除BM25库"><i class="fa-solid fa-trash"></i></button>
             </div>
@@ -285,7 +285,7 @@ function renderKnowledgeUI(container, settings, kbList, dictionaries) {
                 </div>
                 <label class="anima-switch">
                     <input type="checkbox" id="kb_master_switch" ${settings.kb_enabled ? "checked" : ""}>
-                    <span class="slider round"></span>
+                    <span class="anima-slider round"></span>
                 </label>
             </div>
         </div>
@@ -390,14 +390,14 @@ function renderKnowledgeUI(container, settings, kbList, dictionaries) {
                         <span class="anima-label-text" style="font-size: 13px;">写入向量库</span>
                         <label class="anima-switch">
                             <input type="checkbox" id="kb_build_write_vector" ${settings.knowledge_base.write_vector ? "checked" : ""}>
-                            <span class="slider round"></span>
+                            <span class="anima-slider round"></span>
                         </label>
                     </div>
                     <div class="anima-flex-row">
                         <span class="anima-label-text" style="font-size: 13px;">写入 BM25</span>
                         <label class="anima-switch">
                             <input type="checkbox" id="kb_build_write_bm25" ${settings.knowledge_base.write_bm25 ? "checked" : ""}>
-                            <span class="slider round"></span>
+                            <span class="anima-slider round"></span>
                         </label>
                     </div>
                 </div>

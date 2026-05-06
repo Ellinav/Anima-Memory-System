@@ -805,7 +805,7 @@ function renderPeriodModal(settings) {
             </div>
             <label class="anima-switch">
                 <input type="checkbox" id="rag_period_enabled_temp" ${tempEnabled ? "checked" : ""}>
-                <span class="slider round"></span>
+                <span class="anima-slider round"></span>
             </label>
         </div>
         

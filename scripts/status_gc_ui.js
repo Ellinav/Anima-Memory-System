@@ -75,7 +75,7 @@ export function openGCManagementModal() {
                             </div>
                             <label class="anima-switch">
                                 <input type="checkbox" id="gc_toggle_reuse_regex" ${gcSettings.reuse_regex ? "checked" : ""}>
-                                <span class="slider round"></span>
+                                <span class="anima-slider round"></span>
                             </label>
                         </div>
                     </div>
@@ -91,15 +91,15 @@ export function openGCManagementModal() {
                         <div style="background: rgba(0,0,0,0.2); padding: 15px; border-radius: 5px;">
                             <div class="anima-flex-row" style="justify-content: space-between; align-items: center; margin-bottom: 12px;">
                                 <span class="anima-label-text">正则跳过开场白</span>
-                                <label class="anima-switch"><input type="checkbox" id="gc_skip_layer_zero" ${gcSettings.skip_layer_zero ? "checked" : ""}><span class="slider round"></span></label>
+                                <label class="anima-switch"><input type="checkbox" id="gc_skip_layer_zero" ${gcSettings.skip_layer_zero ? "checked" : ""}><span class="anima-slider round"></span></label>
                             </div>
                             <div class="anima-flex-row" style="justify-content: space-between; align-items: center; margin-bottom: 12px;">
                                 <span class="anima-label-text">正则跳过 User 消息</span>
-                                <label class="anima-switch"><input type="checkbox" id="gc_regex_skip_user" ${gcSettings.regex_skip_user ? "checked" : ""}><span class="slider round"></span></label>
+                                <label class="anima-switch"><input type="checkbox" id="gc_regex_skip_user" ${gcSettings.regex_skip_user ? "checked" : ""}><span class="anima-slider round"></span></label>
                             </div>
                             <div class="anima-flex-row" style="justify-content: space-between; align-items: center;">
                                 <span class="anima-label-text">完全排除 User 消息</span>
-                                <label class="anima-switch"><input type="checkbox" id="gc_exclude_user" ${gcSettings.exclude_user ? "checked" : ""}><span class="slider round"></span></label>
+                                <label class="anima-switch"><input type="checkbox" id="gc_exclude_user" ${gcSettings.exclude_user ? "checked" : ""}><span class="anima-slider round"></span></label>
                             </div>
                         </div>
                     </div>
@@ -367,7 +367,7 @@ export function openGCManagementModal() {
 
         headerHtml = `
                     <span style="font-weight:bold; color:${color}; flex:1;">${title}</span>
-                    <label class="anima-switch gc-prompt-toggle" style="margin:0 10px 0 0;"><input type="checkbox" ${rule.enabled ? "checked" : ""}><span class="slider round"></span></label>
+                    <label class="anima-switch gc-prompt-toggle" style="margin:0 10px 0 0;"><input type="checkbox" ${rule.enabled ? "checked" : ""}><span class="anima-slider round"></span></label>
                 `;
         displayContent = isChar ? cachedChar : cachedUser;
       } else if (rule.type === "status_placeholder") {

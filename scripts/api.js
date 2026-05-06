@@ -356,7 +356,7 @@ export function initApiSettings() {
         }
         
         /* 轨道 */
-       .anima-switch-large .slider {
+       .anima-switch-large .anima-slider {
             position: relative; /* 改为 relative，由 flex 控制位置 */
             width: 100%;
             height: 34px;       /* 🟢 轨道高度：略小于容器(38px)，显得精致 */
@@ -368,7 +368,7 @@ export function initApiSettings() {
         }
         
         /* 圆钮 (Knob) */
-        .anima-switch-large .slider:before {
+        .anima-switch-large .anima-slider:before {
             position: absolute;
             content: "";
             height: 26px;       /* 🟢 圆钮高度：34px(轨道) - 2px(边框) - 6px(间隙) = 26px */
@@ -384,13 +384,13 @@ export function initApiSettings() {
         }
 
         /* 激活状态：轨道变绿 */
-        .anima-switch-large input:checked + .slider {
+        .anima-switch-large input:checked + .anima-slider {
             background-color: var(--anima-primary, #10b981);
             border-color: var(--anima-primary, #10b981);
         }
         
         /* 激活状态：圆钮移动 */
-        .anima-switch-large input:checked + .slider:before {
+        .anima-switch-large input:checked + .anima-slider:before {
             /* 移动距离计算：
                轨道宽(70) - 边框(2) - 圆钮宽(26) - 左间隙(3) - 右预留(3) = 36px
             */
@@ -498,7 +498,7 @@ function getApiCardHtml(type, title) {
                 <label>流式</label>
                 <label class="anima-switch-large">
                     <input type="checkbox" id="anima-${type}-stream">
-                    <span class="slider round"></span>
+                    <span class="anima-slider round"></span>
                 </label>
             </div>
         </div>

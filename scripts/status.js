@@ -86,7 +86,7 @@ export function initStatusSettings() {
                     </div>
                     <label class="anima-switch">
                         <input type="checkbox" id="status_master_switch" ${currentSettings.status_enabled ? "checked" : ""}>
-                        <span class="slider round"></span>
+                        <span class="anima-slider round"></span>
                     </label>
                 </div>
             </div>
@@ -510,7 +510,7 @@ export function initStatusSettings() {
                 </div>
                 <label class="anima-switch">
                     <input type="checkbox" id="status_panel_enabled" ${updateSettings.panel_enabled ? "checked" : ""}>
-                    <span class="slider round"></span>
+                    <span class="anima-slider round"></span>
                 </label>
             </div>
 
@@ -658,7 +658,7 @@ export function initStatusSettings() {
                         </div>
                         <label class="anima-switch">
                             <input type="checkbox" id="status_regex_skip_zero" ${regexSettings.skip_layer_zero ? "checked" : ""}>
-                            <span class="slider round"></span>
+                            <span class="anima-slider round"></span>
                         </label>
                     </div>
 
@@ -669,7 +669,7 @@ export function initStatusSettings() {
                         </div>
                         <label class="anima-switch">
                             <input type="checkbox" id="status_regex_skip_user" ${regexSettings.regex_skip_user ? "checked" : ""}>
-                            <span class="slider round"></span>
+                            <span class="anima-slider round"></span>
                         </label>
                     </div>
 
@@ -680,7 +680,7 @@ export function initStatusSettings() {
                         </div>
                         <label class="anima-switch">
                             <input type="checkbox" id="status_regex_exclude_user" ${regexSettings.exclude_user ? "checked" : ""}>
-                            <span class="slider round"></span>
+                            <span class="anima-slider round"></span>
                         </label>
                     </div>
                 </div>
@@ -738,7 +738,7 @@ export function initStatusSettings() {
                 </div>
                 <label class="anima-switch">
                     <input type="checkbox" id="toggle_beautify_enabled" ${currentSettings.beautify_settings?.enabled ? "checked" : ""}>
-                    <span class="slider round"></span>
+                    <span class="anima-slider round"></span>
                 </label>
             </div>
 
@@ -1567,7 +1567,7 @@ function renderStatusList() {
                   <div style="margin-left:auto; display:flex; align-items:center; height: 100%;">
                       <label class="anima-switch" title="启用/关闭" style="margin: 0; display: flex; align-items: center;">
                           <input type="checkbox" class="special-toggle" ${msg.enabled !== false ? "checked" : ""}>
-                          <span class="slider round"></span>
+                          <span class="anima-slider round"></span>
                       </label>
                   </div>
               </div>

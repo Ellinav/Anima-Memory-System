@@ -38,37 +38,45 @@ export class RegexListComponent {
         ? `<span class="anima-tag danger">排除</span>`
         : `<span class="anima-tag primary">提取</span>`;
 
-      // HTML 结构保持你原有的设计
-      const $row = $(`
-            <div class="anima-regex-item is-row" data-idx="${index}">
-                <div class="view-mode" style="display:flex; align-items:center; width:100%; gap:10px;">
-                    <i class="fa-solid fa-bars anima-drag-handle" style="cursor: grab; color: #888;"></i>
-                    
-                    <div style="width: 50px; text-align: center; flex-shrink: 0;">
-                        ${typeBadge}
-                    </div>
+      const isEnabled = item.enabled !== false; // 兼容旧数据，未定义默认视为开启
 
-                    <span class="regex-text" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:monospace; color:#ccc;">
-                        ${this.escapeHtml(item.regex)}
-                    </span>
-                    
-                    <div style="display:flex; gap:5px; flex-shrink:0;">
-                        <button class="anima-btn secondary small btn-edit" title="编辑"><i class="fa-solid fa-pen"></i></button>
-                        <button class="anima-btn danger small btn-del" title="删除"><i class="fa-solid fa-trash"></i></button>
-                    </div>
-                </div>
-                
-                <div class="edit-mode" style="display:none; align-items:center; width:100%; gap:5px;">
-                    <select class="anima-select edit-type" style="width:80px; margin:0; flex-shrink:0;">
-                        <option value="extract">提取</option>
-                        <option value="exclude">排除</option>
-                    </select>
-                    <input type="text" class="anima-input edit-input" value="${this.escapeHtml(item.regex)}" style="margin:0; flex:1;">
-                    <button class="anima-btn primary small btn-save"><i class="fa-solid fa-check"></i></button>
-                    <button class="anima-btn secondary small btn-cancel"><i class="fa-solid fa-xmark"></i></button>
-                </div>
-            </div>
-            `);
+      const $row = $(`
+          <div class="anima-regex-item is-row" data-idx="${index}">
+              <div class="view-mode" style="display:flex; align-items:center; width:100%; gap:10px;">
+                  <i class="fa-solid fa-bars anima-drag-handle" style="cursor: grab; color: #888;"></i>
+                  
+                  <div style="width: 50px; text-align: center; flex-shrink: 0;">
+                      ${typeBadge}
+                  </div>
+
+                  <span class="regex-text" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:monospace; color:#ccc; ${!isEnabled ? "text-decoration: line-through; opacity: 0.5;" : ""}">
+                      ${this.escapeHtml(item.regex)}
+                  </span>
+                  
+                  <div style="display:flex; gap:8px; align-items:center; flex-shrink:0;">
+                      <label class="anima-switch" title="启用/禁用" style="margin: 0; flex: 0 0 44px; width: 44px; min-width: 44px;">
+                          <input type="checkbox" class="regex-toggle" ${isEnabled ? "checked" : ""}>
+                          <span class="anima-slider round"></span>
+                      </label>
+
+                      <div style="display:flex; gap:5px; flex-shrink: 0;">
+                          <button class="anima-btn secondary small btn-edit" title="编辑"><i class="fa-solid fa-pen"></i></button>
+                          <button class="anima-btn danger small btn-del" title="删除"><i class="fa-solid fa-trash"></i></button>
+                      </div>
+                  </div>
+              </div>
+              
+              <div class="edit-mode" style="display:none; align-items:center; width:100%; gap:5px;">
+                  <select class="anima-select edit-type" style="width:80px; margin:0; flex-shrink:0;">
+                      <option value="extract">提取</option>
+                      <option value="exclude">排除</option>
+                  </select>
+                  <input type="text" class="anima-input edit-input" value="${this.escapeHtml(item.regex)}" style="margin:0; flex:1;">
+                  <button class="anima-btn primary small btn-save"><i class="fa-solid fa-check"></i></button>
+                  <button class="anima-btn secondary small btn-cancel"><i class="fa-solid fa-xmark"></i></button>
+              </div>
+          </div>
+          `);
 
       this._bindItemEvents($row, index, item);
       listEl.append($row);
@@ -81,6 +89,15 @@ export class RegexListComponent {
    * 绑定单行事件 (内部使用)
    */
   _bindItemEvents($row, index, item) {
+    $row.find(".regex-toggle").on("change", (e) => {
+      const list = this.getData();
+      // 获取当前勾选状态并保存
+      list[index].enabled = $(e.target).prop("checked");
+      this.onSave(list);
+      // 重新渲染，以刷新样式 (比如被禁用时的文本删除线)
+      this.render();
+    });
+
     // 1. 删除
     $row.find(".btn-del").on("click", () => {
       if (confirm("确定删除此规则吗？")) {
@@ -171,7 +188,7 @@ export class RegexListComponent {
    */
   addRule(regexStr, type) {
     const list = this.getData();
-    list.push({ regex: regexStr, type: type });
+    list.push({ regex: regexStr, type: type, enabled: true });
     this.onSave(list);
     this.render();
   }

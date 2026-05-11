@@ -56,7 +56,7 @@ export const DEFAULT_RAG_SETTINGS = {
   imp_life: 2, // 重要粘性
   echo_max_count: 10, // 最大总量
   rerank_enabled: false, // 默认关闭重排
-  rerank_count: 5, // 重排后最终保留的数量
+  rerank_count: 30, // 重排后最终保留的数量
 
   // === 1. 基础区域 (通用) ===
   min_score: 0.2,

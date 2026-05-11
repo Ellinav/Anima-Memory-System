@@ -2010,7 +2010,7 @@ function bindBm25Events() {
         .find("#bm25_auto_capture_tags")
         .prop("checked"); // 🐛 已修复
       globalSettings.search_top_k =
-        parseInt($tab.find("#bm25_search_k").val()) || 3; // 🐛 已修复
+        parseInt($tab.find("#bm25_search_k").val()) || 1; // 🐛 已修复
 
       saveGlobalSettings();
       toastr.success("BM25 工作模块设置已保存！");

@@ -44,6 +44,7 @@ import { escapeHtml } from "./scripts/utils.js";
 import { defaultStatusPrompts } from "./config/default_status_prompts.js";
 import { defaultGCPrompts } from "./config/default_gc_prompts.js";
 import { defaultRagStrategy } from "./config/default_rag_strategy.js";
+import { defaultBeautifyTemplate } from "./config/default_beautify_template.js";
 
 (function () {
   // 1. 定义基础外壳
@@ -612,6 +613,71 @@ import { defaultRagStrategy } from "./config/default_rag_strategy.js";
             }
           } catch (e) {
             console.error("[Anima] ❌ RAG 策略自动注入异常:", e);
+          }
+
+          try {
+            const context = SillyTavern.getContext();
+            const charId = context.characterId;
+            const character = context.characters[charId];
+
+            // 1. 获取角色卡里存的美化原始数据
+            const rawBeautify =
+              character?.data?.extensions?.anima_beautify_template;
+
+            // 2. 检查模板是否缺失或为空字符串
+            if (
+              !rawBeautify ||
+              !rawBeautify.template ||
+              rawBeautify.template.trim() === ""
+            ) {
+              console.log(
+                "[Anima] 🌀 检测到角色卡无美化模板，正在开启并注入默认美化...",
+              );
+
+              if (defaultBeautifyTemplate && defaultBeautifyTemplate.template) {
+                const finalTemplate = defaultBeautifyTemplate.template;
+
+                // 3. 执行物理保存到角色卡 (对应键名是 anima_beautify_template)
+                await saveSettingsToCharacterCard("anima_beautify_template", {
+                  template: finalTemplate,
+                });
+
+                // 4. 🔥 核心：不仅注入模板，还要强制开启该角色的美化开关
+                // 我们通过更新内存中的当前设置并保存到 extensionSettings 来实现
+                const currentSettings = getStatusSettings();
+                if (!currentSettings.beautify_settings)
+                  currentSettings.beautify_settings = {};
+                currentSettings.beautify_settings.enabled = true;
+                currentSettings.beautify_settings.template = finalTemplate;
+
+                // 调用 status_logic.js 里的保存函数存入全局/扩展设置
+                import("./scripts/status_logic.js").then((m) =>
+                  m.saveStatusSettings(currentSettings),
+                );
+
+                // 5. 立即同步到前端内存对象
+                if (character && character.data) {
+                  if (!character.data.extensions)
+                    character.data.extensions = {};
+                  character.data.extensions.anima_beautify_template = {
+                    template: finalTemplate,
+                  };
+                }
+
+                console.log(
+                  "[Anima] ✅ 默认美化已成功加载、开启并保存至角色卡。",
+                );
+
+                // 6. 🔄 刷新 UI：如果状态面板已经打开，触发一次初始化以同步显示
+                if (typeof initStatusSettings === "function") {
+                  initStatusSettings();
+                }
+              }
+            } else {
+              console.log("[Anima] ⚡ 角色卡已有美化模板，加载原有设置。");
+            }
+          } catch (e) {
+            console.error("[Anima] ❌ 美化预设自动注入异常:", e);
           }
 
           try {

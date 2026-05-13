@@ -37,9 +37,13 @@ import {
   checkInitialGreetingStatus,
   checkReplyIntegrity,
   syncStatusToWorldBook,
+  saveSettingsToCharacterCard,
 } from "./scripts/status_logic.js";
 import { initToolsSettings } from "./scripts/tools.js";
 import { escapeHtml } from "./scripts/utils.js";
+import { defaultStatusPrompts } from "./config/default_status_prompts.js";
+import { defaultGCPrompts } from "./config/default_gc_prompts.js";
+import { defaultRagStrategy } from "./config/default_rag_strategy.js";
 
 (function () {
   // 1. 定义基础外壳
@@ -380,10 +384,6 @@ import { escapeHtml } from "./scripts/utils.js";
         console.log("[Anima] Chat Changed to:", chatId || "None (Closed)");
         isGreetingSyncPending = true;
         // 1. 既然聊天变了（无论是换人还是关闭），RAG 缓存和配置必须“全量刷新”
-        // 由于我们在 rag.js 中重构了读取逻辑，这里的 initRagSettings() 会执行以下操作：
-        // - 调用 getRagSettings()：自动合并 [全局设置] + [当前角色卡扩展设置]
-        // - 调用 getChatRagFiles()：从当前 [聊天 Metadata] 中读取关联的数据库列表
-        // - 最后刷新 RAG 面板 UI
         try {
           await clearRagEntry();
           await clearKnowledgeEntry();
@@ -395,9 +395,225 @@ import { escapeHtml } from "./scripts/utils.js";
         }
 
         clearLastRetrievalResult();
-        initRagSettings(); // 🟢 核心：触发 rag.js 里的多源重新获取逻辑
+        initRagSettings();
 
         if (chatId) {
+          try {
+            const context = SillyTavern.getContext();
+            const charId = context.characterId;
+            const character = context.characters[charId];
+
+            // 1. 获取角色卡里存的“原始条目”
+            const rawRules =
+              character?.data?.extensions?.anima_prompt_config || [];
+
+            // 2. 定义什么是“占位/模板条目”
+            const isBoilerplate = (rule) => {
+              if (rule.type === "char_info" || rule.type === "user_info")
+                return true;
+              if (
+                rule.content === "{{status}}" ||
+                rule.content === "{{chat_context}}"
+              )
+                return true;
+              return false;
+            };
+
+            // 3. 过滤掉所有模板条目
+            const customRules = rawRules.filter((rule) => !isBoilerplate(rule));
+
+            // 如果没有自定义干货内容
+            if (customRules.length === 0) {
+              console.log(
+                "[Anima] 🌀 检测到空预设，正在注入预设并检查全局破限...",
+              );
+
+              // 1. 深拷贝默认预设，防止修改原始模块变量
+              let finalPrompts = JSON.parse(
+                JSON.stringify(defaultStatusPrompts),
+              );
+
+              // 2. 获取全局设置 (从 status_logic 引入的 getStatusSettings)
+              const globalSettings = getStatusSettings() || {};
+              const universalJailbreak =
+                globalSettings.universal_status_jailbreak;
+
+              // 3. 如果全局设置里有内容，则替换默认预设中的“✨破限词”
+              if (universalJailbreak) {
+                const jailbreakIndex = finalPrompts.findIndex(
+                  (p) => p.title === "✨破限词",
+                );
+                if (jailbreakIndex !== -1) {
+                  finalPrompts[jailbreakIndex].content = universalJailbreak;
+                  console.log("[Anima] 🔗 已应用全局通用状态破限词。");
+                }
+              }
+
+              // 4. 执行物理保存到角色卡
+              await saveSettingsToCharacterCard(
+                "anima_prompt_config",
+                finalPrompts,
+              );
+
+              // 5. 同步到前端内存
+              if (character && character.data) {
+                if (!character.data.extensions) character.data.extensions = {};
+                character.data.extensions.anima_prompt_config = finalPrompts;
+              }
+
+              console.log(
+                "[Anima] ✅ 默认预设（含全局破限检查）已覆盖当前角色卡。",
+              );
+            } else {
+              console.log(
+                "[Anima] ⚡ 角色卡已有自定义预设条目，跳过自动加载。",
+              );
+            }
+          } catch (e) {
+            console.error("[Anima] ❌ 自动预设注入异常:", e);
+          }
+
+          try {
+            const context = SillyTavern.getContext();
+            const charId = context.characterId;
+            const character = context.characters[charId];
+
+            // 1. 获取角色卡里存的 GC “原始条目”
+            const rawGCRules =
+              character?.data?.extensions?.anima_gc_prompts || [];
+
+            // 2. 定义 GC 面板的“占位/模板条目” (通过 type 识别)
+            const isGCBoilerplate = (rule) => {
+              const boilerplateTypes = [
+                "char_info",
+                "user_info",
+                "status_placeholder",
+                "chat_context_placeholder",
+              ];
+              return boilerplateTypes.includes(rule.type);
+            };
+
+            // 3. 过滤掉所有模板条目
+            const customGCRules = rawGCRules.filter(
+              (rule) => !isGCBoilerplate(rule),
+            );
+
+            // 如果没有自定义干货内容
+            if (customGCRules.length === 0) {
+              console.log(
+                "[Anima] 🌀 检测到角色卡【校准预设】仅含模板条目或为空，正在注入 default_gc_prompts.js...",
+              );
+
+              if (
+                Array.isArray(defaultGCPrompts) &&
+                defaultGCPrompts.length > 0
+              ) {
+                // 深拷贝，避免污染原始模块数据
+                let finalGCPrompts = JSON.parse(
+                  JSON.stringify(defaultGCPrompts),
+                );
+
+                // 检查全局设置中的通用破限词
+                const globalSettings = getStatusSettings() || {};
+                const universalJailbreak =
+                  globalSettings.universal_status_jailbreak;
+
+                if (universalJailbreak) {
+                  const jailbreakIndex = finalGCPrompts.findIndex(
+                    (p) => p.title === "✨破限词",
+                  );
+                  if (jailbreakIndex !== -1) {
+                    finalGCPrompts[jailbreakIndex].content = universalJailbreak;
+                    console.log(
+                      "[Anima] 🔗 已为【校准预设】应用全局通用状态破限词。",
+                    );
+                  }
+                }
+
+                // 4. 执行物理保存到角色卡 (注意键名是 anima_gc_prompts)
+                await saveSettingsToCharacterCard(
+                  "anima_gc_prompts",
+                  finalGCPrompts,
+                );
+
+                // 5. 🔥强制更新前端内存对象
+                if (character && character.data) {
+                  if (!character.data.extensions)
+                    character.data.extensions = {};
+                  character.data.extensions.anima_gc_prompts = finalGCPrompts;
+                }
+
+                console.log(
+                  "[Anima] ✅ 默认【校准预设】已成功加载并覆盖当前角色卡。",
+                );
+              }
+            } else {
+              console.log(
+                "[Anima] ⚡ 角色卡已有自定义【校准预设】条目，跳过自动加载。",
+              );
+            }
+          } catch (e) {
+            console.error("[Anima] ❌ GC 预设自动注入异常:", e);
+          }
+
+          try {
+            const context = SillyTavern.getContext();
+            const charId = context.characterId;
+            const character = context.characters[charId];
+
+            // 1. 获取角色卡里存的 RAG 原始设置
+            const rawRagSettings =
+              character?.data?.extensions?.anima_rag_settings;
+
+            // 2. 检查是否为空 (完全不存在，或键的数量为 0)
+            const isEmptyRag =
+              !rawRagSettings || Object.keys(rawRagSettings).length === 0;
+
+            if (isEmptyRag) {
+              console.log(
+                "[Anima] 🌀 检测到角色卡无【检索策略】，正在注入 default_rag_strategy.js...",
+              );
+
+              if (
+                defaultRagStrategy &&
+                Object.keys(defaultRagStrategy).length > 0
+              ) {
+                // 深拷贝防污染
+                let finalRagStrategy = JSON.parse(
+                  JSON.stringify(defaultRagStrategy),
+                );
+
+                // 3. 执行物理保存到角色卡 (对应键名是 anima_rag_settings)
+                await saveSettingsToCharacterCard(
+                  "anima_rag_settings",
+                  finalRagStrategy,
+                );
+
+                // 4. 🔥强制更新前端内存对象
+                if (character && character.data) {
+                  if (!character.data.extensions)
+                    character.data.extensions = {};
+                  character.data.extensions.anima_rag_settings =
+                    finalRagStrategy;
+                }
+
+                console.log(
+                  "[Anima] ✅ 默认【检索策略】已成功加载并覆盖当前角色卡。",
+                );
+
+                // 5. 🔄 关键步骤：因为上面已经执行过一次 initRagSettings() 读取了空数据，
+                // 既然现在我们给角色卡塞入了新数据，必须让 RAG 面板重新渲染一次！
+                if (typeof initRagSettings === "function") {
+                  initRagSettings();
+                }
+              }
+            } else {
+              console.log("[Anima] ⚡ 角色卡已有【检索策略】，跳过自动加载。");
+            }
+          } catch (e) {
+            console.error("[Anima] ❌ RAG 策略自动注入异常:", e);
+          }
+
           try {
             // 这里不传参，让它按默认逻辑读取 (有卡读卡，没卡读全局)
             await syncStatusToWorldBook();

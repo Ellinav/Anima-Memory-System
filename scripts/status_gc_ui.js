@@ -3,6 +3,7 @@ import {
   getStatusSettings,
   getGCSettings,
   saveSettingsToCharacterCard,
+  saveStatusSettings,
 } from "./status_logic.js";
 import {
   processMacros,
@@ -516,9 +517,26 @@ export function openGCManagementModal() {
           $view.css("display", "flex");
         });
         $item.find(".gc-prompt-confirm-btn").on("click", () => {
-          rule.role = $item.find(".gc-prompt-role").val();
-          rule.title = $item.find(".gc-prompt-title").val();
-          rule.content = $content.val();
+          const newRole = $item.find(".gc-prompt-role").val();
+          const newTitle = $item.find(".gc-prompt-title").val();
+          const newContent = $content.val();
+
+          // 🟢 [新增] 全局破限同步逻辑
+          if (newTitle === "✨破限词") {
+            console.log(
+              "[Anima] 🛡️ 检测到 GC 校准全局破限词修改，正在同步至全局设置...",
+            );
+            const currentSettings = getStatusSettings() || {};
+            currentSettings.universal_status_jailbreak = newContent;
+            saveStatusSettings(currentSettings); // 存入全局
+            if (window.toastr) window.toastr.info("已同步至全局状态破限");
+          }
+
+          // 更新当前规则
+          rule.role = newRole;
+          rule.title = newTitle;
+          rule.content = newContent;
+
           renderGCPrompts();
         });
         $item.find(".gc-prompt-del-btn").on("click", () => {

@@ -1668,17 +1668,31 @@ function renderStatusList() {
       });
       $item.find(".btn-cancel").on("click", renderStatusList);
       $item.find(".btn-confirm").on("click", () => {
-        msg.role = $role.val();
-        msg.title = $item.find(".title-input").val();
-        msg.content = $text.val();
-        renderStatusList();
-      });
-      $item.find(".btn-delete").on("click", () => {
-        if (confirm("Del?")) {
-          currentSettings.prompt_rules.splice(idx, 1);
-          saveStatusSettings(currentSettings);
-          renderStatusList();
+        const newRole = $role.val();
+        const newTitle = $item.find(".title-input").val();
+        const newContent = $text.val();
+
+        // 🟢 [新增] 全局破限同步逻辑
+        if (newTitle === "✨破限词") {
+          console.log("[Anima] 🛡️ 检测到全局破限词修改，正在同步至全局设置...");
+
+          // 1. 更新内存中的当前设置对象 (currentSettings 在 status.js 顶部定义了)
+          if (currentSettings) {
+            currentSettings.universal_status_jailbreak = newContent;
+
+            // 2. 调用保存函数存入全局 settings.json (saveStatusSettings 会存入磁盘)
+            saveStatusSettings(currentSettings);
+
+            if (window.toastr) toastr.info("已同步至全局状态破限");
+          }
         }
+
+        // 更新到当前角色的规则列表
+        msg.role = newRole;
+        msg.title = newTitle;
+        msg.content = newContent;
+
+        renderStatusList(); // 重新渲染列表
       });
     }
     if ($item) listEl.append($item);

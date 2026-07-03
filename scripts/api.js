@@ -344,7 +344,9 @@ function cleanPlainText(text) {
  * @returns {string}
  */
 function getHtmlTagText(html, tag) {
-  const match = html.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
+  const match = html.match(
+    new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"),
+  );
   return match ? cleanPlainText(match[1]) : "";
 }
 
@@ -972,7 +974,9 @@ function bindLogic(type) {
 
           if (!res.ok) {
             const errText = await res.text();
-            throw new Error(`Rerank 报错: ${formatApiError(res.status, errText)}`);
+            throw new Error(
+              `Rerank 报错: ${formatApiError(res.status, errText)}`,
+            );
           }
 
           const data = await res.json();
@@ -1176,7 +1180,8 @@ function bindLogic(type) {
         console.error(`[Anima] Connect Error: ${e.message}`);
         let errorMsg = cleanErrorMessage(e.message || "未知错误");
         if (e.status === 403) errorMsg = "403 Forbidden: 检查 Key 或白名单";
-        else if (e.responseText) errorMsg = formatApiError(e.status, e.responseText);
+        else if (e.responseText)
+          errorMsg = formatApiError(e.status, e.responseText);
         if (window.toastr) window.toastr.error(errorMsg);
       } finally {
         btnConnect.innerHTML = originalHtml;
@@ -1213,10 +1218,7 @@ function bindLogic(type) {
     // 2. 添加渠道事件
     btnAddChannel.addEventListener("click", () => {
       // 这里使用原生的 prompt，最简单直接，不需要写复杂的 HTML 弹窗
-      const newName = prompt(
-        "请输入新渠道的名称：",
-        "",
-      );
+      const newName = prompt("请输入新渠道的名称：", "");
       if (!newName || !newName.trim()) return;
 
       const cleanName = newName.trim();
@@ -1513,23 +1515,32 @@ export async function generateText(
           let rawError = response.statusText;
           try {
             // 兼容错误状态下的解析
-            rawError = response.json ? await response.json() : await response.text();
+            rawError = response.json
+              ? await response.json()
+              : await response.text();
           } catch (e) {}
-          throw new Error(formatApiError(response.status, rawError, response.statusText));
+          throw new Error(
+            formatApiError(response.status, rawError, response.statusText),
+          );
         }
 
         let text = "";
 
         if (!stream) {
           // 1. 非流式：直接调用 json()
-          const data = await response.json();
+          let data;
+          try {
+            data = await response.json();
+          } catch (e) {
+            throw new Error("内容不完整或解析错误");
+          }
 
           text = data.candidates?.[0]?.content?.parts?.[0]?.text;
           if (!text) {
             text =
               data.choices?.[0]?.message?.content || data.choices?.[0]?.text;
           }
-          if (!text) throw new Error("API 返回结构未知");
+          if (!text) throw new Error("回复内容为空");
         } else {
           // 2. 流式：使用 Reader 消费流并按 SSE 格式 (Server-Sent Events) 解析
           const reader = response.body.getReader();
@@ -1573,13 +1584,13 @@ export async function generateText(
                     if (chunkText) text += chunkText;
                   }
                 } catch (e) {
-                  // 流式解析单行错误时仅警告，不阻断后续流接收
                   console.warn(
-                    "[Anima Debug] 单行 JSON 解析忽略:",
+                    "[Anima Debug] 单行 JSON 解析失败:",
                     e,
                     "Line:",
                     trimmed,
                   );
+                  throw new Error("内容不完整或解析错误");
                 }
               }
               // 兼容非 SSE 格式（有些直连网关可能返回原生的数组流）
@@ -1589,21 +1600,41 @@ export async function generateText(
                   const chunkText =
                     data.candidates?.[0]?.content?.parts?.[0]?.text;
                   if (chunkText) text += chunkText;
-                } catch (e) {}
+                } catch (e) {
+                  throw new Error("内容不完整或解析错误");
+                }
               }
             }
           }
 
           // 结束后，检查 buffer 中是否还有遗留的数据没处理
-          if (buffer.trim().startsWith("data: ")) {
+          const residual = buffer.trim();
+          if (residual.startsWith("data: ")) {
+            const jsonStr = residual.slice(6).trim();
+            if (jsonStr === "[DONE]") {
+              // 正常结束标记，不参与解析。
+            } else if (jsonStr) {
+              try {
+                const data = JSON.parse(jsonStr);
+                const chunkText =
+                  data.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (chunkText) text += chunkText;
+              } catch (e) {
+                throw new Error("内容不完整或解析错误");
+              }
+            }
+          } else if (residual.startsWith("[") || residual.startsWith("{")) {
             try {
-              const data = JSON.parse(buffer.trim().slice(6));
+              const data = JSON.parse(residual);
               const chunkText = data.candidates?.[0]?.content?.parts?.[0]?.text;
               if (chunkText) text += chunkText;
-            } catch (e) {}
+            } catch (e) {
+              throw new Error("内容不完整或解析错误");
+            }
           }
         }
 
+        if (!text) throw new Error("回复内容为空");
         return text;
       } catch (error) {
         throw error;
@@ -1678,7 +1709,12 @@ export async function generateText(
 
         // A. 非流式
         if (!stream) {
-          const data = await response.json();
+          let data;
+          try {
+            data = await response.json();
+          } catch (e) {
+            throw new Error("内容不完整或解析错误");
+          }
 
           // 🔥【新增】优先检查厂商返回的错误信息
           // 很多中转站或 API 会返回 200 OK 但 body 里包含 error
@@ -1702,18 +1738,8 @@ export async function generateText(
               JSON.stringify(data, null, 2),
             );
 
-            // [细化错误提示]
-            let extraHint = "";
-            // 检测是不是 Gemini 模型
-            if (model.toLowerCase().includes("gemini")) {
-              extraHint =
-                " 检测到 Gemini 模型且内容为空，这通常是因为 OpenAI 格式没有 Safety Settings 导致破限失败。如API支持，请尝试切换为 'Google Gemini' 格式。";
-            }
-
-            const finalErrorMsg = "模型返回内容为空。" + extraHint;
-
             // 交给调用方统一展示错误，避免同一个 API 错误弹出多次。
-            throw new Error(finalErrorMsg);
+            throw new Error("回复内容为空");
           }
           return content;
         }
@@ -1750,13 +1776,30 @@ export async function generateText(
                   json.content;
                 if (content) fullText += content;
               } catch (e) {
-                // 忽略解析错误的帧
+                throw new Error("内容不完整或解析错误");
               }
             }
           }
         }
 
-        if (!fullText) throw new Error("流式传输完成，但未收到有效内容");
+        const residual = buffer.trim();
+        if (residual.startsWith("data: ")) {
+          const jsonStr = residual.slice(6).trim();
+          if (jsonStr && jsonStr !== "[DONE]") {
+            try {
+              const json = JSON.parse(jsonStr);
+              const content =
+                json.choices?.[0]?.delta?.content ||
+                json.choices?.[0]?.text ||
+                json.content;
+              if (content) fullText += content;
+            } catch (e) {
+              throw new Error("内容不完整或解析错误");
+            }
+          }
+        }
+
+        if (!fullText) throw new Error("回复内容为空");
         return fullText;
       } catch (error) {
         console.error("[Anima] Direct API Error Details:", error);

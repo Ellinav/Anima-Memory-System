@@ -25,6 +25,26 @@ const activeStatusUpdates = new Set();
 const STATUS_ERROR_TOAST_DEDUPE_MS = 3000;
 let lastStatusErrorToast = { message: "", timestamp: 0 };
 
+function createStatusAbortError() {
+  if (typeof DOMException !== "undefined") {
+    return new DOMException("请求已取消", "AbortError");
+  }
+
+  const error = new Error("请求已取消");
+  error.name = "AbortError";
+  return error;
+}
+
+function throwIfStatusSyncAborted(signal) {
+  if (signal?.aborted) {
+    throw createStatusAbortError();
+  }
+}
+
+function isStatusAbortError(error) {
+  return error?.name === "AbortError";
+}
+
 function showStatusErrorToast(message) {
   if (!window.toastr) return;
 
@@ -584,9 +604,13 @@ async function constructStatusPrompt(statusConfig, contextData, targetMsgId) {
   return { messages, incResult, baseStatus };
 }
 
-export async function triggerStatusUpdate(targetMsgId) {
+export async function triggerStatusUpdate(targetMsgId, options = {}) {
+  const { signal } = options || {};
+
   console.log(`[Anima Status] 🚀 Trigger Update for Msg #${targetMsgId}`);
   window.dispatchEvent(new CustomEvent("anima:status_sync_start"));
+  if (signal?.aborted) return false;
+
   const statusConfig = getStatusSettings();
   const contextData = getContextData();
 
@@ -626,7 +650,11 @@ export async function triggerStatusUpdate(targetMsgId) {
 
   try {
     // 1. 请求 API
-    const responseText = await generateText(messages, "status");
+    throwIfStatusSyncAborted(signal);
+    const responseText = await generateText(messages, "status", null, {
+      signal,
+    });
+    throwIfStatusSyncAborted(signal);
     /* 测试样本
     console.log("正在模拟 LLM 返回脏数据...");
     const responseText = JSON.stringify({
@@ -728,6 +756,7 @@ export async function triggerStatusUpdate(targetMsgId) {
       return true; // 视为成功，但不产生副作用
     }
     // 8. 📝 最终写入 (只有这一行代码会修改数据库)
+    throwIfStatusSyncAborted(signal);
     await saveStatusToMessage(targetMsgId, { anima_data: candidateData });
 
     // 9. 成功后的事件广播
@@ -738,6 +767,12 @@ export async function triggerStatusUpdate(targetMsgId) {
     console.log(`[Anima] Update Complete...`);
     return true;
   } catch (e) {
+    if (isStatusAbortError(e)) {
+      console.info(`[Anima Status] 用户取消状态同步：Msg #${targetMsgId}`);
+      forceRefreshUI();
+      return false;
+    }
+
     // 🔥【关键修复 Q2】异常捕获
     // 这里捕获所有错误（包括 api.js 抛出的 401/500/空内容）
     // 只要进入 catch，绝对不执行写入。
@@ -757,7 +792,8 @@ export async function triggerStatusUpdate(targetMsgId) {
  * 【UI 专用】手动同步触发器
  * 逻辑：找到当前最新楼层，强制执行一次 update
  */
-export async function triggerManualSync() {
+export async function triggerManualSync(options = {}) {
+  const { signal } = options || {};
   const targetMsg = getTargetAIFloor();
 
   if (!targetMsg) {
@@ -766,11 +802,12 @@ export async function triggerManualSync() {
   }
 
   const targetId = targetMsg.message_id;
+  if (signal?.aborted) return false;
 
   if (window.toastr)
     window.toastr.info(`正在同步状态... (Target: #${targetId})`);
 
-  return await triggerStatusUpdate(targetId);
+  return await triggerStatusUpdate(targetId, { signal });
 }
 
 // ==========================================

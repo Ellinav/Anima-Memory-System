@@ -61,19 +61,64 @@ function getStContext() {
   return window.SillyTavern.getContext();
 }
 
+function createAbortError() {
+  if (typeof DOMException !== "undefined") {
+    return new DOMException("请求已取消", "AbortError");
+  }
+
+  const error = new Error("请求已取消");
+  error.name = "AbortError";
+  return error;
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) {
+    throw createAbortError();
+  }
+}
+
+function attachAbortHandler(signal, onAbort) {
+  if (!signal) return () => {};
+
+  if (signal.aborted) {
+    onAbort();
+    return () => {};
+  }
+
+  signal.addEventListener("abort", onAbort, { once: true });
+  return () => signal.removeEventListener("abort", onAbort);
+}
+
 /**
  * 🌐 纯后端代理请求函数
  * @param {string} targetUrl - 目标地址
- * @param {{method?: string, headers?: Record<string, string>, body?: any, isStream?: boolean}} [options={}] - 请求配置
+ * @param {{method?: string, headers?: Record<string, string>, body?: any, isStream?: boolean, signal?: AbortSignal}} [options={}] - 请求配置
  */
 async function proxyFetch(targetUrl, options = {}) {
-  const { method = "GET", headers = {}, body, isStream = false } = options;
+  const {
+    method = "GET",
+    headers = {},
+    body,
+    isStream = false,
+    signal,
+  } = options;
   const stWindow = /** @type {any} */ (window);
+  throwIfAborted(signal);
 
   // 🚗 路线 A：非流式请求 (保持不变，绝对安全)
   if (!isStream) {
-    return new Promise((resolve) => {
-      stWindow.$.ajax({
+    return new Promise((resolve, reject) => {
+      let finished = false;
+      let removeAbortHandler = () => {};
+
+      const finish = (callback) => {
+        if (finished) return;
+        finished = true;
+        removeAbortHandler();
+        callback();
+      };
+
+      const jqXHR = stWindow.$.ajax({
         url: "/api/plugins/anima-rag/proxy/forward",
         type: "POST",
         contentType: "application/json",
@@ -85,31 +130,55 @@ async function proxyFetch(targetUrl, options = {}) {
           isStream: false,
         }),
         success: function (/** @type {any} */ data) {
-          resolve({
-            ok: true,
-            status: 200,
-            json: async () => data,
-            text: async () =>
-              typeof data === "object" ? JSON.stringify(data) : data,
+          finish(() => {
+            resolve({
+              ok: true,
+              status: 200,
+              json: async () => data,
+              text: async () =>
+                typeof data === "object" ? JSON.stringify(data) : data,
+            });
           });
         },
-        error: function (/** @type {any} */ jqXHR) {
-          resolve({
-            ok: false,
-            status: jqXHR.status,
-            text: async () => jqXHR.responseText || "请求失败",
+        error: function (/** @type {any} */ jqXHR, textStatus) {
+          if (textStatus === "abort" || signal?.aborted) {
+            finish(() => reject(createAbortError()));
+            return;
+          }
+
+          finish(() => {
+            resolve({
+              ok: false,
+              status: jqXHR.status,
+              text: async () => jqXHR.responseText || "请求失败",
+            });
           });
         },
+      });
+
+      removeAbortHandler = attachAbortHandler(signal, () => {
+        if (finished) return;
+        jqXHR.abort();
+        finish(() => reject(createAbortError()));
       });
     });
   }
 
   // 🚀 路线 B：流式请求 (挂载到 $.ajax，模拟 Fetch 的 ReadableStream)
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let handledLength = 0;
     /** @type {ReadableStreamDefaultController | undefined} */
     let streamController;
     let responseResolved = false;
+    let finished = false;
+    let removeAbortHandler = () => {};
+
+    const finish = (callback = null) => {
+      if (finished) return;
+      finished = true;
+      removeAbortHandler();
+      if (callback) callback();
+    };
 
     // 构造一个标准的可读流，用来完美骗过后续的 response.body.getReader()
     const stream = new ReadableStream({
@@ -118,7 +187,7 @@ async function proxyFetch(targetUrl, options = {}) {
       },
     });
 
-    stWindow.$.ajax({
+    const jqXHR = stWindow.$.ajax({
       url: "/api/plugins/anima-rag/proxy/forward",
       type: "POST",
       contentType: "application/json",
@@ -134,6 +203,8 @@ async function proxyFetch(targetUrl, options = {}) {
 
         // 1. 监听 HTTP 状态 (当后端 Headers 响应完毕时触发)
         xhr.addEventListener("readystatechange", function () {
+          if (signal?.aborted) return;
+
           if (xhr.readyState === 2 && !responseResolved) {
             if (xhr.status >= 200 && xhr.status < 300) {
               responseResolved = true;
@@ -152,6 +223,8 @@ async function proxyFetch(targetUrl, options = {}) {
 
         // 2. 监听流式数据的增量进度
         xhr.addEventListener("progress", function () {
+          if (signal?.aborted) return;
+
           if (xhr.status >= 200 && xhr.status < 300) {
             // 截取自上次处理之后的新文本
             const newText = xhr.responseText.substring(handledLength);
@@ -167,24 +240,56 @@ async function proxyFetch(targetUrl, options = {}) {
         return xhr;
       },
       success: function () {
+        if (signal?.aborted) return;
+
         // 请求正常结束，关闭流
         if (streamController) streamController.close();
+        finish();
       },
-      error: function (/** @type {any} */ jqXHR) {
+      error: function (/** @type {any} */ jqXHR, textStatus) {
+        if (textStatus === "abort" || signal?.aborted) {
+          const abortError = createAbortError();
+          if (!responseResolved) {
+            finish(() => reject(abortError));
+          } else if (streamController) {
+            streamController.error(abortError);
+            finish();
+          }
+          return;
+        }
+
         // 🟢 顺手把这里的 any 也补上
         if (!responseResolved) {
           // 如果一开局就因为 403 CSRF 炸了，直接按 fetch 失败处理
-          resolve({
-            ok: false,
-            status: jqXHR.status,
-            text: async () => jqXHR.responseText || "流式请求连接失败",
+          finish(() => {
+            resolve({
+              ok: false,
+              status: jqXHR.status,
+              text: async () => jqXHR.responseText || "流式请求连接失败",
+            });
           });
         } else {
           // 如果是半路断网，向流抛出异常
           if (streamController)
             streamController.error(new Error("Stream terminated early"));
+          finish();
         }
       },
+    });
+
+    removeAbortHandler = attachAbortHandler(signal, () => {
+      if (finished) return;
+
+      const abortError = createAbortError();
+      jqXHR.abort();
+      if (finished) return;
+
+      if (!responseResolved) {
+        finish(() => reject(abortError));
+      } else if (streamController) {
+        streamController.error(abortError);
+        finish();
+      }
     });
   });
 }
@@ -1344,8 +1449,13 @@ export async function generateText(
   promptOrMessages,
   purpose = "llm",
   overrideConfig = null,
+  requestOptions = {},
 ) {
+  const { signal } = requestOptions || {};
+
   try {
+    throwIfAborted(signal);
+
     // 🟢 1. 拦截空数据，防止 map 崩溃
     if (!promptOrMessages) {
       throw new Error(
@@ -1504,12 +1614,17 @@ export async function generateText(
       );
 
       try {
+        throwIfAborted(signal);
+
         const response = await proxyFetch(targetUrl, {
           method: "POST",
           headers: headers,
           body: requestBody,
           isStream: stream,
+          signal,
         });
+
+        throwIfAborted(signal);
 
         if (!response.ok) {
           let rawError = response.statusText;
@@ -1530,8 +1645,11 @@ export async function generateText(
           // 1. 非流式：直接调用 json()
           let data;
           try {
+            throwIfAborted(signal);
             data = await response.json();
+            throwIfAborted(signal);
           } catch (e) {
+            if (e?.name === "AbortError") throw e;
             throw new Error("内容不完整或解析错误");
           }
 
@@ -1548,7 +1666,9 @@ export async function generateText(
           let buffer = "";
 
           while (true) {
+            throwIfAborted(signal);
             const { done, value } = await reader.read();
+            throwIfAborted(signal);
             if (done) break;
 
             // 解码当前块并追加到缓冲区
@@ -1686,6 +1806,8 @@ export async function generateText(
       );
 
       try {
+        throwIfAborted(signal);
+
         const response = await proxyFetch(endpoint, {
           method: "POST",
           headers: {
@@ -1694,7 +1816,10 @@ export async function generateText(
           },
           body: requestBody,
           isStream: !!stream,
+          signal,
         });
+
+        throwIfAborted(signal);
 
         if (!response.ok) {
           const errText = await response.text();
@@ -1711,8 +1836,11 @@ export async function generateText(
         if (!stream) {
           let data;
           try {
+            throwIfAborted(signal);
             data = await response.json();
+            throwIfAborted(signal);
           } catch (e) {
+            if (e?.name === "AbortError") throw e;
             throw new Error("内容不完整或解析错误");
           }
 
@@ -1752,7 +1880,9 @@ export async function generateText(
         let buffer = "";
 
         while (true) {
+          throwIfAborted(signal);
           const { done, value } = await reader.read();
+          throwIfAborted(signal);
           if (done) break;
 
           // 解码当前块并追加到缓冲区
@@ -1802,11 +1932,16 @@ export async function generateText(
         if (!fullText) throw new Error("回复内容为空");
         return fullText;
       } catch (error) {
+        if (error?.name === "AbortError") throw error;
         console.error("[Anima] Direct API Error Details:", error);
         throw error;
       }
     }
   } catch (error) {
+    if (error?.name === "AbortError") {
+      throw error;
+    }
+
     // 🟢 3. 捕捉真正的错误原因并打印到 F12
     console.error(
       `[Anima 崩溃现场] generateText 在处理 ${purpose} 时炸了:`,

@@ -28,6 +28,11 @@ import { RegexListComponent, getRegexModalHTML } from "./regex_ui.js";
 import { openGCManagementModal } from "./status_gc_ui.js";
 // 全局变量缓存
 let currentSettings = null;
+let floatingSyncController = null;
+let floatingSyncPromise = null;
+let floatingSyncCancelPrompt = null;
+let floatingSyncCancelPromptClose = null;
+const FLOATING_SYNC_DRAG_THRESHOLD = 5;
 
 export function initStatusSettings() {
   const container = document.getElementById("tab-status");
@@ -1197,9 +1202,8 @@ export function refreshStatusPanel() {
           $syncBtn.attr("title", "检测到当前状态未同步，点击更新 (可拖动)");
         }
 
-        // 🔥【新增】强制重置图标为“云朵”
-        // 防止上次点击后留下的 fa-spinner 还在转
-        if ($syncBtn.find)
+        // 请求中保持 spinner；非请求态才重置为“云朵”。
+        if ($syncBtn.find && !isFloatingSyncRequestActive())
           $syncBtn.find("i").attr("class", "fa-solid fa-cloud-arrow-up");
 
         $syncBtn
@@ -4066,6 +4070,108 @@ function createCustomModal(title, contentHtml) {
   });
 }
 
+function isAbortError(error) {
+  return error?.name === "AbortError";
+}
+
+function isFloatingSyncRequestActive() {
+  return !!floatingSyncPromise && !floatingSyncController?.signal?.aborted;
+}
+
+function setFloatingSyncLoading(isLoading) {
+  const $btn = $("#anima-floating-sync-btn");
+  if ($btn.length === 0) return;
+
+  const $icon = $btn.find("i");
+  if (isLoading) {
+    $btn
+      .attr("title", "状态同步请求中，点击可取消")
+      .css("display", "flex")
+      .removeClass("anima-spin-out")
+      .addClass("anima-fade-in anima-sync-loading");
+    $icon.attr("class", "fa-solid fa-spinner fa-spin");
+  } else {
+    $btn
+      .attr("title", "检测到当前状态未同步，点击更新 (可拖动)")
+      .removeClass("anima-sync-loading");
+    $icon.attr("class", "fa-solid fa-cloud-arrow-up");
+  }
+}
+
+function closeFloatingSyncCancelPrompt(shouldCancel = false) {
+  if (floatingSyncCancelPromptClose) {
+    floatingSyncCancelPromptClose(shouldCancel);
+    return;
+  }
+
+  $("#anima-floating-sync-cancel-modal").remove();
+  floatingSyncCancelPrompt = null;
+}
+
+function askFloatingSyncCancel() {
+  if (floatingSyncCancelPrompt) return floatingSyncCancelPrompt;
+
+  floatingSyncCancelPrompt = new Promise((resolve) => {
+    const modalId = "anima-floating-sync-cancel-modal";
+    $(`#${modalId}`).remove();
+
+    const modalHtml = `
+      <div id="${modalId}" class="anima-modal hidden">
+        <div class="anima-modal-content" style="max-width: 420px; padding-bottom: 0;">
+          <div class="anima-modal-header">
+            <span><i class="fa-solid fa-spinner fa-spin"></i> 状态同步进行中</span>
+            <span class="anima-close-modal" data-action="continue">&times;</span>
+          </div>
+          <div class="anima-modal-body">
+            当前状态 API 请求仍在等待回复。要取消本次等待吗？
+          </div>
+          <div class="anima-modal-footer">
+            <button class="anima-btn secondary" data-action="continue">
+              <i class="fa-solid fa-hourglass-half"></i> 继续请求
+            </button>
+            <button class="anima-btn danger" data-action="cancel">
+              <i class="fa-solid fa-xmark"></i> 取消请求
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    $("body").append(modalHtml);
+    const $modal = $(`#${modalId}`);
+    let didClose = false;
+
+    const close = (shouldCancel) => {
+      if (didClose) return;
+      didClose = true;
+      $modal.addClass("hidden");
+      setTimeout(() => $modal.remove(), 200);
+      floatingSyncCancelPrompt = null;
+      floatingSyncCancelPromptClose = null;
+      resolve(shouldCancel);
+    };
+    floatingSyncCancelPromptClose = close;
+
+    $modal.on("click", function (e) {
+      const target = /** @type {HTMLElement} */ (e.target);
+      const action = target.closest("[data-action]")?.getAttribute("data-action");
+
+      if (action === "cancel") {
+        close(true);
+        return;
+      }
+
+      if (action === "continue" || e.target === this) {
+        close(false);
+      }
+    });
+
+    setTimeout(() => $modal.removeClass("hidden"), 10);
+  });
+
+  return floatingSyncCancelPrompt;
+}
+
 // ==========================================
 // 【修改版】悬浮同步按钮模块 (支持拖动)
 // ==========================================
@@ -4086,6 +4192,7 @@ export function initFloatingSyncButton() {
   // 2. 拖动逻辑变量 (保持原样)
   let isDragging = false;
   let hasMoved = false; // 用于区分是点击还是拖动
+  let suppressNextClick = false;
   let startX, startY, initialLeft, initialTop;
 
   // 3. 绑定鼠标/触摸事件
@@ -4095,6 +4202,7 @@ export function initFloatingSyncButton() {
 
     isDragging = true;
     hasMoved = false;
+    suppressNextClick = false;
 
     // 移除 transition 以便实时跟随，且改变鼠标样式
     $btn.css({ cursor: "grabbing", transition: "none" });
@@ -4127,7 +4235,10 @@ export function initFloatingSyncButton() {
     const dy = clientY - startY;
 
     // 只有移动超过一定距离才视为拖动，防止手抖
-    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+    if (
+      Math.abs(dx) > FLOATING_SYNC_DRAG_THRESHOLD ||
+      Math.abs(dy) > FLOATING_SYNC_DRAG_THRESHOLD
+    ) {
       hasMoved = true;
     }
 
@@ -4148,36 +4259,63 @@ export function initFloatingSyncButton() {
 
   $(document).on("mouseup touchend", function (e) {
     if (!isDragging) return;
+    const wasDragging = hasMoved;
     isDragging = false;
     $btn.css({ cursor: "grab", transition: "opacity 0.3s ease" });
+    suppressNextClick = wasDragging;
 
     // 🟢【修改3】手机端点击修复：
     // 因为在 touchstart 里用了 preventDefault()，浏览器的原生 click 事件被杀死了。
     // 所以如果手指抬起时没有发生移动 (!hasMoved)，我们需要手动触发 click。
-    if (e.type === "touchend" && !hasMoved) {
+    if (e.type === "touchend" && !wasDragging) {
       $btn.trigger("click");
     }
   });
 
-  // 4. 点击事件 (核心：如果是拖动结束，则不触发同步)
-  // (保持你原本的逻辑完全不变)
+  // 4. 点击事件：拖拽后不触发同步；请求中重复点击只询问是否取消。
   $btn.on("click", async function (e) {
-    if (hasMoved) {
+    if (hasMoved || suppressNextClick) {
       // 如果刚刚是拖动，则忽略这次点击
       e.preventDefault();
       e.stopPropagation();
+      hasMoved = false;
+      suppressNextClick = false;
       return;
     }
 
-    // --- 执行原有同步逻辑 ---
-    const $icon = $(this).find("i");
-    $icon.removeClass("fa-cloud-arrow-up").addClass("fa-spinner fa-spin");
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (isFloatingSyncRequestActive()) {
+      const shouldCancel = await askFloatingSyncCancel();
+      if (shouldCancel && isFloatingSyncRequestActive()) {
+        floatingSyncController.abort();
+        setFloatingSyncLoading(false);
+        if (window.toastr) toastr.info("已取消状态同步等待");
+      }
+      return;
+    }
+
+    const controller = new AbortController();
+    const requestPromise = triggerManualSync({ signal: controller.signal });
+    floatingSyncController = controller;
+    floatingSyncPromise = requestPromise;
+    setFloatingSyncLoading(true);
 
     try {
-      await triggerManualSync();
+      await requestPromise;
     } catch (err) {
-      if (window.toastr) toastr.error("同步失败");
-      $icon.removeClass("fa-spinner fa-spin").addClass("fa-cloud-arrow-up");
+      if (!isAbortError(err) && window.toastr) {
+        toastr.error("同步失败: " + (err?.message || "未知错误"));
+      }
+    } finally {
+      if (floatingSyncPromise === requestPromise) {
+        closeFloatingSyncCancelPrompt(false);
+        floatingSyncPromise = null;
+        floatingSyncController = null;
+        setFloatingSyncLoading(false);
+        refreshStatusPanel();
+      }
     }
   });
 }

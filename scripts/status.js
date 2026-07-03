@@ -1738,26 +1738,90 @@ function initBeautifyModule() {
   // 预览状态 Flag
   let isPreviewMode = false;
 
-  $toggle.on("change", function () {
+  async function saveBeautifySettingsToCurrentCharacter(showSuccess = false) {
+    const context = SillyTavern.getContext();
+    const characterId = context.characterId;
+    if (characterId === undefined || characterId === null) {
+      if (window.toastr) toastr.warning("未检测到当前角色，无法保存美化配置。");
+      return false;
+    }
+
+    if (!currentSettings.beautify_settings)
+      currentSettings.beautify_settings = {};
+
+    const dataToSave = {
+      enabled: Boolean(currentSettings.beautify_settings.enabled),
+      template: String($textarea.val() ?? ""),
+    };
+    currentSettings.beautify_settings.template = dataToSave.template;
+
+    try {
+      await context.writeExtensionField(
+        characterId,
+        "anima_beautify_template",
+        dataToSave,
+      );
+      if (showSuccess && window.toastr)
+        toastr.success("美化配置已成功保存到角色卡！");
+      return true;
+    } catch (err) {
+      console.error("[Anima] 保存美化配置到角色卡失败:", err);
+      if (window.toastr) toastr.error("保存美化配置失败: " + err.message);
+      return false;
+    }
+  }
+
+  async function refreshBeautifiedMessages() {
+    const context = SillyTavern.getContext();
+    const chat = context.chat || [];
+    const targets = chat
+      .filter(
+        (msg) =>
+          typeof msg.message === "string" &&
+          /{{ANIMA_STATUS::\d+}}/.test(msg.message),
+      )
+      .map((msg) => ({ message_id: msg.message_id }));
+
+    if (targets.length === 0) return;
+
+    if (window.TavernHelper?.setChatMessages) {
+      await window.TavernHelper.setChatMessages(targets);
+    } else if (context.reloadCurrentChat) {
+      await context.reloadCurrentChat();
+    }
+  }
+
+  $toggle.on("change", async function () {
     const enabled = $(this).prop("checked");
+    const previousEnabled = Boolean(currentSettings.beautify_settings?.enabled);
+
     if (enabled) $editorArea.slideDown(200);
     else $editorArea.slideUp(200);
+
     if (!currentSettings.beautify_settings)
       currentSettings.beautify_settings = {};
     currentSettings.beautify_settings.enabled = enabled;
-    saveStatusSettings(currentSettings);
+
+    const saved = await saveBeautifySettingsToCurrentCharacter(false);
+    if (!saved) {
+      currentSettings.beautify_settings.enabled = previousEnabled;
+      $toggle.prop("checked", previousEnabled);
+      if (previousEnabled) $editorArea.slideDown(200);
+      else $editorArea.slideUp(200);
+      return;
+    }
+
+    await refreshBeautifiedMessages();
   });
 
   $("#btn-save-beautify-card").on("click", async () => {
     const template = $textarea.val();
 
-    // 1. 保存到角色卡 (保持你原来的逻辑)
-    const success = await saveSettingsToCharacterCard(
-      "anima_beautify_template",
-      {
-        template: template,
-      },
-    );
+    if (!currentSettings.beautify_settings)
+      currentSettings.beautify_settings = {};
+    currentSettings.beautify_settings.template = template;
+
+    const success = await saveBeautifySettingsToCurrentCharacter(true);
 
     if (success) {
       // 2. 【新增】强制刷新当前聊天

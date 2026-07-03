@@ -103,7 +103,7 @@ export function getStatusSettings() {
   const charId = context.characterId;
 
   // 4. 如果有角色卡，尝试从扩展字段读取配置并覆盖默认值
-  if (charId) {
+  if (charId !== undefined && charId !== null) {
     // --- 读取 Zod 配置 ---
     const cardZod = getSettingsFromCharacterCard("anima_zod_config");
     if (cardZod) {
@@ -144,13 +144,10 @@ export function getStatusSettings() {
       "anima_beautify_template",
     );
     if (cardBeautify) {
-      // 你的 beautify 结构在默认值里是 { enabled, template }，存卡里也是这个结构吗？
-      // 假设存卡里的直接是 { template: "..." } 或者完整对象，请根据你存的数据结构适配
-      if (finalSettings.beautify_settings) {
-        Object.assign(finalSettings.beautify_settings, cardBeautify);
-      } else {
-        finalSettings.beautify_settings = cardBeautify;
-      }
+      finalSettings.beautify_settings = structuredClone(
+        DEFAULT_STATUS_SETTINGS.beautify_settings,
+      );
+      Object.assign(finalSettings.beautify_settings, cardBeautify);
     } else {
       finalSettings.beautify_settings = structuredClone(
         DEFAULT_STATUS_SETTINGS.beautify_settings,

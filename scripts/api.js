@@ -1215,7 +1215,7 @@ function bindLogic(type) {
       // 这里使用原生的 prompt，最简单直接，不需要写复杂的 HTML 弹窗
       const newName = prompt(
         "请输入新渠道的名称：",
-        "备用渠道 " + Math.floor(Math.random() * 100),
+        "",
       );
       if (!newName || !newName.trim()) return;
 

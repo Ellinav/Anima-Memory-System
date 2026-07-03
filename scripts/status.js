@@ -539,7 +539,6 @@ export function initStatusSettings() {
             
             <div class="anima-flex-row" style="justify-content: space-between; align-items: center; margin-bottom: 10px; min-height: 32px;">
                 <div class="anima-label-group">
-                    <span class="anima-label-text">状态快照查看</span>
                     <span id="hist-current-floor-indicator" class="anima-tag primary" style="display:none; margin-left:10px;">Floor #--</span>
                 </div>
                 
@@ -549,6 +548,9 @@ export function initStatusSettings() {
                     </button>
                     <button id="btn-hist-edit" class="anima-btn primary small" title="编辑当前内容">
                         <i class="fa-solid fa-pen-to-square"></i> 编辑
+                    </button>
+                    <button id="btn-hist-delete" class="anima-btn danger small" title="删除当前楼层的 anima_data 变量">
+                        <i class="fa-solid fa-trash"></i> 删除
                     </button>
                     <button id="btn-open-history-modal" class="anima-btn secondary small">
                         <i class="fa-solid fa-list-ul"></i> 选择楼层
@@ -2875,19 +2877,57 @@ function initHistoryModule() {
 
   const $textarea = $("#hist-yaml-content");
   const $indicator = $("#hist-current-floor-indicator");
-  $btnOpenModal;
 
   // 按钮组
   const $viewGroup = $("#hist-actions-view");
   const $editGroup = $("#hist-actions-edit");
   const $btnRefresh = $("#btn-hist-refresh");
   const $btnEdit = $("#btn-hist-edit");
+  const $btnDelete = $("#btn-hist-delete");
   const $btnConfirm = $("#btn-hist-confirm");
   const $btnCancel = $("#btn-hist-cancel");
 
   let tempContent = "";
   let currentFloorId = null;
   bindYamlAutoIndent($textarea);
+
+  function setHistoryActionEnabled($button, enabled) {
+    $button
+      .prop("disabled", !enabled)
+      .css({
+        opacity: enabled ? "" : "0.45",
+        cursor: enabled ? "" : "not-allowed",
+        filter: enabled ? "" : "grayscale(0.6)",
+      });
+  }
+
+  function updateHistoryActionState() {
+    const hasSelectedFloor = currentFloorId !== null;
+    setHistoryActionEnabled($btnEdit, hasSelectedFloor);
+    setHistoryActionEnabled($btnDelete, hasSelectedFloor);
+  }
+
+  function clearSelectedHistoryFloor() {
+    currentFloorId = null;
+    tempContent = "";
+    $indicator.hide().text("Floor #--");
+    $textarea
+      .val("")
+      .prop("disabled", true)
+      .removeClass("anima-input-active");
+    updateHistoryActionState();
+  }
+
+  async function refreshHistoryFloorMessage(floorId) {
+    if (!window.TavernHelper?.setChatMessages) return;
+    await window.TavernHelper.setChatMessages([
+      {
+        message_id: floorId,
+      },
+    ]);
+  }
+
+  updateHistoryActionState();
 
   // 1. 打开弹窗 (选择楼层)
   $btnOpenModal.on("click", (e) => {
@@ -2957,22 +2997,20 @@ function initHistoryModule() {
   async function loadFloorStatus(floorId) {
     try {
       const statusData = getStatusFromMessage(floorId);
-      if (statusData) {
-        // --- 修改点：剥离最外层 anima_data ---
-        const displayData = statusData.anima_data
-          ? statusData.anima_data
-          : statusData;
-        const yamlStr = objectToYaml(displayData);
-        // ------------------------------------
-
-        $textarea.val(yamlStr);
-
-        // 更新UI状态
-        currentFloorId = floorId;
-        $indicator.text(`Floor #${floorId}`).show();
-        $btnEdit.prop("disabled", false).removeClass("disabled");
-        $textarea.prop("disabled", true);
+      if (!statusData?.anima_data || Object.keys(statusData.anima_data).length === 0) {
+        toastr.warning(`楼层 #${floorId} 没有 anima_data 变量`);
+        return;
       }
+
+      const yamlStr = objectToYaml(statusData.anima_data);
+
+      $textarea.val(yamlStr);
+
+      // 更新UI状态
+      currentFloorId = floorId;
+      $indicator.text(`Floor #${floorId}`).show();
+      $textarea.prop("disabled", true);
+      updateHistoryActionState();
     } catch (e) {
       toastr.error("读取楼层数据失败");
       console.error(e);
@@ -2998,14 +3036,51 @@ function initHistoryModule() {
     $textarea.prop("disabled", false).focus().addClass("anima-input-active");
   });
 
-  // 6. 取消编辑
+  // 6. 删除当前楼层的 anima_data 变量
+  $btnDelete.on("click", async (e) => {
+    e.preventDefault();
+    if (currentFloorId === null) {
+      toastr.warning("请先通过“选择楼层”加载一个历史快照");
+      return;
+    }
+
+    try {
+      const result = await window.TavernHelper.deleteVariable("anima_data", {
+        type: "message",
+        message_id: currentFloorId,
+      });
+
+      if (result && result.delete_occurred === false) {
+        toastr.warning(`楼层 #${currentFloorId} 没有 anima_data 变量`);
+        return;
+      }
+
+      const deletedFloorId = currentFloorId;
+      await refreshHistoryFloorMessage(deletedFloorId);
+      exitEditMode();
+      clearSelectedHistoryFloor();
+      toastr.success(`已删除楼层 #${deletedFloorId} 的 anima_data 变量`);
+
+      setTimeout(() => {
+        refreshStatusPanel();
+        if (!$modal.hasClass("hidden")) {
+          renderModalList(scanChatForStatus());
+        }
+      }, 50);
+    } catch (err) {
+      toastr.error("删除失败: " + err.message);
+      console.error(err);
+    }
+  });
+
+  // 7. 取消编辑
   $btnCancel.on("click", (e) => {
     e.preventDefault();
     $textarea.val(tempContent);
     exitEditMode();
   });
 
-  // 7. 确认保存
+  // 8. 确认保存
   $btnConfirm.on("click", async (e) => {
     e.preventDefault();
     if (currentFloorId === null) return;
@@ -3047,7 +3122,7 @@ function initHistoryModule() {
     }
   });
 
-  // 8. 刷新按钮
+  // 9. 刷新按钮
   $btnRefresh.on("click", (e) => {
     e.preventDefault();
     const $icon = $btnRefresh.find("i");

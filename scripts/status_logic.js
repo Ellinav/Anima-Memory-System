@@ -1422,9 +1422,6 @@ export function initStatusMacro() {
     let rawAnimaData = {};
     if (variables && variables.anima_data) {
       rawAnimaData = variables.anima_data;
-    } else if (variables && Object.keys(variables).length > 0) {
-      // 兼容某些极端情况，虽然通常变量都存在 anima_data 下
-      rawAnimaData = variables;
     }
     // 4. 【关键修改】先检查数据是否为空 (判空逻辑前提)
     // 必须在 createRenderContext 之前判断！因为 createRenderContext 会注入 _user 导致对象永远非空
@@ -1626,11 +1623,15 @@ export function scanChatForStatus() {
     const msg = chat[i];
     const status = getStatusFromMessage(msg.message_id);
 
-    // 只要变量存在且非空，就加入列表
-    if (status && Object.keys(status).length > 0) {
+    // 历史状态列表只展示包含 anima_data 的楼层，避免其他变量被误认为状态。
+    if (
+      status &&
+      status.anima_data &&
+      Object.keys(status.anima_data).length > 0
+    ) {
       let preview = "Status Data";
       try {
-        const keys = Object.keys(status).slice(0, 3).join(", ");
+        const keys = Object.keys(status.anima_data).slice(0, 3).join(", ");
         preview = keys ? `{ ${keys}... }` : "Empty Object";
       } catch (e) {}
 

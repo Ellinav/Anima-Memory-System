@@ -21,6 +21,24 @@ const stWindow = window;
 const { extensionSettings, saveSettingsDebounced } = SillyTavern.getContext();
 const ROOT_KEY = "anima_memory_system";
 const SUB_KEY = "status";
+const activeStatusUpdates = new Set();
+const STATUS_ERROR_TOAST_DEDUPE_MS = 3000;
+let lastStatusErrorToast = { message: "", timestamp: 0 };
+
+function showStatusErrorToast(message) {
+  if (!window.toastr) return;
+
+  const now = Date.now();
+  if (
+    lastStatusErrorToast.message === message &&
+    now - lastStatusErrorToast.timestamp < STATUS_ERROR_TOAST_DEDUPE_MS
+  ) {
+    return;
+  }
+
+  lastStatusErrorToast = { message, timestamp: now };
+  window.toastr.error(message);
+}
 
 export const DEFAULT_STATUS_SETTINGS = {
   status_enabled: false,
@@ -582,6 +600,14 @@ export async function triggerStatusUpdate(targetMsgId) {
     targetMsgId,
   );
 
+  if (activeStatusUpdates.has(targetMsgId)) {
+    console.warn(
+      `[Anima Status] 跳过重复状态更新请求：Msg #${targetMsgId} 已在处理中`,
+    );
+    return false;
+  }
+  activeStatusUpdates.add(targetMsgId);
+
   // 辅助函数：强制刷新 UI (显示未同步或错误状态)
   const forceRefreshUI = () => {
     window.dispatchEvent(
@@ -596,7 +622,10 @@ export async function triggerStatusUpdate(targetMsgId) {
     }
   };
 
-  if (!messages || messages.length === 0) return false;
+  if (!messages || messages.length === 0) {
+    activeStatusUpdates.delete(targetMsgId);
+    return false;
+  }
 
   try {
     // 1. 请求 API
@@ -718,10 +747,12 @@ export async function triggerStatusUpdate(targetMsgId) {
     console.error("[Anima] Update failed (Exception):", e);
 
     // 显示更友好的错误提示 (e.message 现在会包含 api.js 传递的状态码)
-    if (window.toastr) window.toastr.error("状态更新异常: " + e.message);
+    showStatusErrorToast("状态更新异常: " + e.message);
 
     forceRefreshUI();
     return false; // ❌ 终止：报错不写入
+  } finally {
+    activeStatusUpdates.delete(targetMsgId);
   }
 }
 

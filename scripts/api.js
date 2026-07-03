@@ -220,33 +220,159 @@ export function getAnimaConfig() {
 }
 
 /**
- * 清洗错误响应，去除 HTML 标签
- * @param {string} text - 原始报错文本
- * @returns {string} - 清洗后的报错信息
+ * 将 API 错误响应整理成适合弹窗显示的纯文本。
+ * @param {unknown} rawError - 原始报错内容
+ * @returns {string}
  */
-function cleanErrorMessage(text) {
-  if (!text) return "未知错误";
-  const trimmed = text.trim();
+function cleanErrorMessage(rawError) {
+  const message = extractErrorReason(rawError) || "未知错误";
+  return limitErrorLength(message);
+}
 
-  // 1. 如果是 HTML 页面 (常见的 404/502 报错页)
-  if (
-    trimmed.toLowerCase().startsWith("<!doctype") ||
-    trimmed.toLowerCase().startsWith("<html")
-  ) {
-    // 尝试提取网页的 <title> 标签内容
-    const titleMatch = trimmed.match(/<title>(.*?)<\/title>/i);
-    if (titleMatch && titleMatch[1]) {
-      return `网关或路由错误: ${titleMatch[1].trim()}`;
+/**
+ * @param {number | string} status
+ * @param {unknown} rawError
+ * @param {string} [fallbackReason]
+ * @returns {string}
+ */
+function formatApiError(status, rawError, fallbackReason = "") {
+  const reason = cleanErrorMessage(rawError || fallbackReason);
+  const statusText = status || "未知";
+  return `错误码 ${statusText}: ${reason}`;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string}
+ */
+function extractErrorReason(value) {
+  if (value == null) return "";
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+
+    const parsed = parseJsonLike(trimmed);
+    if (parsed !== null) {
+      const parsedReason = extractErrorReason(parsed);
+      if (parsedReason) return parsedReason;
     }
-    return "服务器返回了无效的网页内容 (请检查 URL 路径是否正确)";
+
+    return cleanPlainText(trimmed);
   }
 
-  // 2. 去除可能残留的 HTML 标签，并限制长度
-  let cleaned = trimmed
+  if (value instanceof Error) {
+    return extractErrorReason(value.message);
+  }
+
+  if (typeof value !== "object") {
+    return String(value);
+  }
+
+  const data = /** @type {Record<string, any>} */ (value);
+  const nestedError = data.error;
+
+  if (nestedError) {
+    if (typeof nestedError === "string") return extractErrorReason(nestedError);
+    const nestedReason = extractErrorReason(nestedError);
+    if (nestedReason) return nestedReason;
+  }
+
+  const directReason =
+    data.message ||
+    data.detail ||
+    data.reason ||
+    data.error_description ||
+    data.statusText;
+  const code = data.code || data.status || data.type;
+
+  if (directReason && code) {
+    return `${code}: ${extractErrorReason(directReason)}`;
+  }
+  if (directReason) return extractErrorReason(directReason);
+  if (code) return String(code);
+
+  const primitives = Object.entries(data)
+    .filter(([, item]) => item == null || typeof item !== "object")
+    .slice(0, 4)
+    .map(([key, item]) => `${key}: ${String(item)}`);
+
+  return primitives.join("; ");
+}
+
+/**
+ * @param {string} text
+ * @returns {unknown | null}
+ */
+function parseJsonLike(text) {
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * @param {string} text
+ * @returns {string}
+ */
+function cleanPlainText(text) {
+  const trimmed = decodeHtmlEntities(text).trim();
+  const lower = trimmed.toLowerCase();
+
+  if (lower.startsWith("<!doctype") || lower.startsWith("<html")) {
+    const title = getHtmlTagText(trimmed, "title");
+    if (title) return `网关或路由错误: ${title}`;
+
+    const heading = getHtmlTagText(trimmed, "h1");
+    if (heading) return `网关或路由错误: ${heading}`;
+
+    return "服务器返回了 HTML 错误页面，请检查 API URL 或后端路由";
+  }
+
+  return trimmed
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  return cleaned.length > 100 ? cleaned.substring(0, 100) + "..." : cleaned;
+}
+
+/**
+ * @param {string} html
+ * @param {string} tag
+ * @returns {string}
+ */
+function getHtmlTagText(html, tag) {
+  const match = html.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
+  return match ? cleanPlainText(match[1]) : "";
+}
+
+/**
+ * @param {string} text
+ * @returns {string}
+ */
+function decodeHtmlEntities(text) {
+  if (typeof document !== "undefined") {
+    const textarea = document.createElement("textarea");
+    textarea.innerHTML = text;
+    return textarea.value;
+  }
+
+  return text
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+/**
+ * @param {string} text
+ * @returns {string}
+ */
+function limitErrorLength(text) {
+  return text.length > 300 ? text.substring(0, 300) + "..." : text;
 }
 
 /**
@@ -846,9 +972,7 @@ function bindLogic(type) {
 
           if (!res.ok) {
             const errText = await res.text();
-            throw new Error(
-              `Rerank 报错 (${res.status}): ${cleanErrorMessage(errText)}`,
-            );
+            throw new Error(`Rerank 报错: ${formatApiError(res.status, errText)}`);
           }
 
           const data = await res.json();
@@ -924,7 +1048,7 @@ function bindLogic(type) {
         }
       } catch (e) {
         console.error(`[Anima] Test Failed: ${e.message}`);
-        let errorMsg = e.message || "未知错误";
+        let errorMsg = cleanErrorMessage(e.message || "未知错误");
         // 简单美化一下常见错误
         if (errorMsg.includes("401")) errorMsg = "401 鉴权失败 (请检查 Key)";
         if (errorMsg.includes("404")) errorMsg = "404 路径错误 (请检查 URL)";
@@ -987,7 +1111,7 @@ function bindLogic(type) {
           if (!res.ok) {
             const errText = await res.text();
             throw new Error(
-              `Google 连接失败 (${res.status}): ${cleanErrorMessage(errText)}`,
+              `Google 连接失败: ${formatApiError(res.status, errText)}`,
             );
           }
 
@@ -1028,7 +1152,7 @@ function bindLogic(type) {
           } else {
             const errText = await directResponse.text();
             throw new Error(
-              `获取模型失败 (${directResponse.status}): ${cleanErrorMessage(errText)}`,
+              `获取模型失败: ${formatApiError(directResponse.status, errText)}`,
             );
           }
 
@@ -1050,9 +1174,9 @@ function bindLogic(type) {
         }
       } catch (/** @type {any} */ e) {
         console.error(`[Anima] Connect Error: ${e.message}`);
-        let errorMsg = e.message;
+        let errorMsg = cleanErrorMessage(e.message || "未知错误");
         if (e.status === 403) errorMsg = "403 Forbidden: 检查 Key 或白名单";
-        else if (e.responseText) errorMsg = `错误: ${e.status}`;
+        else if (e.responseText) errorMsg = formatApiError(e.status, e.responseText);
         if (window.toastr) window.toastr.error(errorMsg);
       } finally {
         btnConnect.innerHTML = originalHtml;
@@ -1386,15 +1510,12 @@ export async function generateText(
         });
 
         if (!response.ok) {
-          let errorMsg = response.statusText;
+          let rawError = response.statusText;
           try {
             // 兼容错误状态下的解析
-            const errData = response.json
-              ? await response.json()
-              : { error: await response.text() };
-            errorMsg = errData.error?.message || JSON.stringify(errData);
+            rawError = response.json ? await response.json() : await response.text();
           } catch (e) {}
-          throw new Error(`Google API Error (${response.status}): ${errorMsg}`);
+          throw new Error(formatApiError(response.status, rawError, response.statusText));
         }
 
         let text = "";
@@ -1546,22 +1667,9 @@ export async function generateText(
 
         if (!response.ok) {
           const errText = await response.text();
-          let errMsg = errText;
-
-          // 尝试解析厂商返回的详细 JSON 错误
-          try {
-            const errJson = JSON.parse(errText);
-            if (errJson.error && errJson.error.message) {
-              errMsg = errJson.error.message;
-            } else if (errJson.message) {
-              errMsg = errJson.message;
-            }
-          } catch (e) {}
 
           // 抛出带有状态码的错误，这样 toastr 就能显示 "401: Invalid Key"
-          throw new Error(
-            `API Error (${response.status}): ${errMsg.substring(0, 100)}`,
-          );
+          throw new Error(formatApiError(response.status, errText));
         }
 
         // ==========================================
@@ -1576,10 +1684,7 @@ export async function generateText(
           // 很多中转站或 API 会返回 200 OK 但 body 里包含 error
           if (data.error) {
             console.error("[Anima] API Error Details:", data.error);
-            const errorMsg =
-              data.error.message ||
-              data.error.code ||
-              JSON.stringify(data.error);
+            const errorMsg = cleanErrorMessage(data.error);
             throw new Error(`API 业务错误: ${errorMsg}`);
           }
 
@@ -1607,13 +1712,7 @@ export async function generateText(
 
             const finalErrorMsg = "模型返回内容为空。" + extraHint;
 
-            // ✅【新增】强制弹窗：不管调用方怎么处理，先弹个窗告诉用户
-            if (window.toastr) {
-              // timeOut: 0 表示不自动消失（或者是设置长一点时间），让用户看清楚
-              window.toastr.error(finalErrorMsg, "Anima Critical Error");
-            }
-
-            // 继续抛出错误，中断后续逻辑
+            // 交给调用方统一展示错误，避免同一个 API 错误弹出多次。
             throw new Error(finalErrorMsg);
           }
           return content;

@@ -321,13 +321,14 @@ export async function saveSummaryBatchToWorldbook(
     bm25GlobalSettings.bm25_enabled !== false &&
     bm25GlobalSettings.auto_build !== false;
 
-  // 执行拦截：如果向量总开关关闭 或 自动向量化关闭
-  if (!isRagEnabled || !isAutoVectorize) {
+  // 向量和 BM25 是两条独立的同步链路。关闭向量化时只跳过向量，
+  // 不能提前 return，否则会连带跳过已开启的 BM25 自动构建。
+  const shouldAutoVectorize = isRagEnabled && isAutoVectorize;
+  if (!shouldAutoVectorize) {
     console.log(
       `[Anima] 自动向量化已跳过 (总开关: ${isRagEnabled}, 自动: ${isAutoVectorize})`,
     );
     if (window.toastr) toastr.info("总结已保存 (未向量化)");
-    return;
   }
 
   // ✨ 为了给 BM25 提供准确的 entryUid，我们在数据落盘后重新查询一次当前分卷
@@ -338,42 +339,47 @@ export async function saveSummaryBatchToWorldbook(
   );
   const entryUid = savedEntry ? savedEntry.uid : null;
 
-  // 对新生成的每个切片，分别触发向量化和 BM25 索引
+  // 对新生成的每个切片，分别处理向量化和 BM25 索引。
+  // 两条链路相互独立，且等待 BM25 完成后再返回，避免 UI 提前显示“待重构”。
   const successIds = [];
   for (const item of newHistoryItems) {
-    try {
-      // 1. 触发原有的向量写入
-      const result = await insertMemory(
-        summaryList[item.slice_id - 1].content,
-        item.tags,
-        item.narrative_time,
-        targetChatId,
-        null,
-        item.unique_id,
-        batchId,
-      );
+    if (shouldAutoVectorize) {
+      try {
+        const result = await insertMemory(
+          summaryList[item.slice_id - 1].content,
+          item.tags,
+          item.narrative_time,
+          targetChatId,
+          null,
+          item.unique_id,
+          batchId,
+        );
 
-      if (result && result.success === true) {
-        console.log(`[Anima] 向量已存入: ${item.unique_id}`);
-        successIds.push(item.unique_id);
-      } else {
-        console.warn(`[Anima] 向量存入失败: ${item.unique_id}`, result?.error);
+        if (result && result.success === true) {
+          console.log(`[Anima] 向量已存入: ${item.unique_id}`);
+          successIds.push(item.unique_id);
+        } else {
+          console.warn(
+            `[Anima] 向量存入失败: ${item.unique_id}`,
+            result?.error,
+          );
+        }
+      } catch (err) {
+        console.error(`[Anima] 向量存入过程崩溃:`, err);
       }
+    }
 
-      // 2. ✨ 触发新加的 BM25 增量同步 (如果开了自动构建的话)
-      if (isBm25Auto && entryUid) {
-        // 这里不需要 await 阻塞主循环，直接丢进后台运行即可
-        triggerBm25BuildSingle(
+    if (isBm25Auto && entryUid) {
+      try {
+        await triggerBm25BuildSingle(
           item.unique_id,
           entryUid,
           batchId,
           item.tags,
-        ).catch((e) => {
-          console.error(`[Anima BM25] 切片 ${item.unique_id} 自动构建失败:`, e);
-        });
+        );
+      } catch (err) {
+        console.error(`[Anima] BM25 切片 ${item.unique_id} 构建过程崩溃:`, err);
       }
-    } catch (err) {
-      console.error(`[Anima] 存入过程崩溃:`, err);
     }
   }
 

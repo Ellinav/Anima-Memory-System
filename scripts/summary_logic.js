@@ -11,7 +11,7 @@ import {
   processMacros,
   getContextData,
 } from "./utils.js";
-import { autoUpdateDictionary, triggerFullBm25Rebuild } from "./bm25_logic.js";
+import { autoUpdateDictionary } from "./bm25_logic.js";
 
 export const MODULE_NAME = "anima_memory_system";
 let isSummarizing = false;
@@ -643,7 +643,6 @@ export async function runSummarizationTask({
 
   // 🔒 4. 上锁
   isSummarizing = true;
-  let dictChangedGlobally = false;
 
   try {
     // =======================================================
@@ -875,9 +874,7 @@ export async function runSummarizationTask({
       // ✨✨ 1. 优先提取 dict_updates 并执行更新 (互不干扰)
       const dictUpdates = extractDictUpdates(rawResult);
       if (dictUpdates.length > 0) {
-        // 注意：需要在文件头部 import autoUpdateDictionary
-        const changed = await autoUpdateDictionary(dictUpdates);
-        if (changed) dictChangedGlobally = true;
+        await autoUpdateDictionary(dictUpdates);
       }
 
       // 1. 尝试提取 JSON (通过 JSDoc 强制声明为 any，打破 never 推断)
@@ -1057,9 +1054,6 @@ export async function runSummarizationTask({
       document.dispatchEvent(new CustomEvent("anima_summary_written"));
 
       await new Promise((r) => setTimeout(r, 1000));
-    }
-    if (dictChangedGlobally) {
-      await triggerFullBm25Rebuild();
     }
   } catch (err) {
     console.error("[Anima Error]", err);

@@ -1219,27 +1219,36 @@ export async function syncStatusWorldbookEntryEnabled(isEnabled) {
   const wbName = await safeGetChatWorldbookName();
   if (!wbName) return false;
 
-  let changed = false;
-  await window.TavernHelper.updateWorldbookWith(
+  const entries = await window.TavernHelper.getWorldbook(wbName);
+  const targetEntry = entries.find((item) => item.name === "[anima_status]");
+  if (!targetEntry) return false;
+  if (targetEntry.enabled === isEnabled) return true;
+
+  const updatedEntries = await window.TavernHelper.updateWorldbookWith(
     wbName,
     (entries) => {
-      const entry = entries.find((item) => item.name === "[anima_status]");
-      if (entry && entry.enabled !== isEnabled) {
+      const entry = entries.find((item) => item.uid === targetEntry.uid);
+      if (entry) {
         entry.enabled = isEnabled;
-        changed = true;
       }
       return entries;
     },
     { render: "immediate" },
   );
 
-  if (changed) {
-    console.log(
-      `[Anima Status] 当前聊天 [anima_status] 条目已${isEnabled ? "启用" : "禁用"}`,
+  const updatedEntry = updatedEntries.find(
+    (item) => item.uid === targetEntry.uid,
+  );
+  if (!updatedEntry || updatedEntry.enabled !== isEnabled) {
+    throw new Error(
+      `世界书 [${wbName}] 的 [anima_status] 条目未能立即切换为 ${isEnabled}`,
     );
   }
 
-  return changed;
+  console.log(
+    `[Anima Status] 当前聊天 [anima_status] 条目已${isEnabled ? "启用" : "禁用"}`,
+  );
+  return true;
 }
 
 export async function previewStatusPayload() {

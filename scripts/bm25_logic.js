@@ -56,8 +56,9 @@ export function getBm25BackendConfig(targetDictName = null) {
 
   let activeDictName = targetDictName;
 
-  // 如果没有强制指定词典名，才去读当前角色的兜底配置
+  // 如果没有强制指定词典名，优先读取当前库映射，再回退到角色默认词典。
   if (!activeDictName) {
+    const currentLibName = getCurrentBm25LibName();
     const charId = context.characterId;
     const charSettings =
       charId !== undefined
@@ -65,7 +66,9 @@ export function getBm25BackendConfig(targetDictName = null) {
           {}
         : {};
     activeDictName =
-      charSettings.bound_dict || globalSettings.current_dict || "default_dict";
+      globalSettings.dict_mapping?.[currentLibName]?.dict ||
+      charSettings.bound_dict ||
+      null;
   }
 
   const dictData = globalSettings.custom_dicts?.[activeDictName] || {
@@ -217,11 +220,9 @@ export async function triggerBm25BuildSingle(
       : {};
 
   const dictName =
-    charSettings.bound_dict || globalSettings.current_dict || "default_dict";
-  const dictData = globalSettings.custom_dicts?.[dictName] || {
-    blacklist: "",
-    words: [],
-  };
+    globalSettings.dict_mapping?.[safeChatId]?.dict ||
+    charSettings.bound_dict ||
+    null;
 
   // ✨ 4. 核心精简：抛弃原本那一大坨手工格式化代码
   // 直接调用刚刚修复好的函数，传入当前的词典名生成配置包
@@ -245,6 +246,14 @@ export async function triggerBm25BuildSingle(
     });
 
     if (res.success) {
+      if (dictName && globalSettings.custom_dicts?.[dictName]) {
+        if (!globalSettings.dict_mapping) globalSettings.dict_mapping = {};
+        globalSettings.dict_mapping[safeChatId] = {
+          dict: dictName,
+          dirty: false,
+        };
+        context.saveSettingsDebounced();
+      }
       await markBm25Synced(uniqueId);
       return true;
     }
@@ -275,7 +284,9 @@ export async function triggerBm25BuildBatch(dirtyItems) {
       ? context.characters[charId]?.data?.extensions?.anima_bm25_settings || {}
       : {};
   const dictName =
-    charSettings.bound_dict || globalSettings.current_dict || "default_dict";
+    globalSettings.dict_mapping?.[safeChatId]?.dict ||
+    charSettings.bound_dict ||
+    null;
   const bm25Config = getBm25BackendConfig(dictName);
 
   // 将前端格式映射为后端需要的数据包数组
@@ -300,6 +311,14 @@ export async function triggerBm25BuildBatch(dirtyItems) {
     });
 
     if (res.success) {
+      if (dictName && globalSettings.custom_dicts?.[dictName]) {
+        if (!globalSettings.dict_mapping) globalSettings.dict_mapping = {};
+        globalSettings.dict_mapping[safeChatId] = {
+          dict: dictName,
+          dirty: false,
+        };
+        context.saveSettingsDebounced();
+      }
       // 后端构建成功后，调用我们之前修复过的批量洗白函数，更新世界书状态
       const idsToMark = dirtyItems.map((i) => i.unique_id);
       await markAllBm25SyncedBatch(idsToMark);
@@ -379,18 +398,91 @@ export async function autoUpdateDictionary(dictUpdates) {
 
   // 2. 查角色卡，获取当前绑定的词典
   const charId = context.characterId;
+  if (charId === undefined || charId === null) {
+    console.log("❌ [Debug] 终止: 当前没有可绑定词典的角色");
+    return false;
+  }
+
   const charSettings =
-    charId !== undefined
-      ? context.characters[charId]?.data?.extensions?.anima_bm25_settings || {}
-      : {};
-  const dictName =
-    charSettings.bound_dict || globalSettings.current_dict || "default_dict";
+    context.characters[charId]?.data?.extensions?.anima_bm25_settings || {};
+
+  if (!globalSettings.custom_dicts) globalSettings.custom_dicts = {};
+  if (!globalSettings.dict_mapping) globalSettings.dict_mapping = {};
+
+  const currentLibName = getCurrentBm25LibName();
+  const mappedDictName = globalSettings.dict_mapping[currentLibName]?.dict;
+  const roleDictName = charSettings.bound_dict || null;
+  let dictName =
+    (mappedDictName && globalSettings.custom_dicts[mappedDictName]
+      ? mappedDictName
+      : null) ||
+    (roleDictName && globalSettings.custom_dicts[roleDictName]
+      ? roleDictName
+      : null);
+  let createdForRole = false;
+
+  if (!dictName) {
+    const characterName =
+      String(
+        context.characters[charId]?.name ||
+          context.characters[charId]?.data?.name ||
+          `角色${charId}`,
+      ).trim() || `角色${charId}`;
+    let suffix = 1;
+    let candidateName = `${characterName}-${suffix}`;
+
+    while (globalSettings.custom_dicts[candidateName]) {
+      suffix++;
+      candidateName = `${characterName}-${suffix}`;
+    }
+
+    dictName = candidateName;
+    globalSettings.custom_dicts[dictName] = { words: [] };
+    charSettings.bound_dict = dictName;
+    await context.writeExtensionField(
+      charId,
+      "anima_bm25_settings",
+      charSettings,
+    );
+    globalSettings.current_dict = dictName;
+    createdForRole = true;
+
+    if (typeof $ !== "undefined" && $("#bm25_dict_select").length > 0) {
+      const $dictSelect = $("#bm25_dict_select");
+      const hasOption =
+        $dictSelect
+          .find("option")
+          .filter(function () {
+            return $(this).val() === dictName;
+          }).length > 0;
+      if (!hasOption) {
+        $dictSelect.append(new Option(dictName, dictName));
+      }
+      $dictSelect.val(dictName);
+    }
+
+    if (window.toastr) {
+      toastr.info(
+        `已为当前角色自动创建并绑定词典 [${dictName}]`,
+        "BM25 词典",
+      );
+    }
+  }
+
+  const oldMapping = globalSettings.dict_mapping[currentLibName];
+  const mappingChanged = oldMapping?.dict !== dictName;
+  globalSettings.dict_mapping[currentLibName] = {
+    dict: dictName,
+    dirty:
+      oldMapping?.dirty === true ||
+      (oldMapping !== undefined && mappingChanged),
+  };
+
   console.log(
     `🔍 [Debug] 当前解析出的目标词典名称为: [${dictName}] (当前角色ID: ${charId})`,
   );
 
   // 3. 定位到全局里的具体词典数据
-  if (!globalSettings.custom_dicts) globalSettings.custom_dicts = {};
   const dictData = globalSettings.custom_dicts[dictName];
   if (!dictData) {
     console.log(
@@ -484,8 +576,12 @@ export async function autoUpdateDictionary(dictUpdates) {
     return true;
   }
 
+  if (createdForRole || mappingChanged) {
+    context.saveSettingsDebounced();
+  }
+
   console.log("⏸️ [Debug] 遍历完毕，所有词条均已存在，未发生任何实际变更");
-  return false;
+  return createdForRole;
 }
 
 /**
@@ -663,20 +759,15 @@ export async function saveDictionaryAndRebuild(
       );
 
       if (!globalSettings.dict_mapping) globalSettings.dict_mapping = {};
-      const oldBoundDict = globalSettings.dict_mapping[currentLibName]?.dict;
-      isDictSwitched = oldBoundDict !== dictName;
+      const oldMapping = globalSettings.dict_mapping[currentLibName];
+      isDictSwitched = oldMapping?.dict !== dictName;
 
-      if (isContentChanged || isDictSwitched) {
-        globalSettings.dict_mapping[currentLibName] = {
-          dict: dictName,
-          dirty: true,
-        };
-      } else if (!globalSettings.dict_mapping[currentLibName]) {
-        globalSettings.dict_mapping[currentLibName] = {
-          dict: dictName,
-          dirty: false,
-        };
-      }
+      // 角色词典只作为新库的默认值；应用时仅绑定当前聊天库。
+      globalSettings.dict_mapping[currentLibName] = {
+        dict: dictName,
+        dirty:
+          oldMapping?.dirty === true || isContentChanged || isDictSwitched,
+      };
     } else {
       if (window.toastr) toastr.warning("未选中任何角色！仅保存了词典。");
     }

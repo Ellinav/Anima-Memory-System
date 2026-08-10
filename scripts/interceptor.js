@@ -302,12 +302,18 @@ export async function initInterceptor() {
 
       // ✨ 获取全局的库到词典的映射表
       const dictMapping = bm25Settings.dict_mapping || {};
+      const currentCharacterId = context.characterId;
+      const roleDictName =
+        currentCharacterId !== undefined
+          ? context.characters[currentCharacterId]?.data?.extensions
+              ?.anima_bm25_settings?.bound_dict
+          : null;
 
-      // ✨ 核心修复：先查映射，找到真正绑定的词典名称，再获取 Config
+      // 当前库映射优先；未映射的新库才回退到当前角色默认词典。
       const currentDictName =
         dictMapping[currentChatId]?.dict ||
-        bm25Settings.current_dict ||
-        "default_dict";
+        roleDictName ||
+        null;
       const chatBm25Config = getBm25BackendConfig(currentDictName);
 
       if (chatBm25Config.enabled && currentChatId) {
@@ -320,11 +326,11 @@ export async function initInterceptor() {
 
       extraChatFiles.forEach((dbId) => {
         if (!processedDbIds.has(dbId)) {
-          // 历史库同样需要查映射
+          // 历史库保留各自映射；只有未映射库才使用角色默认词典。
           const dbDictName =
             dictMapping[dbId]?.dict ||
-            bm25Settings.current_dict ||
-            "default_dict";
+            roleDictName ||
+            null;
           const cfg = getBm25BackendConfig(dbDictName);
           if (cfg.enabled) {
             bm25Configs.chat.push({ dbId, dictionary: cfg.dictionary });

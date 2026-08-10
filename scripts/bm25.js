@@ -65,6 +65,9 @@ function getGlobalBm25Settings() {
   if (!extensionSettings.anima_memory_system.bm25.dict_mapping) {
     extensionSettings.anima_memory_system.bm25.dict_mapping = {};
   }
+  if (!extensionSettings.anima_memory_system.bm25.custom_dicts) {
+    extensionSettings.anima_memory_system.bm25.custom_dicts = {};
+  }
 
   return extensionSettings.anima_memory_system.bm25;
 }
@@ -93,7 +96,11 @@ async function saveCharBm25Settings(settingsData) {
     );
     return false;
   }
-  await writeExtensionField(characterId, "anima_bm25_settings", settingsData);
+  const currentSettings = getCharBm25Settings();
+  await writeExtensionField(characterId, "anima_bm25_settings", {
+    ...currentSettings,
+    ...settingsData,
+  });
   return true;
 }
 
@@ -126,6 +133,7 @@ export function showBm25Modal(title, html) {
 // ================= 新增：分页与草稿状态管理 =================
 let currentDraftWords = []; // 内存中的词条草稿数组
 let currentDictPage = 1; // 当前页码
+let isSyncingRoleDictionary = false; // 切换角色时只刷新 UI，不反向覆盖角色配置
 const WORDS_PER_PAGE = 10; // 设定每页显示多少条，你可以自己改
 
 // 提取一个专门渲染当前页词条的函数
@@ -202,9 +210,17 @@ export function initBm25Settings() {
 
   const globalSettings = getGlobalBm25Settings();
   const charSettings = getCharBm25Settings();
+  const currentLibName = getCurrentBm25LibName();
+  const mappedDict = globalSettings.dict_mapping?.[currentLibName]?.dict;
 
   const resolvedDict =
-    charSettings.bound_dict || globalSettings.current_dict || "default_dict";
+    (mappedDict && globalSettings.custom_dicts?.[mappedDict]
+      ? mappedDict
+      : "") ||
+    (charSettings.bound_dict &&
+    globalSettings.custom_dicts?.[charSettings.bound_dict]
+      ? charSettings.bound_dict
+      : "");
 
   // 🗑️ 移除了 blacklist 和 auto_capture_tags
   const settings = {
@@ -215,9 +231,7 @@ export function initBm25Settings() {
   };
 
   // 3. 动态获取真实的词典列表
-  const dicts = globalSettings.custom_dicts
-    ? Object.keys(globalSettings.custom_dicts)
-    : ["default_dict"];
+  const dicts = Object.keys(globalSettings.custom_dicts || {});
 
   // 4. 动态获取当前词典的真实词条 (统一使用 settings.current_dict)
   const currentDictData = globalSettings.custom_dicts?.[settings.current_dict];
@@ -286,12 +300,14 @@ function renderBm25UI(container, settings, dicts, words, libs) {
     </div>`;
 
   // 词典模块
-  const dictOptionsHtml = dicts
-    .map(
-      (d) =>
-        `<option value="${d}" ${settings.current_dict === d ? "selected" : ""}>${d}</option>`,
-    )
-    .join("");
+  const dictOptionsHtml =
+    `<option value="" disabled ${settings.current_dict ? "" : "selected"}>未绑定词典</option>` +
+    dicts
+      .map(
+        (d) =>
+          `<option value="${escapeHtml(d)}" ${settings.current_dict === d ? "selected" : ""}>${escapeHtml(d)}</option>`,
+      )
+      .join("");
   const wordsHtml = words
     .map((w, i) => {
       // 渲染展示用的标签
@@ -940,15 +956,10 @@ function bindBm25Events() {
         currentDictPage = 1;
         renderWordsList();
 
+        if (isSyncingRoleDictionary) return;
+
         globalSettings.current_dict = selectedDict;
         saveGlobalSettings();
-
-        const { characterId } = SillyTavern.getContext();
-        if (characterId !== undefined) {
-          const charSettings = getCharBm25Settings();
-          charSettings.bound_dict = selectedDict;
-          await saveCharBm25Settings(charSettings);
-        }
       }
     });
 
@@ -1072,7 +1083,7 @@ function bindBm25Events() {
 
       if (res.rebuilt) {
         toastr.success(
-          `词典 [${currentDictName}] 已绑定至当前角色！完成相关库同步！`,
+          `词典 [${currentDictName}] 已绑定至当前角色，并完成相关库同步！`,
         );
       } else if (res.reason === "auto_build_off") {
         toastr.warning(
@@ -1144,7 +1155,7 @@ function bindBm25Events() {
             mappedDict ||
             (boundInfo && boundInfo.dict
               ? boundInfo.dict
-              : globalSettings.current_dict);
+              : charSettings.bound_dict || "");
 
           const isCurrent = libName === currentLibName;
           let nameColor = "#ddd";
@@ -1167,12 +1178,14 @@ function bindBm25Events() {
           }
 
           // ✨ 生成该行的下拉框 HTML
-          const dictOptionsHtml = allDictNames
-            .map(
-              (dName) =>
-                `<option value="${escapeHtml(dName)}" ${dName === dictName ? "selected" : ""}>${escapeHtml(dName)}</option>`,
-            )
-            .join("");
+          const dictOptionsHtml =
+            `<option value="" disabled ${dictName ? "" : "selected"}>未绑定词典</option>` +
+            allDictNames
+              .map(
+                (dName) =>
+                  `<option value="${escapeHtml(dName)}" ${dName === dictName ? "selected" : ""}>${escapeHtml(dName)}</option>`,
+              )
+              .join("");
 
           return `
             <div class="bm25-modal-row" style="display:grid; grid-template-columns: minmax(0, 3.5fr) minmax(0, 2fr) 40px 65px; gap:8px; padding: 10px; border-bottom:1px solid rgba(255,255,255,0.05); align-items: center; font-size: 13px;">
@@ -1473,9 +1486,13 @@ function bindBm25Events() {
     .find("#btn_bm25_scan_build")
     .off("click")
     .on("click", async () => {
-      const currentDictName = $("#bm25_dict_select").val() || "未选择词典";
       const currentLibName = getCurrentBm25LibName();
       const globalSettings = getGlobalBm25Settings();
+      const charSettings = getCharBm25Settings();
+      const currentDictName =
+        globalSettings.dict_mapping?.[currentLibName]?.dict ||
+        charSettings.bound_dict ||
+        "未绑定词典";
       const isDictDirty =
         globalSettings.dict_mapping?.[currentLibName]?.dirty === true;
 
@@ -2553,8 +2570,34 @@ function bindBm25Events() {
     typeof SillyTavern !== "undefined" ? SillyTavern.getContext() : null;
   if (STContext && STContext.eventSource && STContext.event_types) {
     STContext.eventSource.on(STContext.event_types.CHAT_CHANGED, () => {
-      // 当聊天加载完成、或者切换角色时，重新拉取当前角色的专属配置并刷新 UI
+      // 聊天或角色切换后，按当前角色绑定刷新词典 UI。
       const charSettings = getCharBm25Settings();
+      const globalSettings = getGlobalBm25Settings();
+      const currentLibName = getCurrentBm25LibName();
+      const mappedDict = globalSettings.dict_mapping?.[currentLibName]?.dict;
+      const roleDict =
+        (mappedDict && globalSettings.custom_dicts?.[mappedDict]
+          ? mappedDict
+          : "") ||
+        (charSettings.bound_dict &&
+        globalSettings.custom_dicts?.[charSettings.bound_dict]
+          ? charSettings.bound_dict
+          : "");
+      const $dictSelect = $tab.find("#bm25_dict_select");
+
+      if ($dictSelect.length) {
+        isSyncingRoleDictionary = true;
+        $dictSelect.val(roleDict);
+        if (roleDict) {
+          $dictSelect.trigger("change");
+        } else {
+          currentDraftWords = [];
+          currentDictPage = 1;
+          renderWordsList();
+        }
+        isSyncingRoleDictionary = false;
+      }
+
       refreshLibsUI(charSettings.libs || []);
     });
   }

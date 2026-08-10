@@ -549,7 +549,9 @@ export async function addSingleSummaryItem(
   // 1. 计算要写入哪个 Chapter
   const chapterNum = Math.ceil(batchId / groupSize);
   const entryName = `chapter_${chapterNum}`;
-  const narrativeTime = Date.now();
+  // 手动补录仍然属于当前聊天文件，必须继承聊天文件的创建时间。
+  // 不能使用 Date.now()，否则历史补录片段会被误判为最新聊天的最新片段。
+  const narrativeTime = await getOrInitNarrativeTime();
 
   const existingEntries = await window.TavernHelper.getWorldbook(wbName);
   let targetEntry = existingEntries.find(
@@ -1290,13 +1292,26 @@ export async function getLatestRecentSummaries(count) {
         const batchId = h.batch_id !== undefined ? h.batch_id : h.index;
         const sliceId = h.slice_id !== undefined ? h.slice_id : 0;
         const uniqueId = h.unique_id !== undefined ? h.unique_id : h.index;
+        const rawNarrativeTime =
+          h.narrative_time !== undefined
+            ? h.narrative_time
+            : entry.extra.narrative_time;
+        const numericNarrativeTime = Number(rawNarrativeTime);
+        const parsedNarrativeTime =
+          Number.isFinite(numericNarrativeTime) && numericNarrativeTime > 0
+            ? numericNarrativeTime
+            : rawNarrativeTime !== undefined && rawNarrativeTime !== null
+              ? new Date(rawNarrativeTime).getTime()
+              : NaN;
 
         allHistory.push({
           batch_id: Number(batchId),
           slice_id: Number(sliceId),
           unique_id: String(uniqueId),
           parentContent: entry.content,
-          narrative_time: h.narrative_time, // 辅助排序
+          narrative_time: Number.isFinite(parsedNarrativeTime)
+            ? parsedNarrativeTime
+            : null,
         });
       });
     }
@@ -1304,29 +1319,28 @@ export async function getLatestRecentSummaries(count) {
 
   if (allHistory.length === 0) return { text: "", ids: [] };
 
-  // 2. 倒序排序 (最新的在最前)
-  // 优先级: NarrativeTime > BatchID > SliceID
-  allHistory.sort((a, b) => {
-    // 如果有时间戳，优先按时间倒序
-    if (
-      a.narrative_time &&
-      b.narrative_time &&
-      a.narrative_time !== b.narrative_time
-    ) {
-      // ✅ 修复：添加 .getTime()
-      return (
-        new Date(b.narrative_time).getTime() -
-        new Date(a.narrative_time).getTime()
-      );
-    }
-    // 其次按 Batch 倒序
+  // 2. 先定位最新聊天记忆库。
+  // narrative_time 表示聊天文件时间；同一个聊天文件中的所有切片应共享它。
+  const narrativeTimes = allHistory
+    .map((item) => item.narrative_time)
+    .filter((time) => Number.isFinite(time));
+  const latestNarrativeTime =
+    narrativeTimes.length > 0 ? Math.max(...narrativeTimes) : null;
+  const latestChatHistory =
+    latestNarrativeTime === null
+      ? allHistory
+      : allHistory.filter(
+          (item) => item.narrative_time === latestNarrativeTime,
+        );
+
+  // 3. 只在最新聊天记忆库内，按 Batch_Slice ID 选择最新切片。
+  latestChatHistory.sort((a, b) => {
     if (a.batch_id !== b.batch_id) return b.batch_id - a.batch_id;
-    // 最后按 Slice 倒序
     return b.slice_id - a.slice_id;
   });
 
-  // 3. 截取前 N 个
-  const selected = allHistory.slice(0, count);
+  // 4. 截取前 N 个
+  const selected = latestChatHistory.slice(0, count);
 
   // 为了符合阅读习惯，虽然是倒序取出来的，但拼接文本时应该按“正序”拼
   // 比如取出 [5_2, 5_1]，拼接时应该是 "内容(5_1)\n\n内容(5_2)"

@@ -1180,7 +1180,7 @@ export async function syncStatusToWorldBook(
     keys: ["anima_status", "status_injection"],
     content: finalContent,
     name: "[anima_status]",
-    enabled: true,
+    enabled: settings.status_enabled !== false,
     strategy: { type: "constant" },
     position: {
       type: injectConfig.position || "at_depth",
@@ -1207,6 +1207,39 @@ export async function syncStatusToWorldBook(
   } else {
     await window.TavernHelper.createWorldbookEntries(wbName, [entryData]);
   }
+}
+
+/**
+ * 同步当前聊天世界书中状态注入条目的启用状态。
+ * 只修改已有的 [anima_status]，不创建世界书或条目。
+ */
+export async function syncStatusWorldbookEntryEnabled(isEnabled) {
+  if (!window.TavernHelper) return false;
+
+  const wbName = await safeGetChatWorldbookName();
+  if (!wbName) return false;
+
+  let changed = false;
+  await window.TavernHelper.updateWorldbookWith(
+    wbName,
+    (entries) => {
+      const entry = entries.find((item) => item.name === "[anima_status]");
+      if (entry && entry.enabled !== isEnabled) {
+        entry.enabled = isEnabled;
+        changed = true;
+      }
+      return entries;
+    },
+    { render: "immediate" },
+  );
+
+  if (changed) {
+    console.log(
+      `[Anima Status] 当前聊天 [anima_status] 条目已${isEnabled ? "启用" : "禁用"}`,
+    );
+  }
+
+  return changed;
 }
 
 export async function previewStatusPayload() {

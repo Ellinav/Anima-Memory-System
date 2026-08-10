@@ -8,6 +8,7 @@ import {
   saveStatusToMessage,
   saveRealtimeStatusVariables,
   syncStatusToWorldBook,
+  syncStatusWorldbookEntryEnabled,
   previewStatusPayload,
   findBaseStatus,
   triggerManualSync,
@@ -1014,7 +1015,7 @@ function bindRegexModalEvents() {
 // 逻辑模块 0: 总开关
 // ==========================================
 function bindMasterSwitch() {
-  $("#status_master_switch").on("change", function () {
+  $("#status_master_switch").on("change", async function () {
     const isEnabled = $(this).prop("checked");
     currentSettings.status_enabled = isEnabled;
 
@@ -1030,6 +1031,17 @@ function bindMasterSwitch() {
     // 🔥【核心修复】总开关关闭时，也必须强制刷新一下面板
     // 这样 refreshStatusPanel 里的逻辑（见下一步）就能把悬浮按钮干掉
     refreshStatusPanel();
+
+    try {
+      await syncStatusWorldbookEntryEnabled(isEnabled);
+    } catch (error) {
+      console.error("[Anima Status] 同步世界书条目开关失败:", error);
+      if (window.toastr) {
+        toastr.warning(
+          "状态设置已保存，但当前聊天世界书的 [anima_status] 条目同步失败。",
+        );
+      }
+    }
   });
 }
 

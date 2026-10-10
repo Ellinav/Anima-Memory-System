@@ -426,8 +426,9 @@
   align-items: center; /* 垂直居中 */
 }
 
-.anima-regex-item.is-row span {
+.anima-regex-item.is-row .regex-text {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -439,6 +440,107 @@
   padding: 4px 8px;
   height: 30px;
   font-size: 13px;
+}
+
+#anima-overlay .anima-regex-item.is-row .edit-input,
+#anima-gc-management-modal .gc-regex-content {
+  min-width: 0;
+  width: 0;
+  padding: 4px 8px;
+  height: 30px;
+  box-sizing: border-box;
+  resize: vertical;
+  font-family: monospace;
+}
+
+/* Shared by summary pre/post processing, status, RAG and BM25 rules. */
+@media (max-width: 768px) {
+  .anima-regex-header {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .anima-regex-header .anima-label-group {
+    flex: 1 1 200px;
+    min-width: 0;
+  }
+  .anima-regex-header .anima-btn {
+    flex-shrink: 0;
+  }
+  .anima-regex-header code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .anima-regex-list .anima-regex-item.is-row {
+    min-width: 0;
+  }
+  .anima-regex-item.is-row .view-mode {
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 8px !important;
+  }
+  .anima-regex-item.is-row .regex-type-badge {
+    width: auto !important;
+  }
+  .anima-regex-item.is-row .regex-actions {
+    margin-left: auto;
+  }
+  .anima-regex-item.is-row .regex-text {
+    order: 1;
+    flex: 1 1 100% !important;
+    margin: 0;
+    white-space: pre-wrap !important;
+    overflow-wrap: anywhere;
+    overflow: visible !important;
+    line-height: 1.6;
+  }
+  .anima-regex-item.is-row .anima-btn {
+    min-width: 40px;
+    min-height: 40px;
+    padding: 6px;
+  }
+  .anima-regex-item.is-row .edit-mode {
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 8px !important;
+  }
+  #anima-overlay .anima-regex-item.is-row .edit-input {
+    order: 1;
+    flex: 1 1 100% !important;
+    width: 100%;
+    height: auto;
+    min-height: 96px;
+    padding: 10px;
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  #anima-overlay .anima-regex-item.is-row .edit-type {
+    height: 40px;
+    padding: 4px 8px;
+  }
+  .anima-regex-item.is-row .btn-save {
+    margin-left: auto;
+  }
+  #anima-gc-management-modal .gc-regex-item {
+    flex-wrap: wrap !important;
+  }
+  #anima-gc-management-modal .gc-regex-content {
+    order: 1;
+    flex: 1 1 100% !important;
+    width: 100%;
+    height: auto;
+    min-height: 96px;
+    padding: 10px;
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  #anima-gc-management-modal .gc-regex-type {
+    min-height: 40px;
+  }
+  #anima-gc-management-modal .gc-regex-delete {
+    min-width: 40px;
+    min-height: 40px;
+    margin-left: auto !important;
+  }
 }
 
 /* 🔵 提示词模块样式 */

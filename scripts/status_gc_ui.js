@@ -82,7 +82,7 @@ export function openGCManagementModal() {
                     </div>
 
                     <div id="gc_custom_regex_section" class="anima-card" style="${gcSettings.reuse_regex ? "display:none;" : ""} margin-bottom: 20px; border-color: #4b5563;">
-                        <div class="anima-flex-row" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <div class="anima-flex-row anima-regex-header" style="justify-content: space-between; align-items: center; margin-bottom: 10px;">
                             <div class="anima-label-text"><i class="fa-solid fa-filter"></i> 专属校准正则</div>
                             <button id="btn-gc-add-regex" class="anima-btn small secondary"><i class="fa-solid fa-plus"></i> 添加</button>
                         </div>
@@ -151,7 +151,7 @@ export function openGCManagementModal() {
 
     gcSettings.regex_list.forEach((rule, idx) => {
       const $item = $(`
-                <div class="anima-regex-item" data-idx="${idx}" style="display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; background: rgba(0,0,0,0.2); border: 1px solid var(--anima-border, #4b5563); border-radius: 4px; box-sizing: border-box;">
+                <div class="anima-regex-item gc-regex-item" data-idx="${idx}" style="display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; background: rgba(0,0,0,0.2); border: 1px solid var(--anima-border, #4b5563); border-radius: 4px; box-sizing: border-box;">
                     <i class="fa-solid fa-bars anima-drag-handle" title="拖动排序" style="cursor:grab; color:#888; flex-shrink: 0;"></i>
                     
                     <select class="anima-select gc-regex-type" style="width: 100px; margin: 0; box-sizing: border-box; background: rgba(0,0,0,0.3); color: #ddd; border: 1px solid #555; border-radius: 4px; padding: 4px; flex-shrink: 0;">
@@ -159,9 +159,9 @@ export function openGCManagementModal() {
                         <option value="exclude" ${rule.type === "exclude" ? "selected" : ""}>排除</option>
                     </select>
                     
-                    <input type="text" class="anima-input gc-regex-content" value="${escapeHtml(rule.content || "")}" placeholder="输入正则表达式..." style="flex: 1; min-width: 0; margin: 0; box-sizing: border-box; background: rgba(0,0,0,0.3); color: #ddd; border: 1px solid #555; border-radius: 4px; padding: 4px 8px;">
+                    <textarea class="anima-input anima-textarea gc-regex-content" rows="1" spellcheck="false" aria-label="正则表达式" placeholder="输入正则表达式..." style="flex: 1; min-width: 0; margin: 0; box-sizing: border-box; background: rgba(0,0,0,0.3); color: #ddd; border: 1px solid #555; border-radius: 4px; padding: 4px 8px;">${escapeHtml(rule.content || "")}</textarea>
                     
-                    <button class="anima-btn danger small gc-regex-delete" style="width: 32px; height: 32px; padding: 0; margin: 0; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    <button class="anima-btn danger small gc-regex-delete" title="删除" aria-label="删除规则" style="width: 32px; height: 32px; padding: 0; margin: 0; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;">
                         <i class="fa-solid fa-trash"></i>
                     </button>
                 </div>

@@ -8,6 +8,7 @@ import {
 import {
   applyRegexRules,
   extractJsonResult,
+  extractSummaryJsonResult,
   processMacros,
   getContextData,
 } from "./utils.js";
@@ -871,76 +872,9 @@ export async function runSummarizationTask({
 
       console.log("[Anima] Raw Model Output:", rawResult);
 
-      // ✨✨ 1. 优先提取 dict_updates 并执行更新 (互不干扰)
-      const dictUpdates = extractDictUpdates(rawResult);
-      if (dictUpdates.length > 0) {
-        await autoUpdateDictionary(dictUpdates);
-      }
-
       // 1. 尝试提取 JSON (通过 JSDoc 强制声明为 any，打破 never 推断)
       /** @type {any} */
-      let parsedResult = extractJsonResult(rawResult);
-
-      // =======================================================
-      // ✨ [新增修复] 核心解包逻辑：剥除外层数组外壳
-      // 应对 extractJsonResult 将对象包裹成 [{ "summaries": [...] }] 的情况
-      // =======================================================
-      if (
-        parsedResult &&
-        Array.isArray(parsedResult) &&
-        parsedResult.length === 1 &&
-        typeof parsedResult[0] === "object" &&
-        parsedResult[0] !== null &&
-        !Array.isArray(parsedResult[0])
-      ) {
-        // 如果数组里只包着一个对象，并且这个对象符合我们的新版结构
-        if (
-          "summaries" in parsedResult[0] ||
-          "dict_updates" in parsedResult[0]
-        ) {
-          console.log(
-            "[Anima] 发现被数组包裹的顶层 JSON 对象，执行安全解包...",
-          );
-          parsedResult = parsedResult[0];
-        }
-      }
-
-      // 2. 兼容各种 JSON 结构 (原有逻辑保持不变)
-      if (
-        parsedResult &&
-        typeof parsedResult === "object" &&
-        !Array.isArray(parsedResult)
-      ) {
-        // 使用括号语法避开 VSCode 的严格属性检查
-        if (
-          parsedResult["summaries"] &&
-          Array.isArray(parsedResult["summaries"])
-        ) {
-          parsedResult = parsedResult["summaries"];
-        } else if (
-          parsedResult["summary"] &&
-          Array.isArray(parsedResult["summary"])
-        ) {
-          parsedResult = parsedResult["summary"];
-        } else if (
-          parsedResult["data"] &&
-          Array.isArray(parsedResult["data"])
-        ) {
-          parsedResult = parsedResult["data"];
-        } else if (
-          !parsedResult["dict_updates"] ||
-          Object.keys(parsedResult).length > 1
-        ) {
-          // 它是一个单条的总结对象，且不全都是 dict_updates
-          console.log(
-            "[Anima] Detected single JSON object, converting to array.",
-          );
-          parsedResult = [parsedResult];
-        } else {
-          // 如果解析出来对象里【只有】dict_updates，没有总结内容，设为空数组走纯文本兜底
-          parsedResult = [];
-        }
-      }
+      const parsedResult = extractSummaryJsonResult(rawResult);
 
       // 2. 校验逻辑 (此时无论是数组还是单对象，都已统一为数组格式)
       if (
@@ -963,7 +897,7 @@ export async function runSummarizationTask({
             tags = rawTags;
           }
           // ✨ 修改点 B：方案 C (通用标签读取)
-          else if (typeof rawTags === "object") {
+          else if (rawTags && typeof rawTags === "object") {
             Object.entries(rawTags).forEach(([key, val]) => {
               if (Array.isArray(val)) {
                 tags = tags.concat(val);
@@ -1001,10 +935,10 @@ export async function runSummarizationTask({
       if (summaryBatch.length === 0) {
         console.warn("[Anima Error Debug] Raw Result:", rawResult); // 依然在控制台留底
 
-        // 截取前 500 个字符，防止内容过长导致弹窗溢出
+        // Include both ends so a preview is not mistaken for a truncated response.
         let debugSnippet = "";
         if (typeof rawResult === "string") {
-          debugSnippet = rawResult.slice(0, 500);
+          debugSnippet = `原文长度：${rawResult.length} 字符。\n开头：\n${rawResult.slice(0, 400)}\n末尾：\n${rawResult.slice(-400)}`;
         } else {
           // 如果是对象，转字符串
           try {
@@ -1016,8 +950,13 @@ export async function runSummarizationTask({
 
         // 抛出带内容的错误，这样 catch 块就能捕获到了
         throw new Error(
-          `解析失败(空内容)。API返回片段:\n\n${debugSnippet}\n\n(请检查格式是否为合法JSON)`,
+          `总结内容为空（输出处理后）。API返回片段:\n\n${debugSnippet}\n\n(请检查总结字段和输出正则规则)`,
         );
+      }
+
+      const dictUpdates = extractDictUpdates(rawResult);
+      if (dictUpdates.length > 0) {
+        await autoUpdateDictionary(dictUpdates);
       }
 
       // =======================================================
@@ -1077,32 +1016,17 @@ export function getIsSummarizing() {
 }
 
 /**
- * 从 LLM 混杂的输出中强行抓取 dict_updates 数组 (安全版本)
+ * Extract dictionary updates only from a complete parsed response.
  */
 function extractDictUpdates(rawResult) {
-  let updates = [];
   try {
-    // 1. 加上 'i' 标志，支持 "Dict_Updates" 或 "DICT_UPDATES"
-    const match = rawResult.match(
-      /"dict_updates"\s*:\s*(\[\s*(?:\{[\s\S]*?\}\s*,?\s*)*\])/i,
-    );
-    if (match) {
-      updates = JSON.parse(match[1]);
-    } else {
-      // 2. 兜底：如果 LLM 把它们全包在了一个大对象里
-      const parsed = JSON.parse(rawResult);
-      if (parsed && typeof parsed === "object") {
-        // 不区分大小写地查找 key
-        const key = Object.keys(parsed).find(
-          (k) => k.toLowerCase() === "dict_updates",
-        );
-        if (key && Array.isArray(parsed[key])) {
-          updates = parsed[key];
-        }
-      }
-    }
-  } catch (e) {
-    // 解析失败静默忽略，绝不阻断后续正常的总结流程
+    const result = extractJsonResult(rawResult);
+    const root = Array.isArray(result) && result.length === 1 ? result[0] : null;
+    if (!root || typeof root !== "object" || Array.isArray(root)) return [];
+    const key = Object.keys(root).find((k) => k.toLowerCase() === "dict_updates");
+    return key && Array.isArray(root[key]) ? root[key] : [];
+  } catch {
+    // Never persist a dictionary extracted from an incomplete response.
+    return [];
   }
-  return updates;
 }

@@ -452,7 +452,7 @@ function renderMainUI(container, settings, ragFiles, currentChatId) {
            <div class="anima-setting-group">
             <h2 class="anima-title"><i class="fa-solid fa-filter"></i>向量检索内容</h2>
             <div class="anima-card">
-                <div class="anima-flex-row" style="align-items: flex-start;">
+                <div class="anima-flex-row anima-regex-header" style="align-items: flex-start;">
                     <div class="anima-label-group">
                         <span class="anima-label-text">正则清洗</span>
                         <span class="anima-desc-inline">在向量化之前清洗文本</span>

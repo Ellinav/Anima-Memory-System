@@ -134,7 +134,7 @@ export function initSummarySettings() {
         <div class="anima-setting-group">
             <h2 class="anima-title"><i class="fa-solid fa-filter"></i> 待总结内容预处理</h2>
             <div class="anima-card">
-                <div class="anima-flex-row" style="align-items: flex-start;">
+                <div class="anima-flex-row anima-regex-header" style="align-items: flex-start;">
                     <div class="anima-label-group">
                         <span class="anima-label-text">正则</span>
                         <span class="anima-desc-inline">
@@ -222,7 +222,7 @@ export function initSummarySettings() {
         <div class="anima-setting-group">
             <h2 class="anima-title"><i class="fa-solid fa-database"></i> 存储配置</h2>
             <div class="anima-card">
-                <div class="anima-flex-row" style="align-items: center;">
+                <div class="anima-flex-row anima-regex-header" style="align-items: center;">
                     <div class="anima-label-group">
                         <span class="anima-label-text">结果后处理正则</span>
                         <span class="anima-desc-inline">仅适用于纯文本结果，对总结内容进行二次清洗。</span>

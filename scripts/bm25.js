@@ -419,7 +419,7 @@ function renderBm25UI(container, settings, dicts, words, libs) {
             </div>
 
             <div id="bm25_specific_content_settings" style="display: ${isReuse ? "none" : "block"};">
-                <div class="anima-flex-row" style="align-items: flex-start; margin-bottom: 5px;">
+                <div class="anima-flex-row anima-regex-header" style="align-items: flex-start; margin-bottom: 5px;">
                     <div class="anima-label-group">
                         <span class="anima-label-text">BM25 专属校准正则</span>
                         <span class="anima-desc-inline">在 BM25 向量化之前独立清洗文本</span>

@@ -648,7 +648,7 @@ export function initStatusSettings() {
         <div class="anima-card">
             
             <div style="margin-bottom: 20px;">
-                <div class="anima-flex-row" style="justify-content: space-between; margin-bottom: 10px; align-items: center;">
+                <div class="anima-flex-row anima-regex-header" style="justify-content: space-between; margin-bottom: 10px; align-items: center;">
                     <div class="anima-label-text"><i class="fa-solid fa-filter"></i> 上下文清洗正则</div>
                     <button id="btn-add-status-regex" class="anima-btn small secondary">
                         <i class="fa-solid fa-plus"></i> 添加

@@ -45,23 +45,21 @@ export class RegexListComponent {
               <div class="view-mode" style="display:flex; align-items:center; width:100%; gap:10px;">
                   <i class="fa-solid fa-bars anima-drag-handle" style="cursor: grab; color: #888;"></i>
                   
-                  <div style="width: 50px; text-align: center; flex-shrink: 0;">
+                  <div class="regex-type-badge" style="width: 50px; text-align: center; flex-shrink: 0;">
                       ${typeBadge}
                   </div>
 
-                  <span class="regex-text" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:monospace; color:#ccc; ${!isEnabled ? "text-decoration: line-through; opacity: 0.5;" : ""}">
-                      ${this.escapeHtml(item.regex)}
-                  </span>
+                  <span class="regex-text" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:monospace; color:#ccc; ${!isEnabled ? "text-decoration: line-through; opacity: 0.5;" : ""}">${this.escapeHtml(item.regex)}</span>
                   
-                  <div style="display:flex; gap:8px; align-items:center; flex-shrink:0;">
+                  <div class="regex-actions" style="display:flex; gap:8px; align-items:center; flex-shrink:0;">
                       <label class="anima-switch" title="启用/禁用" style="margin: 0; flex: 0 0 44px; width: 44px; min-width: 44px;">
                           <input type="checkbox" class="regex-toggle" ${isEnabled ? "checked" : ""}>
                           <span class="anima-slider round"></span>
                       </label>
 
                       <div style="display:flex; gap:5px; flex-shrink: 0;">
-                          <button class="anima-btn secondary small btn-edit" title="编辑"><i class="fa-solid fa-pen"></i></button>
-                          <button class="anima-btn danger small btn-del" title="删除"><i class="fa-solid fa-trash"></i></button>
+                          <button class="anima-btn secondary small btn-edit" title="编辑" aria-label="编辑规则"><i class="fa-solid fa-pen"></i></button>
+                          <button class="anima-btn danger small btn-del" title="删除" aria-label="删除规则"><i class="fa-solid fa-trash"></i></button>
                       </div>
                   </div>
               </div>
@@ -71,9 +69,9 @@ export class RegexListComponent {
                       <option value="extract">提取</option>
                       <option value="exclude">排除</option>
                   </select>
-                  <input type="text" class="anima-input edit-input" value="${this.escapeHtml(item.regex)}" style="margin:0; flex:1;">
-                  <button class="anima-btn primary small btn-save"><i class="fa-solid fa-check"></i></button>
-                  <button class="anima-btn secondary small btn-cancel"><i class="fa-solid fa-xmark"></i></button>
+                  <textarea class="anima-input anima-textarea edit-input" rows="1" spellcheck="false" aria-label="正则表达式" style="margin:0; flex:1;">${this.escapeHtml(item.regex)}</textarea>
+                  <button class="anima-btn primary small btn-save" title="保存" aria-label="保存规则"><i class="fa-solid fa-check"></i></button>
+                  <button class="anima-btn secondary small btn-cancel" title="取消" aria-label="取消编辑"><i class="fa-solid fa-xmark"></i></button>
               </div>
           </div>
           `);

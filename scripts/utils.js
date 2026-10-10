@@ -1,3 +1,5 @@
+import { jsonrepair } from "../lib/jsonrepair/index.js";
+
 export function escapeHtml(text) {
   if (!text) return text;
   return text
@@ -325,124 +327,169 @@ export function applyRegexRules(text, rules) {
   return allExtractedParts.filter(Boolean).join("\n");
 }
 
-/**
- * 终极 JSON 提取器 (Iterative Scanner)
- * 能够处理：
- * 1. Markdown 代码块包裹
- * 2. <thinking> 或其他标签包裹的杂音
- * 3. 前后任意纯文本干扰
- * 4. 杂音中包含混淆的括号 (如 "I will update [status]...")
- */
+/** Parse a complete model JSON value; never accept a child of an invalid root. */
 export function extractJsonResult(text) {
-  if (!text) return null;
-
-  // --- 策略 1: 优先匹配 Markdown 代码块 (最稳健) ---
-  // 很多模型在 CoT 之后会非常规范地打上 ```json
-  const codeBlockRegex =
-    /```(?:json)?\s*(\[\s*[\s\S]*\s*\]|\{\s*[\s\S]*\s*\})\s*```/i;
-  const match = text.match(codeBlockRegex);
-  if (match) {
-    const result = tryParse(match[1]);
-    if (result) return result;
+  if (!text || typeof text !== "string") return null;
+  // Reasoning may contain draft objects and unmatched prose brackets.
+  // Strip only leading blocks: tags inside JSON strings are literal content.
+  // Keep the original response for diagnostics.
+  const output = text.replace(/^(?:\s*<(think|thinking)\b[^>]*>[\s\S]*?<\/\1\s*>)+/i, "");
+  const trimmed = output.trim();
+  if (/^[\[{]/.test(trimmed)) {
+    const direct = parseModelJsonCandidate(trimmed);
+    if (direct) return direct;
   }
+  const fenced = [...output.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)]
+    .map((match) => match[1].trim()).filter((body) => /^[\[{]/.test(body));
+  if (fenced.length) {
+    for (const body of fenced) {
+      const result = parseModelJsonCandidate(body);
+      if (result) return result;
+    }
+    throw modelJsonError(text, "JSON 格式错误或内容不完整，未写入数据");
+  }
+  let invalidRoot = false;
+  for (let i = 0; i < output.length; i++) {
+    if (output[i] !== "{" && output[i] !== "[") continue;
+    const looksLikeJson = /^(?:\{\s*(?:["}]|$)|\[\s*(?:[\[{"\]\d-]|true\b|false\b|null\b|$))/.test(output.slice(i));
+    const candidate = extractBalancedString(output, i);
+    if (!candidate) {
+      if (looksLikeJson) {
+        throw modelJsonError(text, "JSON 内容不完整或被截断，未写入数据");
+      }
+      continue;
+    }
+    const result = parseModelJsonCandidate(candidate);
+    if (result) return result;
+    // Skip the entire failed candidate, including all its nested objects.
+    invalidRoot ||= looksLikeJson;
+    i += candidate.length - 1;
+  }
+  if (invalidRoot) {
+    throw modelJsonError(text, "JSON 格式错误，未写入数据");
+  }
+  return null;
+}
 
-  // --- 策略 2: 迭代扫描法 (暴力但有效) ---
-  // 应对场景：
-  // <thinking>I check [status]...</thinking> { "HP": 10 } End text.
-  // 逻辑：遇到第一个 '[' 会提取 "[status]" -> 解析失败 -> 继续往后找
-  //      遇到 '{' 会提取 '{ "HP": 10 }' -> 解析成功 -> 返回
+function parseModelJsonCandidate(candidate) {
+  let parsed;
+  try {
+    parsed = JSON.parse(candidate);
+  } catch {
+    try {
+      let repaired;
+      try {
+        repaired = jsonrepair(candidate);
+      } catch {
+        // Some dialogue contains literal braces, which jsonrepair can mistake
+        // for structure after a bare quote. Escape only non-terminal quotes.
+        repaired = escapeModelJsonStringQuotes(candidate);
+      }
+      // Only permit escaping existing quotes/control characters. Reject any
+      // repair that invents a value, closes a missing bracket, or drops text.
+      if (!isSafeModelJsonRepair(candidate, repaired)) return null;
+      parsed = JSON.parse(repaired);
+      console.warn("[Anima] 已修复模型 JSON 字符串转义；正文和结构保持完整。");
+    } catch {
+      return null;
+    }
+  }
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && typeof parsed === "object") return [parsed];
+  return null;
+}
 
+function escapeModelJsonStringQuotes(text) {
+  let inString = false;
+  let escaped = false;
+  let result = "";
+  const controls = {"\n": "n", "\r": "r", "\t": "t", "\b": "b", "\f": "f"};
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
-
-    // 我们只关心可能的 JSON 起始点
-    if (char === "{" || char === "[") {
-      // 从当前位置 i 开始，尝试提取一段平衡的括号文本
-      const potentialJsonStr = extractBalancedString(text, i);
-
-      if (potentialJsonStr) {
-        // 立即尝试解析
-        const result = tryParse(potentialJsonStr);
-        if (result) {
-          return result; // 找到了！直接返回，忽略后面的文本
-        }
-        // 如果解析失败（比如提取到了 [thinking]），循环继续，寻找下一个起始点
+    if (!inString) {
+      if (char === '"') inString = true;
+      result += char;
+      continue;
+    }
+    if (escaped) { escaped = false; result += char; continue; }
+    if (char === "\\") { escaped = true; result += char; continue; }
+    if (char === '"') {
+      let next = i + 1;
+      while (next < text.length && /\s/.test(text[next])) next++;
+      if (next === text.length || /[:,}\]]/.test(text[next])) {
+        inString = false;
+        result += char;
+      } else {
+        result += '\\"';
       }
-    }
+    } else if (controls[char]) result += "\\" + controls[char];
+    else result += char;
   }
-
-  return null;
+  return result;
 }
 
-/**
- * 内部辅助：尝试解析 JSON 并归一化为数组
- * @returns {Array|null} 解析成功返回数组，失败返回 null
- */
-function tryParse(str) {
-  try {
-    const result = JSON.parse(str);
-    if (Array.isArray(result)) {
-      return result;
-    } else if (typeof result === "object" && result !== null) {
-      return [result];
+function isSafeModelJsonRepair(original, repaired) {
+  let i = 0;
+  let j = 0;
+  const controls = {"\n": "n", "\r": "r", "\t": "t", "\b": "b", "\f": "f"};
+  while (i < original.length && j < repaired.length) {
+    if (original[i] === repaired[j]) {
+      i++; j++;
+    } else if (original[i] === '"' && repaired[j] === "\\" && repaired[j + 1] === '"') {
+      i++; j += 2;
+    } else if (controls[original[i]] && repaired[j] === "\\" && repaired[j + 1] === controls[original[i]]) {
+      i++; j += 2;
+    } else {
+      return false;
     }
-  } catch (e) {
-    // 解析失败，说明这段括号匹配的内容不是 JSON
-    return null;
   }
-  return null;
+  return i === original.length && j === repaired.length;
 }
 
-/**
- * 内部辅助：提取平衡括号字符串
- * @param {string} text - 完整文本
- * @param {number} startIndex - 起始位置 (必须是 { 或 [)
- * @returns {string|null} 提取出的字符串，如果未闭合则返回 null
- */
 function extractBalancedString(text, startIndex) {
-  const startChar = text[startIndex];
-  let stack = 0;
+  const stack = [];
   let inString = false;
-  let isEscaped = false;
-
-  // 确定结束字符
-  const endChar = startChar === "{" ? "}" : "]";
-
+  let escaped = false;
   for (let i = startIndex; i < text.length; i++) {
     const char = text[i];
-
-    // 1. 处理字符串内的字符 (跳过字符串内部的括号)
     if (inString) {
-      if (char === "\\") {
-        isEscaped = !isEscaped;
-      } else if (char === '"' && !isEscaped) {
-        inString = false;
-      } else {
-        isEscaped = false;
-      }
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
       continue;
     }
-
-    if (char === '"') {
-      inString = true;
-      continue;
-    }
-
-    // 2. 括号计数
-    if (char === startChar) {
-      stack++;
-    } else if (char === endChar) {
-      stack--;
-    }
-
-    // 3. 闭合检测
-    if (stack === 0) {
-      // 找到了对应的结束括号
-      return text.substring(startIndex, i + 1);
+    if (char === '"') { inString = true; continue; }
+    if (char === "{" || char === "[") stack.push(char);
+    else if (char === "}" || char === "]") {
+      if (stack.pop() !== (char === "}" ? "{" : "[")) return null;
+      if (stack.length === 0) return text.slice(startIndex, i + 1);
     }
   }
+  return null;
+}
 
-  return null; // 没有找到闭合括号
+function modelJsonError(text, reason) {
+  return new Error(`${reason}。原文长度：${text.length} 字符。API返回片段:\n开头：\n${text.slice(0, 400)}\n末尾：\n${text.slice(-400)}`);
+}
+
+export function extractSummaryJsonResult(text) {
+  const result = extractJsonResult(text);
+  if (result === null) return null; // Preserve intentional plain-text output.
+  let summaries = result;
+  if (result.length === 1 && result[0] && typeof result[0] === "object") {
+    const root = result[0];
+    for (const key of ["summaries", "summary", "data"]) {
+      if (Array.isArray(root[key])) { summaries = root[key]; break; }
+    }
+  }
+  if (!summaries.length) throw modelJsonError(text, "总结结构错误：没有总结条目");
+  for (const item of summaries) {
+    const content = item && (item.summary || item.Summary || item.content || item.Content || item.text || item.Text);
+    if (typeof content !== "string" || !content.trim()) {
+      throw modelJsonError(text, "总结结构错误：每条总结必须有非空字符串 summary/content/text 字段");
+    }
+  }
+  return summaries;
 }
 
 function isObject(item) {
